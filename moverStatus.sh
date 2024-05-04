@@ -1,12 +1,16 @@
 #!/bin/bash
 
-#name=Mover Status Script
-#description=This script is designed to monitor the progress of the "Mover" process, which it posts to a Discord webhook of your choice.
-
 # Exit if running
 if [[ $(pidof -x "$(basename "$0")" -o %PPID) ]]; then
     echo "Already running, exiting..."; exit 1
 fi
+
+#name=Mover Status Script
+#description=This script is designed to monitor the progress of the "Mover" process, which it posts to a Discord webhook of your choice.
+
+# Script Version
+CURRENT_VERSION="0.0.2"
+LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
 
 # Environment Variables
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"
@@ -23,27 +27,23 @@ EXCLUDE_PATH_05=""
 # Users can add more EXCLUDE_PATH_XX here as needed
 
 # Prepare exclusion paths for the du command
-exclusion_string=""
+declare -a exclusion_params
 path_index=1
 
 while true; do
-    # Format the index with leading zero for numbers less than 10
     formatted_index=$(printf "%02d" $path_index)
     current_path_var="EXCLUDE_PATH_$formatted_index"
 
-    # Break the loop if the variable is not set or empty
     if [ -z "${!current_path_var}" ]; then
         break
     fi
 
-    # Check if the directory exists
     if [ ! -d "${!current_path_var}" ]; then
         echo "Error: Exclusion path ${!current_path_var} does not exist."
         exit 1
     fi
 
-    # Add the exclude option to the command string
-    exclusion_string+=" --exclude='${!current_path_var}'"
+    exclusion_params+=("--exclude=${!current_path_var}")
     ((path_index++))
 done
 
@@ -101,6 +101,13 @@ send_notification() {
     local datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc=$(calculate_etc $percent)
     local value_message
+    local footer_text
+
+    if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
+        footer_text="Version: v${CURRENT_VERSION} (update available)"
+    else
+        footer_text="Version: v${CURRENT_VERSION}"
+    fi
 
     if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
         value_message="**Moving has been completed!**"
@@ -109,12 +116,12 @@ send_notification() {
     else
         value_message="**Status:** Moving data from SSD Cache to HDD Array. \nProgress: **${percent}%** complete. \nRemaining data: ${remaining_data}.\nEstimated completion time: ${etc}\n\n**Note:** Services like Plex may run slow or be unavailable during the move."
         # Color based on percentage
-        if [ "$percent" -le 35 ]; then
+        if [ "$percent" -le 34 ]; then
             color=16744576  # Light Red: #FF6666
-        elif [ "$percent" -le 50 ]; then
-            color=65535  # Light Blue: #87CEEB (Sky Blue)
-        elif [ "$percent" -lt 100 ]; then
-            color=9498256  # Light Green: #90EE90
+        elif [ "$percent" -le 65 ]; then
+            color=16753920  # Light Orange: #FFA500
+        else
+            color=9498256   # Light Green: #90EE90
         fi
     fi
 
@@ -130,7 +137,10 @@ send_notification() {
               "name": "'"$datetime"'",
               "value": "'"${value_message}"'"
             }
-          ]
+          ],
+          "footer": {
+            "text": "'"$footer_text"'"
+          }
         }
       ]
     }'
@@ -139,12 +149,12 @@ send_notification() {
 }
 
 # Initial Total Size Calculation
-initial_size=$(du -sb $exclusion_string /mnt/cache | cut -f1)
+initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
 initial_readable=$(human_readable $initial_size)
 
 # Tracking Progress
 while true; do
-    current_size=$(du -sb $exclusion_string /mnt/cache | cut -f1)
+    current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
     remaining_readable=$(human_readable $current_size)
     percent=$((100 - (current_size * 100 / initial_size)))
 
