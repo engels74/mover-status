@@ -1,6 +1,9 @@
 # Mover Status
 
-![MoverStatus Script](https://i.imgur.com/3ykqAKX.png)
+<p align="center">
+  <img src="https://i.imgur.com/51gQKps.png" alt="MoverStatus Script"/>
+</p>
+
 
 ### Description
 This Bash script is designed to monitor the progress of the UnraidOS Mover utility, which transfers data from SSD cache to HDD storage in an UnraidOS system. 
@@ -28,10 +31,11 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 4) Name your script "**Mover Status**" (or anything else)
 5) Select/hover the **Settings Wheel** icon of the Mover Status script you just created
 6) Select "**Edit Script**"
-7) Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/unraid-scripts/main/mover_status/moverStatus.sh) into the file 
+7) Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/mover-status/main/moverStatus.sh) into the file 
 8) Edit the variables at the top to your liking (you don't **have** to define any excluded folders)
 9) Select "**Save Changes**" to save the script
 10) Schedule to run it a few minutes before your Mover is planned to start, use a [crontab generator](https://crontab.guru) for this
 
+
 ## Images (preview)
-![An example of how it looks](https://i.imgur.com/AwzVzdt.png)
+<img src="https://i.imgur.com/BXhTkfk.png" width="50%" alt="An example of how it looks">
