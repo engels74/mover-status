@@ -5,11 +5,12 @@ if [[ $(pidof -x "$(basename "$0")" -o %PPID) ]]; then
     echo "Already running, exiting..."; exit 1
 fi
 
+# Script Metadata
 #name=Mover Status Script
-#description=This script is designed to monitor the progress of the "Mover" process, which it posts to a Discord webhook of your choice.
+#description=This script monitors the progress of the "Mover" process and posts updates to a Discord webhook.
 
 # Script Version
-CURRENT_VERSION="0.0.2"
+CURRENT_VERSION="0.0.3"
 LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
 
 # Environment Variables
@@ -18,12 +19,13 @@ DISCORD_NAME_OVERRIDE="Mover Bot"
 MOVER_EXECUTABLE="/usr/local/sbin/mover"
 NOTIFICATION_FREQUENCY=120  # Default frequency in seconds (2 minutes)
 
+# User-defined Messages
+MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. \nProgress: **{percent}%** complete. \nRemaining data: {remaining_data}.\nEstimated completion time: {etc}\n\n**Note:** Services like Plex may run slow or be unavailable during the move."
+COMPLETION_MESSAGE="**Moving has been completed!**"
+
 # User-defined exclusion paths
 EXCLUDE_PATH_01="/path/to/excluded/folder"
 EXCLUDE_PATH_02=""
-EXCLUDE_PATH_03=""
-EXCLUDE_PATH_04=""
-EXCLUDE_PATH_05=""
 # Users can add more EXCLUDE_PATH_XX here as needed
 
 # Prepare exclusion paths for the du command
@@ -47,7 +49,7 @@ while true; do
     ((path_index++))
 done
 
-# Function to convert bytes to human-readable format and add GB equivalent for TB
+# Function to convert bytes to human-readable format
 human_readable() {
     local bytes=$1
     local tb gb kb mb
@@ -110,18 +112,18 @@ send_notification() {
     fi
 
     if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-        value_message="**Moving has been completed!**"
+        value_message=$COMPLETION_MESSAGE
         color=65280  # Green for completion
         completion_message_sent=true
     else
-        value_message="**Status:** Moving data from SSD Cache to HDD Array. \nProgress: **${percent}%** complete. \nRemaining data: ${remaining_data}.\nEstimated completion time: ${etc}\n\n**Note:** Services like Plex may run slow or be unavailable during the move."
+        value_message=$(echo "$MOVING_MESSAGE" | sed "s/{percent}/$percent/g" | sed "s/{remaining_data}/$remaining_data/g" | sed "s/{etc}/$etc/g")
         # Color based on percentage
         if [ "$percent" -le 34 ]; then
-            color=16744576  # Light Red: #FF6666
+            color=16744576  # Light Red
         elif [ "$percent" -le 65 ]; then
-            color=16753920  # Light Orange: #FFA500
+            color=16753920  # Light Orange
         else
-            color=9498256   # Light Green: #90EE90
+            color=9498256   # Light Green
         fi
     fi
 
