@@ -1,32 +1,66 @@
 #!/bin/bash
 
-# Exit if running
+# Exit if already running
 if [[ $(pidof -x "$(basename "$0")" -o %PPID) ]]; then
     echo "Already running, exiting..."; exit 1
 fi
+
+# -------------------------------------------
+# Basic Configuration: Adjust these as needed
+# -------------------------------------------
+
+# Discord Webhook: Essential for notifications
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"
+# Display name for Discord notifications
+DISCORD_NAME_OVERRIDE="Mover Bot"
+# Notification frequency in seconds (default: 2 minutes)
+NOTIFICATION_FREQUENCY=120
+# Message displayed during data movement
+MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. \nProgress: **{percent}%** complete. \nRemaining data: {remaining_data}.\nEstimated completion time: {etc}\n\n**Note:** Services like Plex may run slow or be unavailable during the move."
+# Message displayed when movement is complete
+COMPLETION_MESSAGE="**Moving has been completed!**"
+
+# ---------------------------------------
+# Exclusion Folders: Define paths to exclude
+# ---------------------------------------
+# Set EXCLUDE_PATH_XX to directories you want to exclude from being monitored.
+# Example usage:
+# EXCLUDE_PATH_01="/mnt/cache/excluded/folder"
+# EXCLUDE_PATH_02="/mnt/cache/another/excluded/folder"
+# Add more EXCLUDE_PATH_XX as needed.
+
+EXCLUDE_PATH_01=""
+EXCLUDE_PATH_02=""
+
+# ---------------------------------------------------------
+# Advanced Configuration: Only edit if you understand the impact
+# ---------------------------------------------------------
+
+# Path to the mover executable
+MOVER_EXECUTABLE="/usr/local/sbin/mover"
+
+# ---------------------------------
+# Do Not Modify: Script essentials
+# ---------------------------------
 
 # Script Metadata
 #name=Mover Status Script
 #description=This script monitors the progress of the "Mover" process and posts updates to a Discord webhook.
 
-# Script Version
-CURRENT_VERSION="0.0.3"
+# Script versioning - check for updates
+CURRENT_VERSION="0.0.4"
 LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
 
-# Environment Variables
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"
-DISCORD_NAME_OVERRIDE="Mover Bot"
-MOVER_EXECUTABLE="/usr/local/sbin/mover"
-NOTIFICATION_FREQUENCY=120  # Default frequency in seconds (2 minutes)
 
-# User-defined Messages
-MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. \nProgress: **{percent}%** complete. \nRemaining data: {remaining_data}.\nEstimated completion time: {etc}\n\n**Note:** Services like Plex may run slow or be unavailable during the move."
-COMPLETION_MESSAGE="**Moving has been completed!**"
+# ---------------------------------------------------------
+# Mover Status Script
+# ---------------------------------------------------------
 
-# User-defined exclusion paths
-EXCLUDE_PATH_01="/path/to/excluded/folder"
-EXCLUDE_PATH_02=""
-# Users can add more EXCLUDE_PATH_XX here as needed
+# Validate the Discord webhook URL
+if [[ ! $DISCORD_WEBHOOK_URL =~ ^https://discord.com/api/webhooks/ ]]; then
+    echo "Error: Invalid Discord webhook URL."
+    exit 1
+fi
 
 # Prepare exclusion paths for the du command
 declare -a exclusion_params
@@ -147,7 +181,13 @@ send_notification() {
       ]
     }'
 
-    /usr/bin/curl -H "Content-Type: application/json" -d "$notification_data" $DISCORD_WEBHOOK_URL
+    # Send the request and capture HTTP status code
+    local response=$(/usr/bin/curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d "$notification_data" $DISCORD_WEBHOOK_URL)
+
+    # Check the response code
+    if [ "$response" -ne 200 ]; then
+        echo "Warning: Failed to send notification to Discord, HTTP status $response."
+    fi
 }
 
 # Initial Total Size Calculation
