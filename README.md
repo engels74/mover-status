@@ -32,7 +32,7 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 5) Select/hover the **Settings Wheel** icon of the Mover Status script you just created
 6) Select "**Edit Script**"
 7) Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/mover-status/main/moverStatus.sh) into the file 
-8) Edit the variables at the top to your liking (you don't **have** to define any excluded folders)
+8) Edit the variables at the top to your liking (you don't **have** to define any excluded folders - leave them empty if you don't need to exclude folders)
 9) Select "**Save Changes**" to save the script
 10) Schedule to run it a few minutes before your Mover is planned to start, use a [crontab generator](https://crontab.guru) for this
 
