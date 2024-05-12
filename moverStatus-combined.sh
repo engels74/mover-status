@@ -272,7 +272,8 @@ function send_notification {
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
                         --arg text "$value_message_telegram" \
                         '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+        response=$(/usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" -w "%{http_code}")
+        echo "Telegram response code: $response"
     fi
 
     if $USE_DISCORD; then
