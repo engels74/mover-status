@@ -206,9 +206,6 @@ function human_readable {
     fi
 }
 
-# Timestamp for the start of the script
-start_time=$(date +%s)
-
 # Calculate Estimated Time of Completion
 function calculate_etc {
     local percent=$1
@@ -308,17 +305,18 @@ while true; do
     initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
     initial_readable=$(human_readable $initial_size)
 
+    start_time=$(date +%s)  # Ensure start_time is updated each loop iteration
+    LAST_NOTIFIED=0  # Reset notification increment
+
     # Check if the mover process is running before sending the first notification
     while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
         echo "Mover process not found, waiting to start monitoring..."
-        sleep 10  # Wait before checking again
+        sleep 10
     done
 
-    # Mover process found, proceed with initial notification
     echo "Mover process found, starting monitoring..."
     percent=0
     send_notification $percent "$initial_readable"  # Send the initial 0% notification
-    LAST_NOTIFIED=0
 
     # Monitor progress
     while true; do
@@ -326,22 +324,23 @@ while true; do
         remaining_readable=$(human_readable $current_size)
         percent=$((100 - (current_size * 100 / initial_size)))
 
-        # Send notification if increment reached or at 100%
+        # Check and send notifications at increments or at 100%
         if [ "$percent" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ]; then
-            if [ "$percent" -gt $LAST_NOTIFIED ]; then  # Ensure each increment is notified only once
-                LAST_NOTIFIED=$percent
-                send_notification $percent "$remaining_readable"
-            fi
+            send_notification $percent "$remaining_readable"
+            LAST_NOTIFIED=$percent
         fi
 
-        # Break loop if mover process is not running or 100% reached
+        # Check for completion or if mover process is no longer running
         if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-            echo "Mover process completed or not found. Exiting monitoring loop."
+            echo "Mover process completed or not found. Sending final notification and exiting monitoring loop."
+            send_notification 100 "$remaining_readable"  # Ensure completion message is sent
             break
         fi
 
         sleep 1  # Small delay to prevent excessive CPU usage
     done
+
+    # Wait and restart monitoring after a delay
     echo "Restarting monitoring after completion..."
-    sleep 10  # Wait for 10 seconds before attempting to monitor again
+    sleep 10
 done
