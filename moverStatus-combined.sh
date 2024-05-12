@@ -98,64 +98,64 @@ if $DRY_RUN; then
     echo "Running in dry-run mode. No real monitoring will be performed."
     
     # Simulate data for notification
-    percent=50  # Arbitrary progress percentage for testing
-    remaining_data="500 GB"  # Arbitrary remaining data amount for testing
-    datetime=$(date +"%B %d (%Y) - %H:%M:%S")
-    etc_discord="<t:$(date +%s --date='01/01/2099 12:00'):R>"
-    etc_telegram="01/01/2099, 12pm"
+    dry_run_percent=50  # Arbitrary progress percentage for testing
+    dry_run_remaining_data="500 GB"  # Arbitrary remaining data amount for testing
+    dry_run_datetime=$(date +"%B %d (%Y) - %H:%M:%S")
+    dry_run_etc_discord="<t:$(date +%s --date='01/01/2099 12:00'):R>"
+    dry_run_etc_telegram="01/01/2099, 12pm"
 
     # Determine color based on percentage
-    if [ "$percent" -le 34 ]; then
-        color=16744576  # Light Red
-    elif [ "$percent" -le 65 ]; then
-        color=16753920  # Light Orange
+    if [ "$dry_run_percent" -le 34 ]; then
+        dry_run_color=16744576  # Light Red
+    elif [ "$dry_run_percent" -le 65 ]; then
+        dry_run_color=16753920  # Light Orange
     else
-        color=9498256   # Light Green
+        dry_run_color=9498256   # Light Green
     fi
 
     # Footer text with version checking
-    footer_text="Version: v${CURRENT_VERSION}"
+    dry_run_footer_text="Version: v${CURRENT_VERSION}"
     if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
-        footer_text+=" (update available)"
+        dry_run_footer_text+=" (update available)"
     fi
 
     # Prepare messages with footer
-    value_message_discord="Moving data from SSD Cache to HDD Array.\nProgress: **${percent}%** complete.\nRemaining data: ${remaining_data}.\nEstimated completion time: ${etc_discord}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
-    value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${percent}%</b> complete. &#10;Remaining data: ${remaining_data}.&#10;Estimated completion time: ${etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10${footer_text}"
+    dry_run_value_message_discord="Moving data from SSD Cache to HDD Array.\nProgress: **${dry_run_percent}%** complete.\nRemaining data: ${dry_run_remaining_data}.\nEstimated completion time: ${dry_run_etc_discord}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
+    dry_run_value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${dry_run_percent}%</b> complete. &#10;Remaining data: ${dry_run_remaining_data}.&#10;Estimated completion time: ${dry_run_etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10${dry_run_footer_text}"
 
     # Send test notifications
     if $USE_TELEGRAM; then
         echo "Sending test notification to Telegram..."
-        json_payload=$(jq -n \
+        dry_run_json_payload=$(jq -n \
                        --arg chat_id "$TELEGRAM_CHAT_ID" \
-                       --arg text "$value_message_telegram" \
+                       --arg text "$dry_run_value_message_telegram" \
                        '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
     fi
 
     if $USE_DISCORD; then
         echo "Sending test notification to Discord..."
-        notification_data='{
+        dry_run_notification_data='{
           "username": "'"$DISCORD_NAME_OVERRIDE"'",
           "content": null,
           "embeds": [
             {
               "title": "Mover: Moving Data",
               "description": "This is a test message from dry-run mode.",
-              "color": '"$color"',
+              "color": '"$dry_run_color"',
               "fields": [
                 {
-                  "name": "'"$datetime"'",
-                  "value": "'"${value_message_discord}"'"
+                  "name": "'"$dry_run_datetime"'",
+                  "value": "'"${dry_run_value_message_discord}"'"
                 }
               ],
               "footer": {
-                "text": "'"$footer_text"'"
+                "text": "'"$dry_run_footer_text"'"
               }
             }
           ]
         }'
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -d "$notification_data" $DISCORD_WEBHOOK_URL
+        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
     fi
     
     echo "Dry-run complete. Exiting script."
@@ -246,8 +246,7 @@ function send_notification {
     fi
 
     # Append footer text to both messages
-    value_message_discord+="\n\n$footer_text"
-    value_message_telegram+="&#10;&#10<b>$footer_text</b>"
+    value_message_telegram+="&#10;&#10$footer_text"
 
     # Send the notifications
     echo "Sending notification..."
