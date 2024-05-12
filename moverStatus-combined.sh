@@ -206,18 +206,23 @@ function human_readable {
     fi
 }
 
+# Timestamp for the start of the script
+start_time=$(date +%s)
+
 # Calculate Estimated Time of Completion
 function calculate_etc {
     local percent=$1
     local current_time=$(date +%s)
-    local elapsed=$((current_time - start_time))
     if [ "$percent" -gt 0 ]; then
-        local estimated_total=$((elapsed * 100 / percent))
-        local remaining=$((estimated_total - elapsed))
+        local elapsed=$((current_time - start_time))
+        local estimated_total_time=$((elapsed * 100 / percent))
+        local remaining_time=$((estimated_total_time - elapsed))
+        local completion_time_estimate=$((current_time + remaining_time))
+
         if [[ $USE_DISCORD == true ]]; then
-            echo "<t:$((current_time + remaining)):R>"
+            echo "<t:${completion_time_estimate}:R>"
         elif [[ $USE_TELEGRAM == true ]]; then
-            echo $(date -d "@$((current_time + remaining))" +"%H:%M %p on %b %d (%Z)")
+            echo $(date -d "@${completion_time_estimate}" +"%H:%M %p on %b %d (%Z)")
         fi
     else
         echo "Calculating..."
