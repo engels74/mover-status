@@ -4,13 +4,18 @@
 #name=Mover Status Script
 #description=This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
 
+# Simple timestamp for logs
+function log {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
 # Exit if already running
 if [[ $(pidof -x "$(basename "$0")" -o %PPID) ]]; then
-    echo "Already running, exiting..."
+    log "Already running, exiting..."
     exit 1
 fi
 
-echo "Starting Mover Status Monitor..."
+log "Starting Mover Status Monitor..."
 
 # -------------------------------------------
 # Script Settings: Edit these!
@@ -71,21 +76,21 @@ LAST_NOTIFIED=-1
 
 # Check if at least one notification method is enabled
 if ! $USE_TELEGRAM && ! $USE_DISCORD; then
-    echo "Error: Both USE_TELEGRAM and USE_DISCORD are set to false. At least one must be true."
+    log "Error: Both USE_TELEGRAM and USE_DISCORD are set to false. At least one must be true."
     exit 1
 fi
 
 # Check webhook configurations conditionally
 if [[ $USE_TELEGRAM == true ]]; then
     if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-        echo "Error: Telegram settings not configured correctly."
+        log "Error: Telegram settings not configured correctly."
         exit 1
     fi
 fi
 
 if [[ $USE_DISCORD == true ]]; then
     if ! [[ $DISCORD_WEBHOOK_URL =~ ^https://discord.com/api/webhooks/ ]]; then
-        echo "Error: Invalid Discord webhook URL."
+        log "Error: Invalid Discord webhook URL."
         exit 1
     fi
 fi
@@ -95,7 +100,7 @@ fi
 # ---------------------------------------------------------
 
 if $DRY_RUN; then
-    echo "Running in dry-run mode. No real monitoring will be performed."
+    log "Running in dry-run mode. No real monitoring will be performed."
     
     # Simulate data for notification
     dry_run_percent=50  # Arbitrary progress percentage for testing
@@ -125,7 +130,7 @@ if $DRY_RUN; then
 
     # Send test notifications
     if $USE_TELEGRAM; then
-        echo "Sending test notification to Telegram..."
+        log "Sending test notification to Telegram..."
         dry_run_json_payload=$(jq -n \
                        --arg chat_id "$TELEGRAM_CHAT_ID" \
                        --arg text "$dry_run_value_message_telegram" \
@@ -134,7 +139,7 @@ if $DRY_RUN; then
     fi
 
     if $USE_DISCORD; then
-        echo "Sending test notification to Discord..."
+        log "Sending test notification to Discord..."
         dry_run_notification_data='{
           "username": "'"$DISCORD_NAME_OVERRIDE"'",
           "content": null,
@@ -158,7 +163,7 @@ if $DRY_RUN; then
         /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
     fi
     
-    echo "Dry-run complete. Exiting script."
+    log "Dry-run complete. Exiting script."
     exit 0
 fi
 
@@ -176,7 +181,7 @@ while true; do
         break
     fi
     if [ ! -d "${!current_path_var}" ]; then
-        echo "Error: Exclusion path ${!current_path_var} does not exist."
+        log "Error: Exclusion path ${!current_path_var} does not exist."
         exit 1
     fi
     exclusion_params+=("--exclude=${!current_path_var}")
@@ -251,13 +256,12 @@ function send_notification {
     value_message_telegram+="&#10;&#10$footer_text"
 
     # Send the notifications
-    echo "Sending notification..."
+    log "Sending notification..."
     if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
         value_message_discord=$COMPLETION_MESSAGE
         value_message_telegram=$COMPLETION_MESSAGE
         color=65280  # Green for completion
     else
-        # Determine color based on percentage
         if [ "$percent" -le 34 ]; then
             color=16744576  # Light Red
         elif [ "$percent" -le 65 ]; then
@@ -272,50 +276,51 @@ function send_notification {
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
                         --arg text "$value_message_telegram" \
                         '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
-        response=$(/usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" -w "%{http_code}")
-        echo "Telegram response code: $response"
+        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
+        log "Telegram response: $response"
     fi
 
     if $USE_DISCORD; then
         notification_data='{
-          "username": "'"$DISCORD_NAME_OVERRIDE"'",
-          "content": null,
-          "embeds": [
-            {
-              "title": "Mover: Moving Data",
-              "color": '"$color"',
-              "fields": [
+            "username": "'"$DISCORD_NAME_OVERRIDE"'",
+            "content": null,
+            "embeds": [
                 {
-                  "name": "'"$datetime"'",
-                  "value": "'"${value_message_discord}"'"
+                    "title": "Mover: Moving Data",
+                    "color": '"$color"',
+                    "fields": [
+                        {
+                            "name": "'"$datetime"'",
+                            "value": "'"${value_message_discord}"'"
+                        }
+                    ],
+                    "footer": {
+                        "text": "'"$footer_text"'"
+                    }
                 }
-              ],
-              "footer": {
-                "text": "'"$footer_text"'"
-              }
-            }
-          ]
+            ]
         }'
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -d "$notification_data" $DISCORD_WEBHOOK_URL
+        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" $DISCORD_WEBHOOK_URL -w "\nHTTP status: %{http_code}")
+        log "Discord response: $response"
     fi
 }
 
 # Main Script Execution Loop
 while true; do
-    echo "Monitoring new mover process..."
+    log "Monitoring new mover process..."
     initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
     initial_readable=$(human_readable $initial_size)
 
     start_time=$(date +%s)  # Ensure start_time is updated each loop iteration
-    LAST_NOTIFIED=0  # Reset notification increment
+    LAST_NOTIFIED=-1  # Reset notification increment to ensure 0% notification
 
     # Check if the mover process is running before sending the first notification
     while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
-        echo "Mover process not found, waiting to start monitoring..."
+        log "Mover process not found, waiting to start monitoring..."
         sleep 10
     done
 
-    echo "Mover process found, starting monitoring..."
+    log "Mover process found, starting monitoring..."
     percent=0
     send_notification $percent "$initial_readable"  # Send the initial 0% notification
 
@@ -326,15 +331,18 @@ while true; do
         percent=$((100 - (current_size * 100 / initial_size)))
 
         # Check and send notifications at increments or at 100%
+        log "Current percent: $percent, Last notified: $LAST_NOTIFIED"
         if [ "$percent" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ]; then
+            log "Sending update for $percent%"
             send_notification $percent "$remaining_readable"
             LAST_NOTIFIED=$percent
         fi
 
         # Check for completion or if mover process is no longer running
         if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-            echo "Mover process completed or not found. Sending final notification and exiting monitoring loop."
+            log "Mover process completed or has exited. Sending final notification and exiting monitoring loop."
             send_notification 100 "$remaining_readable"  # Ensure completion message is sent
+            LAST_NOTIFIED=-1  # Reset LAST_NOTIFIED after completion to prepare for next monitoring session
             break
         fi
 
@@ -342,6 +350,6 @@ while true; do
     done
 
     # Wait and restart monitoring after a delay
-    echo "Restarting monitoring after completion..."
+    log "Restarting monitoring after completion..."
     sleep 10
 done
