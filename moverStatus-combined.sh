@@ -238,7 +238,7 @@ function send_notification {
     local etc_discord=$(calculate_etc $percent)
     local etc_telegram=$(calculate_etc $percent)
 
-    # Format the messages using the predefined templates
+    # Prepare the messages using the predefined templates
     local value_message_discord="${DISCORD_MOVING_MESSAGE//\{percent\}/$percent}"
     value_message_discord="${value_message_discord//\{remaining_data\}/$remaining_data}"
     value_message_discord="${value_message_discord//\{etc\}/$etc_discord}"
@@ -251,12 +251,10 @@ function send_notification {
     if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
     fi
-
-    # Append footer text to both messages
     value_message_telegram+="&#10;&#10$footer_text"
 
-    # Send the notifications
-    log "Sending notification..."
+    # Determine the color based on completion and percentage
+    local color
     if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
         value_message_discord=$COMPLETION_MESSAGE
         value_message_telegram=$COMPLETION_MESSAGE
@@ -271,17 +269,25 @@ function send_notification {
         fi
     fi
 
+    # Send the notifications
+    log "Sending notification..."
     if $USE_TELEGRAM; then
-        json_payload=$(jq -n \
+        local json_payload=$(jq -n \
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
                         --arg text "$value_message_telegram" \
                         '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
-        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
+        log "Preparing to send to Telegram: $json_payload"
+        local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
         log "Telegram response: $response"
+        
+        if $USE_DISCORD; then
+            log "Delaying Discord notification for 5 seconds..."
+            sleep 5
+        fi
     fi
 
     if $USE_DISCORD; then
-        notification_data='{
+        local notification_data='{
             "username": "'"$DISCORD_NAME_OVERRIDE"'",
             "content": null,
             "embeds": [
@@ -300,7 +306,8 @@ function send_notification {
                 }
             ]
         }'
-        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" $DISCORD_WEBHOOK_URL -w "\nHTTP status: %{http_code}")
+        log "Preparing to send to Discord: $notification_data"
+        local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" $DISCORD_WEBHOOK_URL -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
         log "Discord response: $response"
     fi
 }
@@ -310,11 +317,12 @@ while true; do
     log "Monitoring new mover process..."
     initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
     initial_readable=$(human_readable $initial_size)
+    log "Initial total size of data: $initial_readable"
 
-    start_time=$(date +%s)  # Ensure start_time is updated each loop iteration
-    LAST_NOTIFIED=-1  # Reset notification increment to ensure 0% notification
+    start_time=$(date +%s)  # Record the start time of monitoring
+    log "Monitoring started at: $(date -d "@$start_time" '+%Y-%m-%d %H:%M:%S')"
 
-    # Check if the mover process is running before sending the first notification
+    # Wait for the mover process to start
     while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
         log "Mover process not found, waiting to start monitoring..."
         sleep 10
@@ -323,33 +331,37 @@ while true; do
     log "Mover process found, starting monitoring..."
     percent=0
     send_notification $percent "$initial_readable"  # Send the initial 0% notification
+    log "Initial notification sent with 0% completion."
 
-    # Monitor progress
+    # Monitor the progress
     while true; do
         current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
         remaining_readable=$(human_readable $current_size)
         percent=$((100 - (current_size * 100 / initial_size)))
-
-        # Check and send notifications at increments or at 100%
+        log "Current data size: $remaining_readable"
         log "Current percent: $percent, Last notified: $LAST_NOTIFIED"
+
+        # Send notifications based on increment or full completion
         if [ "$percent" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ]; then
-            log "Sending update for $percent%"
+            log "Condition met for sending update: Current percent $percent >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT or Percent is 100"
             send_notification $percent "$remaining_readable"
             LAST_NOTIFIED=$percent
+            log "Notification sent for $percent% completion."
         fi
 
-        # Check for completion or if mover process is no longer running
+        # Check if the mover process has completed or exited
         if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
             log "Mover process completed or has exited. Sending final notification and exiting monitoring loop."
-            send_notification 100 "$remaining_readable"  # Ensure completion message is sent
-            LAST_NOTIFIED=-1  # Reset LAST_NOTIFIED after completion to prepare for next monitoring session
+            send_notification 100 "$remaining_readable"
+            LAST_NOTIFIED=-1
+            log "Final notification sent and monitoring loop exiting."
             break
         fi
 
         sleep 1  # Small delay to prevent excessive CPU usage
     done
 
-    # Wait and restart monitoring after a delay
+    # Delay before restarting monitoring
     log "Restarting monitoring after completion..."
     sleep 10
 done
