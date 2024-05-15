@@ -223,7 +223,8 @@ function calculate_etc {
 
         if [[ $USE_DISCORD == true ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $USE_TELEGRAM == true ]]; then
+        fi
+        if [[ $USE_TELEGRAM == true ]]; then
             echo $(date -d "@${completion_time_estimate}" +"%H:%M %p on %b %d (%Z)")
         fi
     else
@@ -315,12 +316,6 @@ function send_notification {
 # Main Script Execution Loop
 while true; do
     log "Monitoring new mover process..."
-    initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
-    initial_readable=$(human_readable $initial_size)
-    log "Initial total size of data: $initial_readable"
-
-    start_time=$(date +%s)  # Record the start time of monitoring
-    log "Monitoring started at: $(date -d "@$start_time" '+%Y-%m-%d %H:%M:%S')"
 
     # Wait for the mover process to start
     while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
@@ -329,6 +324,15 @@ while true; do
     done
 
     log "Mover process found, starting monitoring..."
+
+    # Calculate initial size after the Mover process is found
+    initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
+    initial_readable=$(human_readable $initial_size)
+    log "Initial total size of data: $initial_readable"
+
+    start_time=$(date +%s)  # Record the start time of monitoring
+    log "Monitoring started at: $(date -d "@$start_time" '+%Y-%m-%d %H:%M:%S')"
+
     percent=0
     send_notification $percent "$initial_readable"  # Send the initial 0% notification
     log "Initial notification sent with 0% completion."
@@ -339,7 +343,6 @@ while true; do
         remaining_readable=$(human_readable $current_size)
         percent=$((100 - (current_size * 100 / initial_size)))
         log "Current data size: $remaining_readable"
-        log "Current percent: $percent, Last notified: $LAST_NOTIFIED"
 
         # Send notifications based on increment or full completion
         if [ "$percent" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ]; then
