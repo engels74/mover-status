@@ -317,8 +317,8 @@ while true; do
     log "Monitoring new mover process..."
 
     # Wait for the mover process to start
+    log "Mover process not found, waiting to start monitoring..."
     while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
-        log "Mover process not found, waiting to start monitoring..."
         sleep 10
     done
 
@@ -341,7 +341,6 @@ while true; do
         current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
         remaining_readable=$(human_readable $current_size)
         percent=$((100 - (current_size * 100 / initial_size)))
-        log "Current data size: $remaining_readable"
 
         # Send notifications based on increment or full completion
         if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
