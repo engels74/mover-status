@@ -221,11 +221,10 @@ function calculate_etc {
         local remaining_time=$((estimated_total_time - elapsed))
         local completion_time_estimate=$((current_time + remaining_time))
 
-        if [[ $USE_DISCORD == true ]]; then
+        if [[ $1 == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        fi
-        if [[ $USE_TELEGRAM == true ]]; then
-            echo $(date -d "@${completion_time_estimate}" +"%H:%M %p on %b %d (%Z)")
+        elif [[ $1 == "telegram" ]]; then
+            echo $(date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)")
         fi
     else
         echo "Calculating..."
@@ -236,8 +235,8 @@ function send_notification {
     local percent=$1
     local remaining_data=$2
     local datetime=$(date +"%B %d (%Y) - %H:%M:%S")
-    local etc_discord=$(calculate_etc $percent)
-    local etc_telegram=$(calculate_etc $percent)
+    local etc_discord=$(calculate_etc $percent "discord")
+    local etc_telegram=$(calculate_etc $percent "telegram")
 
     # Prepare the messages using the predefined templates
     local value_message_discord="${DISCORD_MOVING_MESSAGE//\{percent\}/$percent}"
@@ -345,20 +344,19 @@ while true; do
         log "Current data size: $remaining_readable"
 
         # Send notifications based on increment or full completion
-        if [ "$percent" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ]; then
-            log "Condition met for sending update: Current percent $percent >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT or Percent is 100"
-            send_notification $percent "$remaining_readable"
-            LAST_NOTIFIED=$percent
-            log "Notification sent for $percent% completion."
-        fi
-
-        # Check if the mover process has completed or exited
-        if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-            log "Mover process completed or has exited. Sending final notification and exiting monitoring loop."
-            send_notification 100 "$remaining_readable"
-            LAST_NOTIFIED=-1
-            log "Final notification sent and monitoring loop exiting."
-            break
+        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
+            if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
+                log "Mover process completed or has exited. Sending final notification and exiting monitoring loop."
+                send_notification 100 "$remaining_readable"
+                LAST_NOTIFIED=-1
+                log "Final notification sent and monitoring loop exiting."
+                break
+            else
+                log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
+                send_notification "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" "$remaining_readable"
+                LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
+                log "Notification sent for $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))% completion."
+            fi
         fi
 
         sleep 1  # Small delay to prevent excessive CPU usage
