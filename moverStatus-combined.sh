@@ -70,6 +70,9 @@ LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/
 # Initialize to -1 to ensure 0% notification
 LAST_NOTIFIED=-1
 
+# Initialize total_data_moved to keep track of the cumulative data moved by the mover process
+total_data_moved=0
+
 # ---------------------------------------------------------
 # Do Not Modify: Variable checking!
 # ---------------------------------------------------------
@@ -214,16 +217,17 @@ function human_readable {
 # Calculate Estimated Time of Completion
 function calculate_etc {
     local percent=$1
+    local platform=$2
     local current_time=$(date +%s)
     if [ "$percent" -gt 0 ]; then
         local elapsed=$((current_time - start_time))
-        local estimated_total_time=$((elapsed * 100 / percent))
+        local estimated_total_time=$((elapsed * (total_data_moved + current_size) / total_data_moved))
         local remaining_time=$((estimated_total_time - elapsed))
         local completion_time_estimate=$((current_time + remaining_time))
 
-        if [[ $1 == "discord" ]]; then
+        if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $1 == "telegram" ]]; then
+        elif [[ $platform == "telegram" ]]; then
             echo $(date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)")
         fi
     else
@@ -340,21 +344,24 @@ while true; do
     while true; do
         current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
         remaining_readable=$(human_readable $current_size)
-        percent=$((100 - (current_size * 100 / initial_size)))
+
+        # Calculate the total data moved and update the percentage
+        total_data_moved=$((initial_size - current_size))
+        percent=$((total_data_moved * 100 / (total_data_moved + current_size)))
 
         # Send notifications based on increment or full completion
-        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$percent" -eq 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-            if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-                log "Mover process completed or has exited. Sending final notification and exiting monitoring loop."
+        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$total_data_moved" -eq "$initial_size" ]; then
+            if [ "$total_data_moved" -eq "$initial_size" ] && ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
+                log "Mover process completed. Total data moved: $total_data_moved bytes, Initial size: $initial_size bytes. Sending final notification and exiting monitoring loop."
                 send_notification 100 "$remaining_readable"
                 LAST_NOTIFIED=-1
                 log "Final notification sent and monitoring loop exiting."
                 break
             else
                 log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
-                send_notification "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" "$remaining_readable"
+                send_notification "$percent" "$remaining_readable"
                 LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
-                log "Notification sent for $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))% completion."
+                log "Notification sent for $percent% completion."
             fi
         fi
 
