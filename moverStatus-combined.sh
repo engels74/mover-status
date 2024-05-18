@@ -349,20 +349,22 @@ while true; do
         total_data_moved=$((initial_size - current_size))
         percent=$((total_data_moved * 100 / (total_data_moved + current_size)))
 
-        # Send notifications based on increment or full completion
-        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ] || [ "$total_data_moved" -eq "$initial_size" ]; then
-            if [ "$total_data_moved" -eq "$initial_size" ] && ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-                log "Mover process completed. Total data moved: $total_data_moved bytes, Initial size: $initial_size bytes. Sending final notification and exiting monitoring loop."
-                send_notification 100 "$remaining_readable"
-                LAST_NOTIFIED=-1
-                log "Final notification sent and monitoring loop exiting."
-                break
-            else
-                log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
-                send_notification "$percent" "$remaining_readable"
-                LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
-                log "Notification sent for $percent% completion."
-            fi
+        # Check if the mover process is still running
+        if ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
+            log "Mover process '$(basename $MOVER_EXECUTABLE)' is no longer running."
+            log "Total data moved: $total_data_moved bytes, Initial size: $initial_size bytes."
+            send_notification 100 "$remaining_readable"
+            LAST_NOTIFIED=-1
+            log "Final notification sent and monitoring loop exiting."
+            break
+        fi
+
+        # Send notifications based on increment
+        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
+            log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
+            send_notification "$percent" "$remaining_readable"
+            LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
+            log "Notification sent for $percent% completion."
         fi
 
         sleep 1  # Small delay to prevent excessive CPU usage
