@@ -3,18 +3,15 @@
 # Script Metadata
 #name=Mover Status Script
 #description=This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
+#backgroundOnly=true
+#arrayStarted=true
 
 # Simple timestamp for logs
 function log {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Exit if already running
-if [[ $(pidof -x "$(basename "$0")" -o %PPID) ]]; then
-    log "Already running, exiting..."
-    exit 1
-fi
-
+# Log the starting message
 log "Starting Mover Status Monitor..."
 
 # -------------------------------------------
@@ -29,6 +26,7 @@ DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discor
 DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Display name for Discord notifications
 NOTIFICATION_INCREMENT=25                                               # Notification frequency in percentage increments
 DRY_RUN=false                                                           # Enable this to test the notifications without actual monitoring
+ENABLE_DEBUG=false                                                      # Set to true to enable debug logging
 
 # -------------------------------------------
 # Webhook Messages: Edit these if you want
@@ -280,13 +278,12 @@ function send_notification {
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
                         --arg text "$value_message_telegram" \
                         '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
-        log "Preparing to send to Telegram: $json_payload"
+        if $ENABLE_DEBUG; then
+            log "Preparing to send to Telegram: $json_payload"
+        fi
         local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
-        log "Telegram response: $response"
-        
-        if $USE_DISCORD; then
-            log "Delaying Discord notification for 5 seconds..."
-            sleep 5
+        if $ENABLE_DEBUG; then
+            log "Telegram response: $response"
         fi
     fi
 
@@ -310,9 +307,13 @@ function send_notification {
                 }
             ]
         }'
-        log "Preparing to send to Discord: $notification_data"
+        if $ENABLE_DEBUG; then
+            log "Preparing to send to Discord: $notification_data"
+        fi
         local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" $DISCORD_WEBHOOK_URL -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
-        log "Discord response: $response"
+        if $ENABLE_DEBUG; then
+            log "Discord response: $response"
+        fi
     fi
 }
 
