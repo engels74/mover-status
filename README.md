@@ -27,7 +27,12 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 7. Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/mover-status/main/moverStatus.sh) into the file 
 8. Edit the variables at the top to your liking (you don't **have** to define any excluded folders - leave them empty if you don't need to exclude folders)
 9. Select "**Save Changes**" to save the script
-10. Cron-jobs does NOT work with this script
+10. Use **Run in Background** to run the script
+11. Cron-jobs should **NOT** be used with the script
+
+### Why can't I use cron/scheduling for this script?!
+The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background. 
+Because the script runs in a loop, I've yet to find a way to integrate it with cron/scheduling while maintaining compatibility with the User Scripts plugin.
 
 ### Script Settings ⚙️
 Edit the script to configure the necessary settings:
