@@ -62,7 +62,7 @@ MOVER_EXECUTABLE="/usr/local/sbin/mover"
 # Do Not Modify: Script essentials
 # ---------------------------------
 # Script versioning - check for updates
-CURRENT_VERSION="0.0.5"
+CURRENT_VERSION="0.0.6"
 LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
 
 # Initialize to -1 to ensure 0% notification
@@ -377,19 +377,20 @@ while true; do
 done
 
 # Mover Status Script
+# <https://github.com/engels74/mover-status>
 # This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
-# Copyright (C) 2024 - Engels74
-
+# Copyright (C) 2024 - engels74
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
 # by the Free Software Foundation, either version 3 of the License, or any later version.
-
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
-
+#
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
-
+#
 # Contact: engels74@marx.ps
