@@ -62,8 +62,12 @@ MOVER_EXECUTABLE="/usr/local/sbin/mover"
 # Do Not Modify: Script essentials
 # ---------------------------------
 # Script versioning - check for updates
-CURRENT_VERSION="0.0.6"
-LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
+CURRENT_VERSION="0.0.7"
+
+# Function to check the latest version
+function check_latest_version {
+    LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
+}
 
 # Initialize to -1 to ensure 0% notification
 LAST_NOTIFIED=-1
@@ -101,6 +105,7 @@ fi
 # ---------------------------------------------------------
 
 if $DRY_RUN; then
+    check_latest_version
     log "Running in dry-run mode. No real monitoring will be performed."
     
     # Simulate data for notification
@@ -120,14 +125,14 @@ if $DRY_RUN; then
     fi
 
     # Footer text with version checking
-    dry_run_footer_text="Version: v${CURRENT_VERSION}"
+    local footer_text="Version: v${CURRENT_VERSION}"
     if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
-        dry_run_footer_text+=" (update available)"
+        footer_text+=" (update available)"
     fi
 
     # Prepare messages with footer
     dry_run_value_message_discord="Moving data from SSD Cache to HDD Array.\nProgress: **${dry_run_percent}%** complete.\nRemaining data: ${dry_run_remaining_data}.\nEstimated completion time: ${dry_run_etc_discord}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
-    dry_run_value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${dry_run_percent}%</b> complete. &#10;Remaining data: ${dry_run_remaining_data}.&#10;Estimated completion time: ${dry_run_etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10${dry_run_footer_text}"
+    dry_run_value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${dry_run_percent}%</b> complete. &#10;Remaining data: ${dry_run_remaining_data}.&#10;Estimated completion time: ${dry_run_etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10${footer_text}"
 
     # Send test notifications
     if $USE_TELEGRAM; then
@@ -156,12 +161,12 @@ if $DRY_RUN; then
                 }
               ],
               "footer": {
-                "text": "'"$dry_run_footer_text"'"
+                "text": "'"$footer_text"'"
               }
             }
           ]
         }'
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
+        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
     fi
     
     log "Dry-run complete. Exiting script."
@@ -319,6 +324,7 @@ function send_notification {
 
 # Main Script Execution Loop
 while true; do
+    check_latest_version
     log "Monitoring new mover process..."
 
     # Wait for the mover process to start
