@@ -30,9 +30,20 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 10. Use **Run in Background** to run the script
 11. Cron-jobs should **NOT** be used with the script
 
-### Why can't I use cron/scheduling for this script?!
+### Why can't I use cron/scheduling for this script?! ⏰❌
 The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background. 
 Because the script runs in a loop, I've yet to find a way to integrate it with cron/scheduling while maintaining compatibility with the User Scripts plugin.
+
+### Can I make the script start on startup/reboot? 🔄
+Well, somewhat! You can make it start, whenever you start up your Unraid array
+1. Go into "**Settings**"
+2. Select "**User Scripts**"
+3. Find the Mover Status script
+4. To the right, click on the "**Schedule disabled**"
+5. Select "**At Startup of Array**" ([screenshot](<https://i.imgur.com/2rtkxuM.png>))
+6. Press the "**Apply**" to save the change
+7. Select "**Done**"
+8. The script will now launch automatically, when you start your array!
 
 ### Script Settings ⚙️
 Edit the script to configure the necessary settings:
