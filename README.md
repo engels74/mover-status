@@ -1,13 +1,20 @@
-# Mover Status 🚚
+# Mover Status 
 
 <p align="center">
   <img src="https://i.imgur.com/51gQKps.png" alt="MoverStatus Script"/>
 </p>
 
-### Description 📜
+<p align="center">
+  <a href="https://github.com/engels74/mover-status/releases"><img src="https://img.shields.io/github/v/tag/engels74/mover-status?sort=semver" alt="GitHub tag (SemVer)"></a>
+  <a href="https://github.com/engels74/mover-status/blob/main/LICENSE"><img src="https://img.shields.io/github/license/engels74/mover-status" alt="License"></a>
+  <a href="https://github.com/engels74/mover-status/stargazers"><img src="https://img.shields.io/github/stars/engels74/mover-status.svg" alt="GitHub Stars"></a>
+  <a href="https://endsoftwarepatents.org/innovating-without-patents"><img style="height: 20px;" src="https://static.fsf.org/nosvn/esp/logos/patent-free.svg"></a>
+</p>
+
+### 📜 Description 
 This Bash script monitors the progress of the "Mover" process and sends updates to Discord and/or Telegram webhooks. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
-### How it works ⚙️
+### ⚙️ How it works 
 1. When the script runs, it continuously loops and waits for the Unraid Mover script to start.
 2. Once it detects the Unraid Mover script, it posts the initial notification to your Discord or Telegram webhook.
 3. It calculates the total amount of data on your cache, excluding the paths you specify. The estimation of the remaining time can vary.
@@ -16,7 +23,7 @@ This Bash script monitors the progress of the "Mover" process and sends updates 
 6. If the mover process completes successfully, the script posts a final notification indicating 100% completion and exits.
 7. If the mover process stops unexpectedly, the script detects this and sets the completion status to 100%, posting the final notification accordingly.
 
-### Installation 🛠️
+### 🛠️ Installation 
 I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/topic/48286-plugin-ca-user-scripts/)"
 1. Go into "**Settings**"
 2. Select "**User Scripts**"
@@ -30,11 +37,22 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 10. Use **Run in Background** to run the script
 11. Cron-jobs should **NOT** be used with the script
 
-### Why can't I use cron/scheduling for this script?!
+### ⏰❌ Why can't I use cron/scheduling for this script?! 
 The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background. 
 Because the script runs in a loop, I've yet to find a way to integrate it with cron/scheduling while maintaining compatibility with the User Scripts plugin.
 
-### Script Settings ⚙️
+### 🔄 Can I make the script start on startup/reboot? 
+Well, somewhat! You can make it start, whenever you start up your Unraid array
+1. Go into "**Settings**"
+2. Select "**User Scripts**"
+3. Find the Mover Status script
+4. To the right, click on the "**Schedule disabled**"
+5. Select "**At Startup of Array**" ([screenshot](<https://i.imgur.com/2rtkxuM.png>))
+6. Press the "**Apply**" to save the change
+7. Select "**Done**"
+8. The script will now launch automatically, when you start your array!
+
+### ⚙️ Script Settings 
 Edit the script to configure the necessary settings:
 
 - `USE_TELEGRAM`: Set to `true` to enable Telegram notifications.
@@ -47,7 +65,7 @@ Edit the script to configure the necessary settings:
 - `DRY_RUN`: Set to `true` to test notifications without actual monitoring.
 - `ENABLE_DEBUG`: Set to `true` to enable debug logging.
 
-### Telegram Bot Setup 🤖
+### 🤖 Telegram Bot Setup 
 
 1. **Create a Telegram Bot**:
     - Open Telegram and search for the user `@BotFather`.
@@ -89,7 +107,7 @@ Edit the script to configure the necessary settings:
 
   The `TELEGRAM_CHAT_ID` would then be `-1001122334455`.
 
-### Discord Webhook Setup 🖥️
+### 🖥️ Discord Webhook Setup 
 
 1. Go to your Discord server settings.
 2. Navigate to the "Integrations" section and click "Webhooks".
@@ -97,5 +115,5 @@ Edit the script to configure the necessary settings:
 4. Copy the Webhook URL.
 5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
 
-## Images (preview) 📸
+## 📸 Images (preview) 
 <img src="https://i.imgur.com/owBzb5R.png" width="50%" alt="An example of how it looks">
