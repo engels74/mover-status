@@ -1,0 +1,22 @@
+# requirements.txt
+# Async HTTP client for making API requests
+aiohttp
+
+# YAML parser and emitter
+PyYAML
+
+# Asynchronous framework
+asyncio
+
+# Date parsing library (used in utils.py)
+python-dateutil
+
+# Logging (part of Python standard library, but listed for clarity)
+logging
+
+# Type hinting (part of Python standard library for Python 3.7+, but listed for clarity)
+typing
+
+# Testing
+pytest
+pytest-asyncio

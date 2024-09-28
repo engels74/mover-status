@@ -1,0 +1,54 @@
+# Mover Status Configuration
+
+# Notification Settings
+notifications:
+  increment: 25  # Notification frequency in percentage increments
+
+# Discord Configuration
+discord:
+  enabled: true
+  webhook_url: "https://discord.com/api/webhooks/xxxx/xxxx"
+  name_override: "Mover Bot"
+
+# Telegram Configuration
+telegram:
+  enabled: true
+  bot_token: "xxxx"
+  chat_id: "xxxx"
+
+# Mover Settings
+mover:
+  executable: "/usr/local/sbin/mover"
+  cache_path: "/mnt/cache"
+
+# Exclude Paths (leave empty if no exclusions)
+exclude_paths:
+  - "/mnt/cache/exclude/path1"
+  - "/mnt/cache/exclude/path2"
+
+# Debug Settings
+debug:
+  enabled: false
+  dry_run: false
+
+# Message Templates
+messages:
+  moving:
+    discord: |
+      Moving data from SSD Cache to HDD Array.
+      Progress: **{percent}%** complete.
+      Remaining data: {remaining_data}.
+      Estimated completion time: {etc}.
+
+      Note: Services like Plex may run slow or be unavailable during the move.
+    telegram: |
+      Moving data from SSD Cache to HDD Array. 
+      Progress: <b>{percent}%</b> complete. 
+      Remaining data: {remaining_data}.
+      Estimated completion time: {etc}.
+
+      Note: Services like Plex may run slow or be unavailable during the move.
+  completion: "Moving has been completed!"
+
+# Version
+version: "0.0.7"
