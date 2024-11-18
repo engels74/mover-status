@@ -1,147 +1,185 @@
 # MoverStatus Python Implementation Checklist
 
 ## 📁 Foundation Layer
-- [ ] **pyproject.toml**
-  * Project metadata, dependencies, build settings
-  * Development dependencies
+- [x] **pyproject.toml**
+  * Project metadata and dependencies
+  * Development and test dependencies 
   * Project versioning
   * Package configuration
 
-- [ ] **config/constants.py**
+- [x] **config/constants.py**
   * Static configuration defaults
-  * Path constants
-  * Version information
   * Type aliases
+  * Project-wide constants
+  * Error messages and templates
 
-- [ ] **config/settings.py**
-  * Pydantic BaseSettings model
-  * Environment variable mapping
-  * Configuration validation
-  * Default values
-  * Type annotations
+- [x] **config/settings.py** *(needs restructuring)*
+  * ~~Pydantic BaseSettings model~~
+  * ~~Environment variable mapping~~
+  * ~~Nested configuration models~~
+  * ~~Default values~~
 
 ## 🛠️ Utilities Layer
-- [ ] **utils/formatters.py**
+- [x] **utils/formatters.py**
   * Human-readable size conversion
-  * Time formatting utilities
+  * Time duration formatting
+  * Progress percentage formatting
   * Message template processing
-  * Type-annotated helper functions
 
-- [ ] **utils/path.py**
-  * Path validation and normalization
-  * Directory size calculation
-  * Path exclusion handling
-  * Async file system operations
+- [x] **utils/validators.py**
+  * Settings validation functions
+  * Path and URL validation
+  * Type validation helpers
+  * Environment validation
 
-- [ ] **utils/version.py**
+- [x] **utils/version.py**
   * GitHub API integration
   * Version comparison logic
-  * Update checking
+  * Update checking functionality
   * Async HTTP client implementation
 
 ## 🎯 Core Layer
-- [ ] **core/process.py**
-  * Process detection utilities
+- [x] **core/process.py**
+  * Process detection for PHP script and related processes
   * Process state monitoring
-  * Async process checking
-  * Process management types
+  * Resource usage tracking
+  * Nice/IO priority monitoring
 
-- [ ] **core/calculator.py**
-  * Progress calculation
-  * ETC (Estimated Time to Completion)
-  * Data size computations
-  * Progress tracking state
+- [x] **core/calculator.py**
+  * Data transfer progress calculation
+  * Cache directory size monitoring
+  * Data transfer rate computation
+  * Time remaining estimation
 
-- [ ] **notifications/base.py**
+- [x] **core/monitor.py**
+  * Main monitoring loop
+  * Provider coordination
+  * Progress tracking
+  * State management
+  * Event handling
+  * Error recovery
+  * Async file operations with aiofiles
+  * Directory size caching
+
+## 🔄 Settings Restructuring (NEW PRIORITY)
+- [ ] **config/core/**
+  * [ ] Create directory structure
+  * [ ] Move core settings to `settings.py`
+  * [ ] Move core constants to `constants.py`
+  * [ ] Update imports and references
+
+- [ ] **config/providers/**
+  * [ ] Create directory structure
+  * [ ] Create `base.py` for common provider settings
+  * [ ] Implement Discord settings module
+  * [ ] Implement Telegram settings module
+  * [ ] Add provider-specific constants
+  * [ ] Update factory to use new settings
+
+- [ ] **Update Existing Code**
+  * [ ] Refactor monitor.py to use new settings
+  * [ ] Update provider implementations
+  * [ ] Fix import paths
+  * [ ] Update configuration loading
+  * [ ] Verify environment variable handling
+
+## 📨 Notification Layer
+
+### Base Infrastructure
+- [x] **notifications/base.py**
   * Abstract notification provider
   * Common notification logic
-  * Error handling
   * Rate limiting base
+  * Error handling patterns
 
-## 📨 Notification Providers
-- [ ] **notifications/discord.py**
-  * Discord webhook implementation
-  * Message formatting
-  * Embed construction
-  * Error handling
+- [x] **notifications/factory.py**
+  * Dynamic provider registration
+  * Provider configuration management
+  * Instance creation and validation
+  * Provider lifecycle management
 
-- [ ] **notifications/telegram.py**
-  * Telegram bot API implementation
-  * Message formatting
-  * Chat ID validation
-  * Error handling
+### Provider Modules
+Each provider module follows this structure:
 
-- [ ] **notifications/factory.py**
-  * Provider instantiation logic
-  * Configuration mapping
-  * Provider registry
-  * Factory pattern implementation
+#### Discord Provider
+- [x] **notifications/discord/**
+  * [x] `__init__.py` - Package exports and version info
+  * [x] `types.py` - Type definitions and constants
+  * [x] `templates.py` - Message templates and formatting
+  * [x] `provider.py` - Discord provider implementation
 
-## 🎮 Core Control
-- [ ] **core/monitor.py**
-  * Main monitoring loop
-  * Async event handling
-  * Progress tracking
-  * Notification triggering
+#### Telegram Provider
+- [x] **notifications/telegram/**
+  * [x] `__init__.py` - Package exports and version info
+  * [x] `types.py` - Type definitions and constants
+  * [x] `templates.py` - Message templates and formatting
+  * [x] `provider.py` - Telegram provider implementation
 
 ## 🚀 Application Layer
-- [ ] **__main__.py**
-  * Application entry point
-  * Argument parsing
-  * Logging setup
-  * Main async loop
+- [x] **__main__.py**
+  * [x] Argument parsing
+  * [x] Configuration loading
+  * [x] Logging setup
+  * [x] Main async loop
+  * [x] Signal handling
+  * [x] Error reporting
 
-## 📊 Testing Layer
-- [ ] **tests/test_calculator.py**
-  * Unit tests for calculations
-  * Mock data generation
-  * Edge case testing
-  * Pytest fixtures
+## 📊 Testing Layer (AFTER SETTINGS RESTRUCTURE)
+- [ ] **tests/conftest.py**
+  * [ ] Update test fixtures for new settings
+  * [ ] Add provider-specific fixtures
+  * [ ] Mock configurations and factories
+  * [ ] Helper utilities
 
-- [ ] **tests/test_notifications.py**
-  * Provider tests
-  * Mock webhook testing
-  * Error case validation
-  * Integration tests
+- [ ] **tests/test_config/**
+  * [ ] `test_core_settings.py`
+  * [ ] `test_provider_settings.py`
+  * [ ] `test_provider_loading.py`
+  * [ ] `test_env_handling.py`
 
-- [ ] **tests/test_monitor.py**
-  * Monitor logic testing
-  * Process simulation
-  * Event handling tests
-  * Integration tests
-
-## Documentation
-- [ ] **README.md**
-  * Installation instructions
-  * Configuration guide
-  * Usage examples
-  * Development setup
-
+- [ ] **Core Tests**
+- [ ] **Notification Tests**
+- [ ] **Provider Tests**
+- [ ] **Utility Tests**
 
 ## Implementation Order
-Each component will be implemented in this order, ensuring that dependencies are satisfied before moving on to dependent components.
-1. Foundation Layer
-2. Utilities Layer
-3. Core Layer
-4. Notification Providers
-5. Core Control
-6. Application Layer
-7. Testing Layer
-8. Documentation
+1. ✅ Foundation Layer - COMPLETED
+2. ✅ Utilities Layer - COMPLETED
+3. ✅ Core Layer - COMPLETED
+4. ✅ Base Notification Infrastructure - COMPLETED
+5. ✅ Provider Implementations - COMPLETED
+6. ✅ Application Layer - COMPLETED
+7. ⏳ Settings Restructuring - NEXT PRIORITY
+   * [ ] Core settings separation
+   * [ ] Provider settings modules
+   * [ ] Configuration loading updates
+   * [ ] Integration verification
+8. ⏳ Testing Layer - AFTER SETTINGS
+   * [ ] Update test infrastructure
+   * [ ] Add new settings tests
+   * [ ] Complete remaining tests
 
-## 🔰 File Structure Requirements
-All Python files must include their location relative to the project root at the top of the file as a comment:
-```python
-# folder/subfolder/filename.ext
-```
-* For root-level files, just include the filename (e.g., `# pyproject.toml`)
-* Must be the first line in the file
-* Use forward slashes for paths
-* Include file extension
+## Notes
+- Settings restructuring is now the primary focus
+- Testing will be adjusted after new settings structure
+- All files must maintain current quality standards:
+  * Type hints
+  * Docstrings
+  * Error handling
+  * Clean code practices
+- Provider modularity is key focus of restructuring
 
-## For each file:
-1. We'll implement the full code
-2. Add proper docstrings and type hints
-3. Include error handling
-4. Add relevant tests
-5. Ensure PEP 8 compliance
+## Settings Migration Plan
+1. Create new structure first
+2. Move core settings
+3. Create provider settings
+4. Update references
+5. Test configuration loading
+6. Verify environment variables
+7. Update documentation
+
+## File Requirements
+[Previous file requirements section remains unchanged]
+
+## Notes on Mover Process
+[Previous notes section remains unchanged]

@@ -1,172 +1,209 @@
 # MoverStatus Python Project Overview
 
 ## Project Description
-A Python-based monitoring system that tracks the Unraid Mover process and sends notifications via configurable providers (Discord, Telegram). The system monitors data movement from SSD Cache to HDD Array, calculating progress and estimated completion times.
+A Python-based monitoring system that tracks the Unraid Mover process and sends notifications via configurable providers (Discord, Telegram). The system monitors data movement from SSD Cache to HDD Array, calculating progress and estimated completion times with efficient asynchronous operations and caching mechanisms.
+
+## Project Goals
+- Provide real-time monitoring of the Unraid Mover process
+- Send configurable notifications through modular provider system
+- Support easy integration of new notification providers
+- Calculate accurate progress and time estimates
+- Maintain high code quality and test coverage
+- Ensure efficient async operations for file system monitoring
 
 ## Project Structure
 ```
 mover_status/
 ├── config/
 │   ├── __init__.py
-│   ├── settings.py           # Configuration management using Pydantic
-│   └── constants.py          # Project-wide constants and type aliases
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── settings.py        # Core settings models
+│   │   └── constants.py       # Core constants and type aliases
+│   └── providers/
+│       ├── __init__.py
+│       ├── base.py            # Base provider settings model
+│       ├── discord/
+│       │   ├── __init__.py
+│       │   ├── settings.py    # Discord-specific settings
+│       │   └── constants.py   # Discord-specific constants
+│       └── telegram/
+│           ├── __init__.py
+│           ├── settings.py    # Telegram-specific settings
+│           └── constants.py   # Telegram-specific constants
 ├── core/
 │   ├── __init__.py
-│   ├── monitor.py            # Main monitoring logic
-│   ├── calculator.py         # Data size and ETC calculations
-│   └── process.py           # Process management utilities
+│   ├── monitor.py            # Main monitoring loop with async file operations
+│   ├── calculator.py         # Progress and time calculations
+│   └── process.py            # Process management and state tracking
 ├── notifications/
 │   ├── __init__.py
 │   ├── base.py              # Abstract base notification class
-│   ├── discord/             # Discord-specific implementation
+│   ├── factory.py           # Provider instantiation and registry
+│   ├── interface.py         # Provider interface definitions
+│   ├── discord/
 │   │   ├── __init__.py
-│   │   ├── provider.py      # Discord notification implementation
-│   │   ├── templates.py     # Discord message templates
-│   │   └── types.py        # Discord-specific types
-│   ├── telegram/            # Telegram-specific implementation
-│   │   ├── __init__.py
-│   │   ├── provider.py      # Telegram notification implementation
-│   │   ├── templates.py     # Telegram message templates
-│   │   └── types.py        # Telegram-specific types
-│   └── factory.py           # Notification provider factory
+│   │   ├── provider.py      # Discord webhook implementation
+│   │   ├── templates.py     # Message templates and formatting
+│   │   └── types.py         # Discord-specific types
+│   └── telegram/
+│       ├── __init__.py
+│       ├── provider.py      # Telegram API implementation
+│       ├── templates.py     # Message templates and formatting
+│       └── types.py         # Telegram-specific types
 ├── utils/
 │   ├── __init__.py
-│   ├── formatters.py        # Data formatting utilities
-│   ├── path.py             # Path handling and exclusion logic
-│   └── version.py          # Version checking functionality
+│   ├── formatters.py        # Data and time formatting utilities
+│   ├── validators.py        # Configuration validation functions
+│   └── version.py           # Version checking and comparison
 ├── tests/
 │   ├── __init__.py
-│   ├── test_monitor.py
-│   ├── test_calculator.py
-│   └── test_notifications.py
-├── logs/                    # Log file directory
+│   ├── conftest.py          # Test configuration and fixtures 
+│   ├── test_core/
+│   │   ├── __init__.py
+│   │   ├── test_calculator.py
+│   │   ├── test_monitor.py
+│   │   └── test_process.py
+│   ├── test_notifications/
+│   │   ├── __init__.py
+│   │   ├── test_base.py
+│   │   ├── test_factory.py
+│   │   ├── test_interface.py
+│   │   ├── test_discord/
+│   │   │   ├── __init__.py
+│   │   │   ├── test_provider.py
+│   │   │   ├── test_templates.py
+│   │   │   └── test_types.py
+│   │   └── test_telegram/
+│   │       ├── __init__.py
+│   │       ├── test_provider.py
+│   │       ├── test_templates.py
+│   │       └── test_types.py
+│   └── test_utils/
+│       ├── __init__.py
+│       ├── test_formatters.py
+│       ├── test_validators.py
+│       └── test_version.py
 ├── __init__.py
-├── __main__.py             # Entry point
-├── requirements.txt
-└── pyproject.toml          # Project metadata and dependencies
+├── __main__.py             # Application entry point
+├── pyproject.toml          # Project metadata and dependencies
+└── README.md
 ```
 
 ## Component Details
 
 ### 1. Configuration Management (`config/`)
-- `settings.py`
-  * Uses Pydantic for configuration validation
-  * Implements environment variable support
-  * Handles webhook URLs, tokens, and notification settings
-  * Manages excluded paths configuration
+The configuration system is designed for modularity and easy provider integration:
 
-- `constants.py`
-  * System-wide configuration defaults
-  * Path constants
-  * Version information
-  * Type aliases and enums
+- Core Settings (`core/`)
+  * Base application configuration
+  * Monitoring parameters
+  * System-wide defaults
+  * Common settings shared across components
+
+- Provider Settings (`providers/`)
+  * Isolated provider configurations
+  * Provider-specific validation rules
+  * Independent version tracking
+  * Separate environment handling
 
 ### 2. Core Functionality (`core/`)
 - `monitor.py`
-  * Implements main monitoring loop using asyncio
-  * Handles process detection and monitoring
-  * Manages notification triggers based on progress
-  * Uses async file system operations for better performance
+  * Main monitoring loop
+  * Event handling and state tracking
+  * Progress tracking and updates
+  * Provider coordination
+  * State management
 
 - `calculator.py`
-  * Implements data size calculations
-  * Handles progress percentage computation
-  * Manages estimated time calculations
-  * Provides human-readable format conversions
+  * Progress calculation algorithms
+  * Time estimation (ETC) logic
+  * Data size computations
+  * Historical trend analysis
 
 - `process.py`
-  * Manages mover process detection
-  * Handles process state monitoring
-  * Implements process existence checks
+  * Process detection utilities
+  * Process state monitoring
+  * Async process checking
+  * Resource usage tracking
 
 ### 3. Notification System (`notifications/`)
 - `base.py`
-  * Defines AbstractNotificationProvider base class
-  * Implements common notification logic
-  * Defines interface for notification providers
-  * Handles common error patterns
-
-- Provider-specific packages (e.g., `discord/`, `telegram/`)
-  * `provider.py`: Provider-specific implementation
-  * `templates.py`: Provider-specific message templates
-  * `types.py`: Provider-specific type definitions
-  * Self-contained provider logic and formatting
+  * Abstract notification provider interface
+  * Common notification handling logic
+  * Rate limiting base implementation
+  * Error handling patterns
 
 - `factory.py`
-  * Implements notification provider factory pattern
-  * Manages provider instantiation and registration
-  * Handles provider configuration
-  * Supports dynamic provider loading
+  * Provider registration and instantiation
+  * Configuration mapping
+  * Instance management
+  * Error handling
+
+- `interface.py`
+  * Provider interface definitions
+  * Required method specifications
+  * Type hints and documentation
+  * Contract enforcement
+
+- Provider Implementations
+  * Independent provider modules
+  * Provider-specific logic
+  * Custom message formatting
+  * API integration
 
 ### 4. Utilities (`utils/`)
 - `formatters.py`
-  * Implements data size formatting
-  * Handles time formatting
-  * Common text processing utilities
+  * Data size formatting
+  * Time duration formatting
+  * Progress percentage formatting
+  * Message template processing
 
-- `path.py`
-  * Handles path exclusion logic
-  * Manages directory size calculations
-  * Implements path validation
+- `validators.py`
+  * Settings validation functions
+  * Path and URL validation
+  * Type checking helpers
+  * Environment validation
 
 - `version.py`
-  * Manages version checking
-  * Handles GitHub API interactions
-  * Implements version comparison logic
+  * GitHub API integration
+  * Version comparison logic
+  * Update checking functionality
+  * Async HTTP client implementation
 
-### 5. Entry Point (`__main__.py`)
-- Handles argument parsing
-- Initializes logging
-- Sets up configuration
-- Starts monitoring process
-- Manages application lifecycle
+### 5. Testing Structure (`tests/`)
+- Comprehensive test coverage
+- Provider-specific test suites
+- Integration testing
+- Mock configurations
+- Performance testing
 
-## Key Technical Implementations
+## Development Guidelines
 
-### Error Handling
-- Custom exception classes for different error types
-- Comprehensive error catching and logging
-- Graceful degradation for non-critical failures
-- Retry mechanisms for transient failures
+### Code Style
+- Follow PEP 8 guidelines
+- Use type hints throughout
+- Comprehensive docstrings
+- Clear error messages
+- Proper exception handling
 
-### Logging
-- Structured logging using Python's logging module
-- Rotating file handler for log management
-- Different log levels (DEBUG, INFO, WARNING, ERROR)
-- Contextual logging with correlation IDs
+### Testing Requirements
+- Minimum 80% code coverage
+- Unit tests for all components
+- Integration tests for providers
+- Performance tests for core logic
 
-### Testing
-- Unit tests for core functionality
-- Integration tests for notification providers
-- Mock objects for external services
-- Test fixtures for common scenarios
+## Provider Architecture
 
-### Dependencies
-Key Python packages to be used:
-- `pydantic`: Configuration management and validation
-- `aiohttp`: Async HTTP client for notifications
-- `asyncio`: Asynchronous I/O operations
-- `python-dotenv`: Environment variable management
-- `structlog`: Structured logging
-- `pytest`: Testing framework
-- `tenacity`: Retry handling
-- `typing-extensions`: Enhanced type hints
+### Base Provider Requirements
+- Must implement notification interface
+- Must provide settings model
+- Must handle rate limiting
+- Must implement error handling
+- Must provide message templates
 
-## Future Extensibility
-Adding a new notification provider is straightforward:
-1. Create a new provider package (e.g., `notifications/slack/`)
-2. Implement the required interface from `base.py`
-3. Define provider-specific templates and types
-4. Register with the factory
-
-The modular structure ensures each provider is self-contained and can be:
-- Tested independently
-- Configured separately
-- Enabled/disabled without affecting other providers
-- Updated without modifying core system code
-
-Additional future features:
-- Plugin system for new monitoring metrics
-- Configurable monitoring strategies
-- Health check endpoint capabilities
-- Metrics collection and reporting
+### Adding New Providers
+1. Create provider settings in `config/providers/`
+2. Implement provider logic in `notifications/`
+3. Add provider tests
+4. Register with provider factory
