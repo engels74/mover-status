@@ -15,7 +15,7 @@
 This Bash script monitors the progress of the "Mover" process and sends updates to Discord and/or Telegram webhooks. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
 ## 📸 Images (preview) 
-<img src="https://i.imgur.com/owBzb5R.png" width="50%" alt="An example of how it looks">
+<img src="https://i.imgur.com/owBzb5R.png" width="60%" alt="An example of how it looks">
 
 ### ⚙️ How it works 
 1. When the script runs, it continuously loops and waits for the Unraid Mover script to start.
@@ -118,3 +118,8 @@ Edit the script to configure the necessary settings:
 4. Copy the Webhook URL.
 5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
 
+## ⚖️ License
+
+[![GNU AGPLv3 Image](https://www.gnu.org/graphics/agplv3-155x51.png)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+This project is licensed under the AGPLv3 License - see the LICENSE file for details.
