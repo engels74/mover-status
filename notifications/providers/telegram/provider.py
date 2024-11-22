@@ -1,4 +1,4 @@
-# notifications/telegram/provider.py
+# notifications/providers/telegram/provider.py
 
 """
 Telegram bot notification provider implementation.

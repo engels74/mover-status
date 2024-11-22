@@ -1,4 +1,4 @@
-# notifications/discord/types.py
+# notifications/providers/discord/types.py
 
 """
 Type definitions specific to Discord webhook notifications.

@@ -1,4 +1,4 @@
-# notifications\telegram\types.py
+# notifications/providers/telegram/types.py
 
 """
 Type definitions and constants for Telegram bot notifications.

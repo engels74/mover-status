@@ -1,4 +1,4 @@
-# notifications/discord/config.py
+# notifications/providers/discord/config.py
 
 """
 Configuration models for Discord webhook notifications.

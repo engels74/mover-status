@@ -1,4 +1,4 @@
-# notifications/telegram/templates.py
+# notifications/providers/telegram/templates.py
 
 """
 Message templates and formatting utilities for Telegram notifications.

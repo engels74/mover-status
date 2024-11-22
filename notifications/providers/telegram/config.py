@@ -1,4 +1,4 @@
-# notifications/telegram/config.py
+# notifications/providers/telegram/config.py
 
 """
 Configuration models for Telegram bot notifications.
