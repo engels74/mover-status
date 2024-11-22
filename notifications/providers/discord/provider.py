@@ -1,4 +1,4 @@
-# notifications/discord/provider.py
+# notifications/providers/discord/provider.py
 
 """
 Discord webhook notification provider implementation.
@@ -18,13 +18,13 @@ import aiohttp
 from structlog import get_logger
 
 from notifications.base import NotificationError, NotificationProvider
-from notifications.discord.templates import (
+from notifications.providers.discord.templates import (
     create_completion_embed,
     create_error_embed,
     create_progress_embed,
     create_webhook_data,
 )
-from notifications.discord.types import RATE_LIMIT
+from notifications.providers.discord.types import RATE_LIMIT
 
 logger = get_logger(__name__)
 

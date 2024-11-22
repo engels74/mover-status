@@ -1,11 +1,11 @@
-# notifications/discord/__init__.py
+# notifications/providers/discord/__init__.py
 
 """
 Discord webhook notification provider package.
 Provides functionality for sending notifications via Discord webhooks.
 
 Example:
-    >>> from notifications.discord import DiscordConfig, DiscordProvider
+    >>> from notifications.providers.discord import DiscordConfig, DiscordProvider
     >>> config = DiscordConfig(webhook_url="https://discord.com/api/webhooks/...")
     >>> provider = DiscordProvider(config.to_provider_config())
     >>> async with provider:
@@ -14,18 +14,21 @@ Example:
 
 from typing import TYPE_CHECKING
 
-from notifications.discord.config import DiscordConfig
-from notifications.discord.provider import DiscordProvider, DiscordWebhookError
-from notifications.discord.types import DiscordColor
+from notifications.providers.discord.config import DiscordConfig
+from notifications.providers.discord.provider import (
+    DiscordProvider,
+    DiscordWebhookError,
+)
+from notifications.providers.discord.types import DiscordColor
 
 if TYPE_CHECKING:
-    from notifications.discord.templates import (
+    from notifications.providers.discord.templates import (
         create_completion_embed,
         create_error_embed,
         create_progress_embed,
         create_webhook_data,
     )
-    from notifications.discord.types import (
+    from notifications.providers.discord.types import (
         Embed,
         EmbedAuthor,
         EmbedField,

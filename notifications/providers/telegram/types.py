@@ -13,12 +13,9 @@ Example:
 from enum import Enum, IntEnum
 from typing import List, Optional, TypedDict, Union
 
-
-class ParseMode(str, Enum):
-    """Telegram message parsing modes."""
-    HTML = "HTML"
-    MARKDOWN = "MarkdownV2"
-    PLAIN = None
+from shared.types.telegram import (  # Absolute import path
+    MessageEntity,
+)
 
 
 class ChatType(str, Enum):
@@ -56,15 +53,6 @@ class MessageLimit(IntEnum):
     MESSAGES_PER_SECOND = 30 # Maximum messages per second
     MESSAGES_PER_MINUTE = 20 # Maximum messages per minute to same chat
     MESSAGE_THREADS = 100    # Maximum message threads per chat
-
-
-class MessageEntity(TypedDict, total=False):
-    """Telegram message entity structure."""
-    type: str
-    offset: int
-    length: int
-    url: Optional[str]
-    language: Optional[str]
 
 
 class ReplyMarkup(TypedDict, total=False):

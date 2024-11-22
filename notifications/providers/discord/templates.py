@@ -1,4 +1,4 @@
-# notifications/discord/templates.py
+# notifications/providers/discord/templates.py
 
 """
 Message templates and formatting utilities for Discord notifications.
@@ -17,7 +17,7 @@ Example:
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence
 
-from notifications.discord.types import (
+from notifications.providers.discord.types import (
     EMBED_LIMITS,
     WEBHOOK_LIMITS,
     DiscordColor,

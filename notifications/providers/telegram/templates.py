@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Union
 
 from structlog import get_logger
 
-from notifications.telegram.types import (
+from ..telegram.types import (
     DEFAULT_TEMPLATES,
     InlineKeyboardMarkup,
     MessageEntity,

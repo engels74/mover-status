@@ -1,4 +1,4 @@
-# notifications/telegram/__init__.py
+# notifications/providers/telegram/__init__.py
 
 """
 Telegram bot notification provider package.
@@ -17,18 +17,18 @@ Example:
 
 from typing import TYPE_CHECKING
 
-from notifications.telegram.config import TelegramConfig
-from notifications.telegram.provider import TelegramError, TelegramProvider
-from notifications.telegram.types import ParseMode
+from notifications.providers.telegram.config import TelegramConfig
+from notifications.providers.telegram.provider import TelegramError, TelegramProvider
+from notifications.providers.telegram.types import ParseMode
 
 if TYPE_CHECKING:
-    from notifications.telegram.templates import (
+    from notifications.providers.telegram.templates import (
         create_completion_message,
         create_custom_message,
         create_error_message,
         create_progress_message,
     )
-    from notifications.telegram.types import (
+    from notifications.providers.telegram.types import (
         ChatType,
         InlineKeyboardButton,
         InlineKeyboardMarkup,
