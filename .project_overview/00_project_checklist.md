@@ -68,55 +68,55 @@ mover_status/
 ## ✅ Completed Implementations
 
 ### Configuration
-- [x] **constants.py**
+- [x] **config/constants.py**
   * Implements `ByteSize`, `Percentage`, `PathLike` type aliases
   * Defines system-wide constants for byte sizes and time intervals
   * Provides template placeholders and error message constants
   * Uses Python enums for notification providers and log levels
 
-- [x] **settings.py** (Core)
+- [x] **config/settings.py**
   * Implements base settings class using Pydantic
   * Defines core application settings
   * Implements settings validation framework
   * Provides configuration loading utilities
 
-- [x] **providers/base.py**
+- [x] **config/providers/base.py**
   * Implements abstract base provider settings
   * Defines common provider configuration patterns
   * Implements shared validation methods
   * Define provider settings interfaces
 
-- [x] **providers/discord/settings.py**
+- [x] **config/providers/discord/settings.py**
   * Implements Discord-specific settings class
   * Defines webhook configuration models
   * Implements Discord-specific validators
   * Handle Discord rate limiting configuration
 
-- [x] **providers/discord/schemas.py**
+- [x] **config/providers/discord/schemas.py**
   * Defines Discord configuration schemas
   * Implements webhook payload validation
   * Defines Discord-specific constraints
   * Handles Discord API limitations
 
-- [x] **providers/discord/types.py**
+- [x] **config/providers/discord/types.py**
   * Defines Discord setting types
   * Implements type aliases for Discord
   * Defines constants for Discord settings
   * Implements Discord-specific enums
 
-- [x] **providers/telegram/settings.py**
+- [x] **config/providers/telegram/settings.py**
   * Implements Telegram-specific settings class
   * Defines bot API configuration models
   * Implements Telegram-specific validators
   * Handles Telegram rate limiting configuration
 
-- [x] **providers/telegram/schemas.py**
+- [x] **config/providers/telegram/schemas.py**
   * Defines Telegram configuration schemas
   * Implements bot API payload validation
   * Defines Telegram-specific constraints
   * Handles Telegram API limitations
 
-- [x] **providers/telegram/types.py**
+- [x] **config/providers/telegram/types.py**
   * Defines Telegram setting types
   * Implements type aliases for Telegram
   * Defines constants for Telegram settings
@@ -136,101 +136,101 @@ mover_status/
   * Implemented utility functions
 
 ### Core Functionality
-- [x] **calculator.py**
+- [x] **core/calculator.py**
   * Implements `TransferCalculator` class using async Python operations
   * Uses moving average algorithm for transfer rate calculation
   * Implements `@dataclass` for transfer statistics
   * Uses asyncio for non-blocking directory size monitoring
 
-- [x] **monitor.py**
+- [x] **core/monitor.py**
   * Implements async event loop using `asyncio`
   * Uses Python context managers for resource management
   * Implements observer pattern for notification distribution
   * Uses structured logging with `structlog`
 
-- [x] **process.py**
+- [x] **core/process.py**
   * Uses `psutil` for process monitoring
   * Implements async process checking with `asyncio`
   * Uses Python enums for process states
   * Implements resource usage tracking using system calls
 
 ### Notifications
-- [x] **base.py**
+- [x] **notifications/base.py**
   * Implements abstract base class using Python's `ABC`
   * Uses async methods for notification handling
   * Implements rate limiting using Python decorators
   * Uses typed exceptions for error handling
 
-- [x] **factory.py**
+- [x] **notifications/factory.py**
   * Implements factory pattern using class decorators
   * Uses Python type hints for provider registration
   * Implements singleton pattern for factory instance
   * Uses async context managers for provider lifecycle
 
 #### Discord Provider
-- [x] **config.py**
+- [x] **notifications/providers/discord/config.py**
   * Uses Pydantic for configuration validation
   * Implements custom validators using decorators
   * Uses Python dataclasses for configuration models
   * Implements environment variable mapping
 
-- [x] **provider.py**
+- [x] **notifications/providers/discord/provider.py**
   * Uses `aiohttp` for async webhook requests
   * Implements retry logic using exponential backoff
   * Uses context managers for session management
   * Implements rate limiting per Discord API specs
 
-- [x] **templates.py**
+- [x] **notifications/providers/discord/templates.py**
   * Uses string templating for message formatting
   * Implements embed creation using Python dictionaries
   * Uses type hints for template validation
   * Implements character limit validation
 
-- [x] **types.py**
+- [x] **notifications/providers/discord/types.py**
   * Uses Python `TypedDict` for API types
   * Implements enums for message types
   * Uses literal types for Discord-specific constants
   * Defines webhook payload structures
 
 #### Telegram Provider
-- [x] **config.py**
+- [x] **notifications/providers/telegram/config.py**
   * Uses Pydantic models for configuration
   * Implements chat ID validation using regex
   * Uses Python enums for parse modes
   * Implements environment variable loading
 
-- [x] **provider.py**
+- [x] **notifications/providers/telegram/provider.py**
   * Uses `aiohttp` for Telegram Bot API requests
   * Implements message editing capabilities
   * Uses async context managers
   * Implements error handling with custom exceptions
 
-- [x] **templates.py**
+- [x] **notifications/providers/telegram/templates.py**
   * Uses HTML/Markdown parsing for messages
   * Implements message entity extraction
   * Uses string formatting for templates
   * Implements character limit validation
 
-- [x] **types.py**
+- [x] **notifications/providers/telegram/types.py**
   * Uses Python enums for message types
   * Implements TypedDict for API structures
   * Uses literal types for Telegram constants
   * Defines bot API payload structures
 
 ### Utils
-- [x] **formatters.py**
+- [x] **utils/formatters.py**
   * Implements human-readable size formatting
   * Uses Python string formatting
   * Implements duration formatting with units
   * Uses type hints for format specifications
 
-- [x] **validators.py**
+- [x] **utils/validators.py**
   * Implements path and URL validation
   * Uses Python's `urllib.parse`
   * Implements type checking utilities
   * Uses regular expressions for validation
 
-- [x] **version.py**
+- [x] **utils/version.py**
   * Implements semantic versioning using `@dataclass`
   * Uses `aiohttp` for GitHub API requests
   * Implements version comparison using `@total_ordering`
