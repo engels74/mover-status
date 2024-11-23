@@ -9,22 +9,27 @@ Example:
     >>> request = SendMessageRequest(chat_id="123", text="Hello", parse_mode="HTML")
 """
 
-from enum import IntEnum, StrEnum
+from enum import IntEnum
 from typing import Dict, List, Optional, TypedDict, Union
 
-# Fix: Import ParseMode from shared types instead of redefining
+from config.constants import (
+    DEFAULT_API_RETRIES,
+    DEFAULT_API_RETRY_DELAY,
+)
 from shared.types.telegram import (
     ChatType as SharedChatType,
+)
+from shared.types.telegram import (
     InlineKeyboardMarkup,
     MessageEntity,
-    MessageLimit as SharedMessageLimit,
     ParseMode,
 )
+from shared.types.telegram import (
+    MessageLimit as SharedMessageLimit,
+)
 
-# Fix: Remove duplicate ChatType enum and use the shared one
+# Use shared types to avoid duplication
 ChatType = SharedChatType
-
-# Fix: Remove duplicate MessageLimit and use shared version
 MessageLimit = SharedMessageLimit
 
 class MessagePriority(IntEnum):
@@ -84,12 +89,6 @@ class BotCommand(TypedDict):
     description: str
     permissions: Optional[List[BotPermissions]]
 
-# Fix: Move rate limiting configuration to constants.py
-from config.constants import (
-    DEFAULT_API_RETRIES,
-    DEFAULT_API_RETRY_DELAY,
-)
-
 # Provider-specific rate limiting configuration
 RATE_LIMIT = {
     "max_retries": DEFAULT_API_RETRIES,
@@ -98,10 +97,6 @@ RATE_LIMIT = {
     "rate_period": 60,     # Rate limit period in seconds
 }
 
-# Fix: Move templates to telegram/templates.py
-from notifications.providers.telegram.templates import DEFAULT_TEMPLATES
-
-# Fix: Add proper type annotations for keyboard creation function
 def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     """Create inline keyboard with progress information.
 
@@ -128,7 +123,6 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
         }]]
     }
 
-# Fix: Add proper validation for chat IDs
 def validate_chat_id(chat_id: Union[int, str]) -> bool:
     """Validate Telegram chat ID format.
 
