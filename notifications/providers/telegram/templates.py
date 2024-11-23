@@ -19,17 +19,19 @@ from typing import Dict, List, Optional, Union
 
 from structlog import get_logger
 
-from ..telegram.types import (
-    DEFAULT_TEMPLATES,
+from config.constants import MessagePriority
+from notifications.providers.telegram.types import (
     InlineKeyboardMarkup,
     MessageEntity,
     ParseMode,
-    create_progress_keyboard,
     validate_message_length,
+)
+from shared.types.telegram import (
+    DEFAULT_TEMPLATES,
+    create_progress_keyboard,
 )
 
 logger = get_logger(__name__)
-
 
 def escape_html(text: str) -> str:
     """Escape HTML special characters in text.
@@ -53,7 +55,6 @@ def escape_html(text: str) -> str:
     }
     return "".join(html_escape_table.get(c, c) for c in str(text))
 
-
 def escape_markdown(text: str) -> str:
     """Escape Markdown special characters in text.
 
@@ -70,7 +71,6 @@ def escape_markdown(text: str) -> str:
     markdown_escape_chars = r"_*[]()~`>#+-=|{}.!"
     return "".join(f"\\{c}" if c in markdown_escape_chars else c for c in str(text))
 
-
 def create_progress_message(
     percent: float,
     remaining: str,
@@ -79,24 +79,29 @@ def create_progress_message(
     parse_mode: ParseMode = ParseMode.HTML,
     add_keyboard: bool = True,
     description: Optional[str] = None,
+    priority: MessagePriority = MessagePriority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create formatted progress update message.
 
     Args:
-        percent: Progress percentage
+        percent: Progress percentage (0-100)
         remaining: Remaining data amount
         elapsed: Elapsed time
         etc: Estimated time of completion
         parse_mode: Message parsing mode
         add_keyboard: Whether to add inline keyboard
         description: Optional description
+        priority: Message priority level
 
     Returns:
         Dict: Formatted message data
 
     Raises:
-        ValueError: If message exceeds length limits
+        ValueError: If percent is out of range or message exceeds length limits
     """
+    if not 0 <= percent <= 100:
+        raise ValueError("Percent must be between 0 and 100")
+
     # Escape special characters based on parse mode
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
     escaped_values = {
@@ -117,7 +122,11 @@ def create_progress_message(
     message = validate_message_length(message)
 
     # Prepare response data
-    response_data = {"text": message, "parse_mode": parse_mode}
+    response_data = {
+        "text": message,
+        "parse_mode": parse_mode,
+        "disable_notification": priority == MessagePriority.LOW,
+    }
 
     # Add inline keyboard if requested
     if add_keyboard:
@@ -125,11 +134,11 @@ def create_progress_message(
 
     return response_data
 
-
 def create_completion_message(
     parse_mode: ParseMode = ParseMode.HTML,
     include_stats: bool = True,
     stats: Optional[Dict[str, str]] = None,
+    priority: MessagePriority = MessagePriority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create completion notification message.
 
@@ -137,9 +146,13 @@ def create_completion_message(
         parse_mode: Message parsing mode
         include_stats: Whether to include transfer statistics
         stats: Optional transfer statistics
+        priority: Message priority level
 
     Returns:
         Dict: Formatted message data
+
+    Raises:
+        ValueError: If message exceeds length limits
     """
     message = DEFAULT_TEMPLATES["completion"]
 
@@ -151,17 +164,20 @@ def create_completion_message(
             stats_text += f"\n• {escape_func(key)}: {escape_func(value)}"
         message += stats_text
 
+    # Validate and prepare response
+    message = validate_message_length(message)
     return {
-        "text": validate_message_length(message),
-        "parse_mode": parse_mode
+        "text": message,
+        "parse_mode": parse_mode,
+        "disable_notification": priority == MessagePriority.LOW,
     }
-
 
 def create_error_message(
     error_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     include_debug: bool = False,
     debug_info: Optional[Dict[str, str]] = None,
+    priority: MessagePriority = MessagePriority.HIGH,
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create error notification message.
 
@@ -170,10 +186,17 @@ def create_error_message(
         parse_mode: Message parsing mode
         include_debug: Whether to include debug information
         debug_info: Optional debug information
+        priority: Message priority level
 
     Returns:
         Dict: Formatted message data
+
+    Raises:
+        ValueError: If error_message is empty or message exceeds length limits
     """
+    if not error_message.strip():
+        raise ValueError("Error message cannot be empty")
+
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
     message = DEFAULT_TEMPLATES["error"].format(
         error_message=escape_func(error_message)
@@ -186,17 +209,20 @@ def create_error_message(
             debug_text += f"\n• {escape_func(key)}: {escape_func(value)}"
         message += debug_text
 
+    # Validate and prepare response
+    message = validate_message_length(message)
     return {
-        "text": validate_message_length(message),
-        "parse_mode": parse_mode
+        "text": message,
+        "parse_mode": parse_mode,
+        "disable_notification": False,  # Error messages always notify
     }
-
 
 def create_custom_message(
     template: str,
     values: Dict[str, str],
     parse_mode: ParseMode = ParseMode.HTML,
     keyboard: Optional[InlineKeyboardMarkup] = None,
+    priority: MessagePriority = MessagePriority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create message from custom template.
 
@@ -205,24 +231,31 @@ def create_custom_message(
         values: Values to substitute in template
         parse_mode: Message parsing mode
         keyboard: Optional inline keyboard
+        priority: Message priority level
 
     Returns:
         Dict: Formatted message data
 
     Raises:
-        ValueError: If template format is invalid
+        ValueError: If template format is invalid or message exceeds length limits
+        KeyError: If template contains undefined placeholders
     """
     try:
         # Escape values based on parse mode
         escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
         escaped_values = {
-            key: escape_func(value) for key, value in values.items()
+            key: escape_func(str(value)) for key, value in values.items()
         }
 
+        # Format and validate message
         message = template.format(**escaped_values)
+        message = validate_message_length(message)
+
+        # Prepare response data
         response_data = {
-            "text": validate_message_length(message),
-            "parse_mode": parse_mode
+            "text": message,
+            "parse_mode": parse_mode,
+            "disable_notification": priority == MessagePriority.LOW,
         }
 
         if keyboard:
@@ -232,13 +265,8 @@ def create_custom_message(
 
     except KeyError as err:
         raise ValueError(f"Missing template value: {err}") from err
-    except ValueError as err:
-        raise ValueError(f"Template formatting error: {err}") from err
 
-
-def extract_html_entities(
-    text: str
-) -> tuple[str, List[MessageEntity]]:
+def extract_html_entities(text: str) -> tuple[str, List[MessageEntity]]:
     """Extract message entities from HTML-formatted text.
 
     Args:
@@ -254,16 +282,21 @@ def extract_html_entities(
         >>> entities
         [{'type': 'bold', 'offset': 0, 'length': 4},
          {'type': 'italic', 'offset': 9, 'length': 6}]
+
+    Raises:
+        ValueError: If HTML tags are malformed
     """
+    if not text:
+        return "", []
+
     entities = []
     plain_text = ""
     current_offset = 0
+    tag_stack = []
+    last_end = 0
 
     # Simple HTML tag pattern
     pattern = r"<(/?[bi])>|<a href=\"([^\"]+)\">(.+?)</a>|<code>(.+?)</code>"
-
-    tag_stack = []
-    last_end = 0
 
     for match in re.finditer(pattern, text):
         # Add text before the tag
@@ -277,15 +310,16 @@ def extract_html_entities(
             if not tag.startswith("/"):
                 tag_stack.append((tag, current_offset))
             else:
-                if tag_stack:
-                    open_tag, start_offset = tag_stack.pop()
-                    if open_tag == tag[1:]:
-                        entity_type = "bold" if open_tag == "b" else "italic"
-                        entities.append({
-                            "type": entity_type,
-                            "offset": start_offset,
-                            "length": current_offset - start_offset
-                        })
+                if not tag_stack:
+                    raise ValueError("Unmatched closing tag")
+                open_tag, start_offset = tag_stack.pop()
+                if open_tag == tag[1:]:
+                    entity_type = "bold" if open_tag == "b" else "italic"
+                    entities.append({
+                        "type": entity_type,
+                        "offset": start_offset,
+                        "length": current_offset - start_offset
+                    })
         elif match.group(2):
             # Link
             url = match.group(2)
@@ -311,5 +345,8 @@ def extract_html_entities(
 
     # Add remaining text
     plain_text += text[last_end:]
+
+    if tag_stack:
+        raise ValueError("Unclosed HTML tags")
 
     return plain_text, entities
