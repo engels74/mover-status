@@ -24,7 +24,7 @@ from typing import Dict, FrozenSet, Optional, Set
 import psutil
 from structlog import get_logger
 
-from config.constants import PROCESS_CHECK_INTERVAL
+from config.constants import MOVER_EXECUTABLE, PROCESS_CHECK_INTERVAL
 from config.settings import Settings
 
 logger = get_logger(__name__)
@@ -77,9 +77,9 @@ class ProcessManager:
         """
         self._settings = settings
         self._mover_paths = {
-            'script': Path("/usr/local/sbin/mover"),
-            'php': Path("/usr/local/emhttp/plugins/unraid.mover/mover.php"),
-            'age_mover': Path("/usr/local/emhttp/plugins/unraid.mover/age.mover")
+            'script': Path(MOVER_EXECUTABLE),
+            'php': Path("/usr/local/emhttp/plugins/ca.mover.tuning/mover.php"),
+            'age_mover': Path("/usr/local/emhttp/plugins/ca.mover.tuning/age_mover")
         }
         self._current_state = ProcessState.UNKNOWN
         self._process_groups: Dict[int, Set[int]] = {}
