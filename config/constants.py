@@ -5,7 +5,7 @@ Project-wide constants, type aliases, and configuration defaults.
 Provider-specific constants should be defined in their respective modules.
 """
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Dict, List, TypeAlias, Union
 
@@ -31,18 +31,23 @@ MAX_NOTIFICATION_INCREMENT = 50
 NOTIFICATION_RETRY_ATTEMPTS = 3
 NOTIFICATION_RETRY_DELAY = 5  # seconds
 
-# Size Constants
+# Size Constants (in bytes)
 BYTES_PER_KB = 1024
 BYTES_PER_MB = BYTES_PER_KB * 1024
 BYTES_PER_GB = BYTES_PER_MB * 1024
 BYTES_PER_TB = BYTES_PER_GB * 1024
 
-class NotificationProvider(str, Enum):
+# Time Constants (in seconds)
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = SECONDS_PER_MINUTE * 60
+SECONDS_PER_DAY = SECONDS_PER_HOUR * 24
+
+class NotificationProvider(StrEnum):
     """Supported notification providers."""
     DISCORD = "discord"
     TELEGRAM = "telegram"
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     """Available logging levels."""
     DEBUG = "DEBUG"
     INFO = "INFO"
@@ -50,17 +55,19 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
 
+class MessagePriority(StrEnum):
+    """Message priority levels."""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
 # Type Aliases
 ByteSize: TypeAlias = int
 Percentage: TypeAlias = float
 PathLike: TypeAlias = Union[str, Path]
 ExcludedPaths: TypeAlias = List[Path]
 ProviderConfig: TypeAlias = Dict[str, Union[str, bool, int]]
-
-# Time Constants
-SECONDS_PER_MINUTE = 60
-SECONDS_PER_HOUR = SECONDS_PER_MINUTE * 60
-SECONDS_PER_DAY = SECONDS_PER_HOUR * 24
+JsonDict: TypeAlias = Dict[str, Union[str, int, float, bool, dict, list, None]]
 
 # Error Messages
 ERR_INVALID_PATH = "Invalid path specified: {path}"
@@ -68,12 +75,16 @@ ERR_PROCESS_NOT_FOUND = "Mover process not found"
 ERR_NOTIFICATION_FAILED = "Failed to send notification: {error}"
 ERR_CONFIG_INVALID = "Invalid configuration: {detail}"
 ERR_VERSION_CHECK_FAILED = "Failed to check for updates: {error}"
+ERR_PROVIDER_NOT_FOUND = "Provider not found: {provider}"
+ERR_PROVIDER_DISABLED = "Provider is disabled: {provider}"
+ERR_RATE_LIMIT_EXCEEDED = "Rate limit exceeded for provider: {provider}"
 
 # Success Messages
 MSG_PROCESS_STARTED = "Mover process detected, starting monitoring"
 MSG_PROCESS_COMPLETED = "Mover process completed successfully"
 MSG_NOTIFICATION_SENT = "Notification sent successfully"
 MSG_VERSION_CURRENT = "Running latest version: {version}"
+MSG_PROVIDER_INITIALIZED = "Provider initialized successfully: {provider}"
 
 # Template Placeholders
 TEMPLATE_PLACEHOLDERS = {
@@ -82,5 +93,19 @@ TEMPLATE_PLACEHOLDERS = {
     "etc": "{etc}",
     "version": "{version}",
     "total_data": "{total_data}",
-    "elapsed_time": "{elapsed_time}"
+    "elapsed_time": "{elapsed_time}",
+    "transfer_rate": "{transfer_rate}",
+    "progress_bar": "{progress_bar}"
 }
+
+# API Defaults
+DEFAULT_API_TIMEOUT = 30  # seconds
+DEFAULT_API_RETRIES = 3
+DEFAULT_API_RETRY_DELAY = 5  # seconds
+
+# Provider Defaults
+DEFAULT_MESSAGE_TEMPLATE = (
+    "Transfer Progress: {percent}%\n"
+    "Remaining Data: {remaining_data}\n"
+    "ETC: {etc}"
+)
