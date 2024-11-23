@@ -19,10 +19,10 @@ from pydantic import (
     BaseModel,
     Field,
     HttpUrl,
-    field_validator,
     model_validator,
 )
 
+from config.providers.telegram.types import validate_chat_id
 from shared.types.telegram import (
     MessageEntity,
     MessageLimit,
@@ -33,8 +33,9 @@ from shared.types.telegram import (
 class MessageEntitySchema(BaseModel):
     """Schema for Telegram message entity validation."""
     type: str = Field(
-        ...,
-        description="Type of the entity"
+        ...,  # Required field
+        description="Type of the entity",
+        examples=["bold", "italic", "code", "text_link"]
     )
     offset: int = Field(
         ...,
@@ -58,21 +59,20 @@ class MessageEntitySchema(BaseModel):
         default=None,
         min_length=1,
         max_length=64,
+        pattern=r"^[a-zA-Z0-9_-]+$",
         description="Programming language for pre entities"
     )
 
-    @field_validator('type')
-    @classmethod
-    def validate_entity_type(cls, v: str) -> str:
-        """Validate entity type is supported."""
-        allowed_types = {
-            "bold", "italic", "underline", "strikethrough",
-            "code", "pre", "text_link", "text_mention", "url",
-            "email", "phone_number", "hashtag", "mention"
-        }
-        if v not in allowed_types:
-            raise ValueError(f"Unsupported entity type: {v}")
-        return v
+    @model_validator(mode='after')
+    def validate_entity_requirements(self) -> 'MessageEntitySchema':
+        """Validate entity type-specific requirements."""
+        if self.type == "text_link" and not self.url:
+            raise ValueError("URL is required for text_link entities")
+        if self.type == "text_mention" and not self.user:
+            raise ValueError("User object is required for text_mention entities")
+        if self.type == "pre" and self.language and not re.match(r"^[a-zA-Z0-9_-]+$", self.language):
+            raise ValueError("Invalid language format for pre entity")
+        return self
 
 
 class InlineKeyboardButtonSchema(BaseModel):
@@ -90,14 +90,15 @@ class InlineKeyboardButtonSchema(BaseModel):
     callback_data: Optional[str] = Field(
         default=None,
         max_length=MessageLimit.CALLBACK_DATA,
+        pattern=r"^[a-zA-Z0-9_-]+$",
         description="Data to send in callback query"
     )
 
     @model_validator(mode='after')
-    def validate_button(self) -> 'InlineKeyboardButtonSchema':
-        """Validate button has exactly one of the optional fields."""
-        fields = [self.url, self.callback_data]
-        if len([f for f in fields if f is not None]) != 1:
+    def validate_button_options(self) -> 'InlineKeyboardButtonSchema':
+        """Validate button has exactly one optional field."""
+        option_count = sum(1 for opt in [self.url, self.callback_data] if opt is not None)
+        if option_count != 1:
             raise ValueError("Button must have exactly one of: url, callback_data")
         return self
 
@@ -111,8 +112,8 @@ class InlineKeyboardMarkupSchema(BaseModel):
     )
 
     @model_validator(mode='after')
-    def validate_keyboard(self) -> 'InlineKeyboardMarkupSchema':
-        """Validate keyboard structure and limits."""
+    def validate_keyboard_structure(self) -> 'InlineKeyboardMarkupSchema':
+        """Validate keyboard dimensions and limits."""
         for row in self.inline_keyboard:
             if len(row) > MessageLimit.BUTTONS_PER_ROW:
                 raise ValueError(
@@ -126,11 +127,13 @@ class BotConfigSchema(BaseModel):
     bot_token: str = Field(
         ...,
         description="Telegram bot API token",
-        pattern=r"^\d+:[A-Za-z0-9_-]+$"
+        pattern=r"^\d+:[A-Za-z0-9_-]{35,}$",
+        examples=["123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"]
     )
     chat_id: Union[int, str] = Field(
         ...,
-        description="Target chat ID or @username"
+        description="Target chat ID or @username",
+        examples=["-1001234567890", "@channelname"]
     )
     parse_mode: ParseMode = Field(
         default=ParseMode.HTML,
@@ -178,40 +181,20 @@ class BotConfigSchema(BaseModel):
         description="Delay between retries in seconds"
     )
 
-    @field_validator('chat_id')
-    @classmethod
-    def validate_chat_id(cls, v: Union[int, str]) -> Union[int, str]:
+    @model_validator(mode='after')
+    def validate_chat_id_format(self) -> 'BotConfigSchema':
         """Validate chat ID format."""
-        if isinstance(v, int):
-            return v
+        if not validate_chat_id(self.chat_id):
+            raise ValueError("Invalid chat ID format")
+        return self
 
-        if isinstance(v, str):
-            if v.startswith("@"):
-                # Channel username validation
-                if not re.match(r"^@[A-Za-z0-9_]{5,}$", v):
-                    raise ValueError("Invalid channel username format")
-                return v
-
-            try:
-                # Convert to int for numeric chat IDs
-                chat_id = int(v)
-                if str(chat_id) != v:  # Ensure no decimal points
-                    raise ValueError()
-                return chat_id
-            except ValueError as err:
-                raise ValueError(
-                    "Chat ID must be an integer or valid channel username"
-                ) from err
-
-        raise ValueError("Chat ID must be an integer or string")
-
-    @field_validator('api_base_url')
-    @classmethod
-    def validate_api_url(cls, v: HttpUrl) -> HttpUrl:
+    @model_validator(mode='after')
+    def validate_api_url(self) -> 'BotConfigSchema':
         """Validate API base URL."""
-        if "api.telegram.org" not in str(v):
+        url_str = str(self.api_base_url).rstrip('/')
+        if "api.telegram.org" not in url_str:
             raise ValueError("API URL must be from api.telegram.org domain")
-        return v
+        return self
 
     class Config:
         """Pydantic model configuration."""
@@ -247,56 +230,18 @@ def validate_message_content(
     if not text:
         raise ValueError("Message text cannot be empty")
 
-    if len(text) > MessageLimit.MESSAGE_TEXT:
-        raise ValueError(f"Text exceeds {MessageLimit.MESSAGE_TEXT} characters")
+    if len(text.encode('utf-16')) // 2 > MessageLimit.MESSAGE_TEXT:
+        raise ValueError(f"Text exceeds {MessageLimit.MESSAGE_TEXT} UTF-16 code units")
 
     if entities:
         if len(entities) > MessageLimit.ENTITIES:
             raise ValueError(f"Maximum {MessageLimit.ENTITIES} entities allowed")
 
-        # Validate entity positions
-        text_length = len(text)
+        text_length = len(text.encode('utf-16')) // 2
         for entity in entities:
             offset = entity["offset"]
             length = entity["length"]
             if offset < 0 or length <= 0 or offset + length > text_length:
                 raise ValueError("Invalid entity position or length")
-
-    return True
-
-
-def validate_keyboard_markup(markup: dict) -> bool:
-    """Validate inline keyboard markup structure.
-
-    Args:
-        markup: Keyboard markup to validate
-
-    Returns:
-        bool: True if markup is valid
-
-    Raises:
-        ValueError: If markup structure is invalid
-    """
-    if "inline_keyboard" not in markup:
-        raise ValueError("Missing inline_keyboard field")
-
-    keyboard = markup["inline_keyboard"]
-    if not isinstance(keyboard, list) or not all(isinstance(row, list) for row in keyboard):
-        raise ValueError("Invalid keyboard structure")
-
-    if len(keyboard) > MessageLimit.KEYBOARD_ROWS:
-        raise ValueError(f"Maximum {MessageLimit.KEYBOARD_ROWS} keyboard rows allowed")
-
-    for row in keyboard:
-        if len(row) > MessageLimit.BUTTONS_PER_ROW:
-            raise ValueError(f"Maximum {MessageLimit.BUTTONS_PER_ROW} buttons per row allowed")
-
-        for button in row:
-            if not isinstance(button, dict):
-                raise ValueError("Invalid button structure")
-            if "text" not in button:
-                raise ValueError("Missing button text")
-            if len(button["text"]) > MessageLimit.BUTTON_TEXT:
-                raise ValueError(f"Button text exceeds {MessageLimit.BUTTON_TEXT} characters")
 
     return True
