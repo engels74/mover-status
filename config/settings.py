@@ -7,54 +7,20 @@ Designed to work seamlessly with Docker environment variables.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
-from pydantic import BaseModel, BaseSettings, Field, HttpUrl
+from pydantic import BaseSettings, Field
 
-from .constants import (
+from config.constants import (
     DEFAULT_CACHE_PATH,
     DEFAULT_LOG_DIR,
     DEFAULT_NOTIFICATION_INCREMENT,
     LogLevel,
     NotificationProvider,
 )
+from config.providers.discord.settings import DiscordSettings
+from config.providers.telegram.settings import TelegramSettings
 
-
-class DiscordSettings(BaseModel):
-    """Discord-specific configuration settings."""
-    enabled: bool = Field(
-        default=False,
-        description="Enable Discord notifications",
-        env="DISCORD_ENABLED"
-    )
-    webhook_url: Optional[HttpUrl] = Field(
-        default=None,
-        description="Discord webhook URL for notifications",
-        env="DISCORD_WEBHOOK_URL"
-    )
-    username: str = Field(
-        default="Mover Bot",
-        description="Display name for Discord notifications",
-        env="DISCORD_USERNAME"
-    )
-
-class TelegramSettings(BaseModel):
-    """Telegram-specific configuration settings."""
-    enabled: bool = Field(
-        default=False,
-        description="Enable Telegram notifications",
-        env="TELEGRAM_ENABLED"
-    )
-    bot_token: Optional[str] = Field(
-        default=None,
-        description="Telegram bot token for authentication",
-        env="TELEGRAM_BOT_TOKEN"
-    )
-    chat_id: Optional[str] = Field(
-        default=None,
-        description="Telegram chat ID for notifications",
-        env="TELEGRAM_CHAT_ID"
-    )
 
 class Settings(BaseSettings):
     """
@@ -116,6 +82,11 @@ class Settings(BaseSettings):
         default=False,
         description="Run in dry-run mode without sending notifications",
         env="DRY_RUN"
+    )
+    check_version: bool = Field(
+        default=True,
+        description="Enable version checking",
+        env="CHECK_VERSION"
     )
 
     @property
