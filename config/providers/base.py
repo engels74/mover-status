@@ -5,14 +5,12 @@ Base configuration models for notification providers.
 Defines abstract base classes and common functionality for provider settings.
 
 Example:
-    >>> from config.providers.base import BaseProviderSettings
-    >>> class DiscordSettings(BaseProviderSettings):
-    ...     webhook_url: str
-    ...     username: str = "Mover Bot"
+    >>> class MyProviderSettings(BaseProviderSettings):
+    ...     api_key: str
+    ...     username: str = "Default User"
 """
 
-from abc import ABC
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,7 +20,8 @@ from config.constants import (
     DEFAULT_API_TIMEOUT,
     DEFAULT_MESSAGE_TEMPLATE,
     DEFAULT_NOTIFICATION_INCREMENT,
-    TEMPLATE_PLACEHOLDERS,
+    MAX_NOTIFICATION_INCREMENT,
+    MIN_NOTIFICATION_INCREMENT,
     JsonDict,
     MessagePriority,
 )
@@ -30,24 +29,28 @@ from config.constants import (
 
 class RateLimitSettings(BaseModel):
     """Rate limiting configuration shared across providers."""
+
     rate_limit: int = Field(
         default=30,
         ge=1,
         le=60,
         description="Maximum number of messages per period"
     )
+
     rate_period: int = Field(
         default=60,
         ge=30,
         le=3600,
         description="Rate limit period in seconds"
     )
+
     retry_attempts: int = Field(
         default=DEFAULT_API_RETRIES,
         ge=1,
         le=5,
         description="Number of retry attempts for failed messages"
     )
+
     retry_delay: int = Field(
         default=DEFAULT_API_RETRY_DELAY,
         ge=1,
@@ -55,65 +58,111 @@ class RateLimitSettings(BaseModel):
         description="Delay between retry attempts in seconds"
     )
 
-    class Config:
-        """Pydantic model configuration."""
-        frozen = True
-        validate_assignment = True
-        extra = "forbid"
+    model_config = {
+        "frozen": True,
+        "validate_assignment": True,
+        "extra": "forbid"
+    }
 
 
 class ApiSettings(BaseModel):
     """Common API settings for providers."""
+
     timeout: int = Field(
         default=DEFAULT_API_TIMEOUT,
         ge=1,
         le=300,
         description="API request timeout in seconds"
     )
+
     base_url: Optional[str] = Field(
         default=None,
-        description="Base URL for API requests"
+        description="Base URL for API requests",
+        pattern=r"^https?://.+"
     )
+
     headers: Dict[str, str] = Field(
         default_factory=dict,
         description="Additional HTTP headers for API requests"
     )
 
-    class Config:
-        """Pydantic model configuration."""
-        frozen = True
-        validate_assignment = True
-        extra = "forbid"
+    model_config = {
+        "frozen": True,
+        "validate_assignment": True,
+        "extra": "forbid"
+    }
+
+    @field_validator("headers")
+    @classmethod
+    def validate_headers(cls, v: Dict[str, str]) -> Dict[str, str]:
+        """Validate HTTP headers.
+
+        Args:
+            v: Headers dictionary to validate
+
+        Returns:
+            Dict[str, str]: Validated headers
+
+        Raises:
+            ValueError: If headers are invalid
+        """
+        invalid_headers = [k for k in v.keys() if not cls._is_valid_header_name(k)]
+        if invalid_headers:
+            raise ValueError(f"Invalid header names: {', '.join(invalid_headers)}")
+        return v
+
+    @staticmethod
+    def _is_valid_header_name(name: str) -> bool:
+        """Check if header name is valid.
+
+        Args:
+            name: Header name to validate
+
+        Returns:
+            bool: True if header name is valid
+        """
+        return bool(name and name.strip() and all(c.isprintable() for c in name))
 
 
-class BaseProviderSettings(BaseModel, ABC):
-    """
-    Abstract base class for provider settings.
-    Defines common configuration options and validation patterns.
-    """
+class BaseProviderSettings(BaseModel):
+    """Abstract base class for provider settings."""
+
     enabled: bool = Field(
         default=False,
         description="Enable this notification provider"
     )
+
     rate_limit: RateLimitSettings = Field(
         default_factory=RateLimitSettings,
         description="Rate limiting configuration"
     )
+
     api_settings: ApiSettings = Field(
         default_factory=ApiSettings,
         description="API configuration"
     )
+
     message_template: Optional[str] = Field(
         default=DEFAULT_MESSAGE_TEMPLATE,
+        min_length=1,
         description="Custom message template for notifications"
     )
+
     message_priority: MessagePriority = Field(
         default=MessagePriority.NORMAL,
         description="Default message priority level"
     )
+
     notification_increment: int = Field(
         default=DEFAULT_NOTIFICATION_INCREMENT,
+        ge=MIN_NOTIFICATION_INCREMENT,
+        le=MAX_NOTIFICATION_INCREMENT,
         description="Progress percentage increment for notifications"
+    )
+
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Optional tags for message categorization"
     )
 
     @field_validator("message_template")
@@ -133,26 +182,38 @@ class BaseProviderSettings(BaseModel, ABC):
         if v is None:
             return DEFAULT_MESSAGE_TEMPLATE
 
-        # Check if template contains at least one valid placeholder
-        template_placeholders = TEMPLATE_PLACEHOLDERS.values()
-        if not any(placeholder in v for placeholder in template_placeholders):
-            valid_placeholders = ", ".join(template_placeholders)
+        required_placeholders = {"{percent}", "{remaining_data}", "{etc}"}
+        found_placeholders = set(cls._extract_placeholders(v))
+
+        if not found_placeholders.intersection(required_placeholders):
             raise ValueError(
-                f"Template must contain at least one valid placeholder. "
-                f"Valid placeholders are: {valid_placeholders}"
+                "Template must contain at least one of: "
+                "{percent}, {remaining_data}, {etc}"
             )
 
         return v
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: List[str]) -> List[str]:
+        """Validate message tags.
+
+        Args:
+            v: List of tags to validate
+
+        Returns:
+            List[str]: Validated tags
+
+        Raises:
+            ValueError: If tags are invalid
+        """
+        return [tag.strip().lower() for tag in v if tag.strip()]
 
     def to_provider_config(self) -> JsonDict:
         """Convert settings to provider configuration dictionary.
 
         Returns:
             JsonDict: Provider configuration dictionary
-
-        Note:
-            This method should be overridden by provider implementations
-            to include provider-specific configuration.
         """
         return {
             "enabled": self.enabled,
@@ -160,14 +221,28 @@ class BaseProviderSettings(BaseModel, ABC):
             "api_settings": self.api_settings.model_dump(),
             "message_template": self.message_template,
             "message_priority": self.message_priority,
-            "notification_increment": self.notification_increment
+            "notification_increment": self.notification_increment,
+            "tags": self.tags
         }
 
-    class Config:
-        """Pydantic model configuration."""
-        validate_assignment = True
-        extra = "forbid"
-        json_schema_extra = {
+    @staticmethod
+    def _extract_placeholders(template: str) -> List[str]:
+        """Extract placeholder variables from template string.
+
+        Args:
+            template: Template string to parse
+
+        Returns:
+            List[str]: List of found placeholders
+        """
+        import re
+        pattern = r"\{([^}]+)\}"
+        return re.findall(pattern, template)
+
+    model_config = {
+        "validate_assignment": True,
+        "extra": "forbid",
+        "json_schema_extra": {
             "examples": [
                 {
                     "enabled": True,
@@ -179,12 +254,15 @@ class BaseProviderSettings(BaseModel, ABC):
                     },
                     "api_settings": {
                         "timeout": 30,
-                        "base_url": None,
-                        "headers": {}
+                        "headers": {
+                            "User-Agent": "MoverStatus/1.0"
+                        }
                     },
                     "message_template": DEFAULT_MESSAGE_TEMPLATE,
                     "message_priority": "normal",
-                    "notification_increment": 25
+                    "notification_increment": 25,
+                    "tags": ["status", "mover"]
                 }
             ]
         }
+    }
