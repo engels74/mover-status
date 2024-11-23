@@ -2,7 +2,7 @@
 
 """
 Type definitions specific to Discord webhook configuration.
-Contains types used only for configuration purposes, importing shared types as needed.
+Contains types used for sending notifications, importing shared types as needed.
 
 Example:
     >>> from config.providers.discord.types import WebhookConfig
@@ -11,7 +11,13 @@ Example:
 
 from typing import Optional, TypedDict
 
-from shared.types.discord import ApiLimits, DiscordColor  # Import shared types we need
+from config.constants import JsonDict
+from shared.types.discord import (
+    ApiLimits,
+    DiscordColor,
+    Embed,
+    WebhookPayload,
+)
 
 
 class WebhookConfig(TypedDict, total=False):
@@ -21,19 +27,52 @@ class WebhookConfig(TypedDict, total=False):
     avatar_url: Optional[str]
     embed_color: Optional[int]
     thread_name: Optional[str]
+    content: Optional[str]
 
-class RateLimitConfig(TypedDict):
-    """Discord rate limit configuration."""
-    max_retries: int
-    retry_delay: int
-    requests_per_second: int
-    requests_per_minute: int
 
-# Re-export commonly used items for convenience
-# This allows users to import these from either location
+class WebhookResponse(TypedDict):
+    """Discord webhook response structure."""
+    id: str
+    type: int
+    channel_id: str
+    content: Optional[str]
+    embeds: list[Embed]
+    author: Optional[JsonDict]
+    timestamp: str
+
+
+class RateLimitInfo(TypedDict):
+    """Discord API rate limit information."""
+    limit: int
+    remaining: int
+    reset_after: float
+    bucket: str
+    reset_time: str
+
+
+# Default webhook configuration
+DEFAULT_WEBHOOK_CONFIG = {
+    "username": "Mover Bot",
+    "embed_color": DiscordColor.INFO
+}
+
+# Webhook API constraints
+WEBHOOK_CONSTRAINTS = {
+    "max_retries": 3,
+    "retry_delay": 5,
+    "max_embeds": ApiLimits.EMBEDS_PER_MESSAGE,
+    "max_username_length": ApiLimits.USERNAME_LENGTH,
+    "webhook_timeout": 30,
+}
+
 __all__ = [
     'WebhookConfig',
-    'RateLimitConfig',
+    'WebhookResponse',
+    'RateLimitInfo',
+    'DEFAULT_WEBHOOK_CONFIG',
+    'WEBHOOK_CONSTRAINTS',
     'ApiLimits',
     'DiscordColor',
+    'Embed',
+    'WebhookPayload',
 ]
