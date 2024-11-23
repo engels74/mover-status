@@ -6,17 +6,17 @@ Defines the interface and common functionality for all notification providers.
 Handles rate limiting, error handling, and message formatting.
 
 Example:
-    class DiscordProvider(NotificationProvider):
-        async def send_notification(self, message: str) -> bool:
-            # Discord-specific implementation
-            webhook_data = self._format_message(message)
-            return await self._send_webhook(webhook_data)
+    >>> class DiscordProvider(NotificationProvider):
+    ...     async def send_notification(self, message: str) -> bool:
+    ...         # Discord-specific implementation
+    ...         webhook_data = self._format_message(message)
+    ...         return await self._send_webhook(webhook_data)
 """
 
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from structlog import get_logger
 
@@ -32,6 +32,15 @@ logger = get_logger(__name__)
 
 class NotificationError(Exception):
     """Base exception for notification-related errors."""
+    def __init__(self, message: str, code: Optional[int] = None):
+        """Initialize error with optional status code.
+
+        Args:
+            message: Error description
+            code: Optional error code
+        """
+        super().__init__(message)
+        self.code = code
 
 
 class RateLimitExceeded(NotificationError):
@@ -42,7 +51,25 @@ class MessageFormatError(NotificationError):
     """Raised when message formatting fails."""
 
 
-class NotificationProvider(ABC):
+class MessageFormatterProtocol(Protocol):
+    """Protocol defining message formatting interface."""
+
+    def _format_message(self, message: str) -> Dict[str, Any]:
+        """Format message for provider-specific requirements.
+
+        Args:
+            message: Raw message string
+
+        Returns:
+            Dict[str, Any]: Formatted message data
+
+        Raises:
+            MessageFormatError: If formatting fails
+        """
+        ...
+
+
+class NotificationProvider(ABC, MessageFormatterProtocol):
     """
     Abstract base class for notification providers.
     Implements common functionality and defines required interface.
@@ -62,13 +89,26 @@ class NotificationProvider(ABC):
             rate_period: Time period for rate limit in seconds
             retry_attempts: Number of retry attempts for failed notifications
             retry_delay: Delay between retry attempts in seconds
+
+        Raises:
+            ValueError: If provided values are invalid
         """
+        if rate_limit < 1:
+            raise ValueError("Rate limit must be at least 1")
+        if rate_period < 1:
+            raise ValueError("Rate period must be at least 1 second")
+        if retry_attempts < 0:
+            raise ValueError("Retry attempts cannot be negative")
+        if retry_delay < 0:
+            raise ValueError("Retry delay cannot be negative")
+
         self._rate_limit = rate_limit
         self._rate_period = rate_period
         self._retry_attempts = retry_attempts
         self._retry_delay = retry_delay
         self._notification_history: List[datetime] = []
-        self._last_error: Optional[Exception] = None
+        self._last_error: Optional[NotificationError] = None
+        self._last_notification_time: Optional[datetime] = None
 
     @abstractmethod
     async def send_notification(self, message: str) -> bool:
@@ -82,20 +122,6 @@ class NotificationProvider(ABC):
 
         Raises:
             NotificationError: If notification fails
-        """
-
-    @abstractmethod
-    def _format_message(self, message: str) -> Dict[str, Any]:
-        """Format message for provider-specific requirements.
-
-        Args:
-            message: Raw message string
-
-        Returns:
-            Dict[str, Any]: Formatted message data
-
-        Raises:
-            MessageFormatError: If formatting fails
         """
 
     async def notify(
@@ -117,8 +143,12 @@ class NotificationProvider(ABC):
         Raises:
             RateLimitExceeded: If rate limit is exceeded
             NotificationError: If notification fails after retries
+            ValueError: If template string is invalid
         """
-        if not self._check_rate_limit():
+        if not template:
+            raise ValueError("Template string cannot be empty")
+
+        if not await self._check_rate_limit():
             raise RateLimitExceeded(
                 f"Rate limit exceeded: {self._rate_limit} per {self._rate_period}s"
             )
@@ -145,28 +175,33 @@ class NotificationProvider(ABC):
             raise MessageFormatError(f"Failed to format message: {err}") from err
 
         # Attempt notification with retries
-        for attempt in range(self._retry_attempts):
+        last_error = None
+        for attempt in range(self._retry_attempts + 1):  # Include initial attempt
             try:
                 if await self.send_notification(message):
-                    self._notification_history.append(datetime.now())
+                    self._last_notification_time = datetime.now()
+                    self._notification_history.append(self._last_notification_time)
                     self._last_error = None
                     return True
 
-            except Exception as err:
-                self._last_error = err
+            except NotificationError as err:
+                last_error = err
                 logger.warning(
                     "Notification attempt failed",
                     attempt=attempt + 1,
+                    max_attempts=self._retry_attempts + 1,
                     error=str(err),
+                    retry_delay=self._retry_delay,
                 )
-                if attempt < self._retry_attempts - 1:
+                if attempt < self._retry_attempts:
                     await asyncio.sleep(self._retry_delay)
 
+        self._last_error = last_error
         raise NotificationError(
-            f"Failed to send notification after {self._retry_attempts} attempts"
-        )
+            f"Failed to send notification after {self._retry_attempts + 1} attempts"
+        ) from last_error
 
-    def _check_rate_limit(self) -> bool:
+    async def _check_rate_limit(self) -> bool:
         """Check if sending notification would exceed rate limit.
 
         Returns:
@@ -180,12 +215,21 @@ class NotificationProvider(ABC):
             t for t in self._notification_history if t > cutoff
         ]
 
-        return len(self._notification_history) < self._rate_limit
+        # Check if sending would exceed limit
+        if len(self._notification_history) >= self._rate_limit:
+            return False
+
+        return True
 
     @property
-    def last_error(self) -> Optional[Exception]:
+    def last_error(self) -> Optional[NotificationError]:
         """Get last notification error if any."""
         return self._last_error
+
+    @property
+    def last_notification_time(self) -> Optional[datetime]:
+        """Get timestamp of last successful notification."""
+        return self._last_notification_time
 
     def reset_rate_limit(self) -> None:
         """Reset rate limiting history."""
