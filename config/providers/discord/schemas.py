@@ -13,21 +13,18 @@ Example:
 """
 
 import re
-from typing import List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from pydantic import (
-    BaseModel,
-    Field,
-    HttpUrl,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
+from config.providers.discord.types import (
+    DEFAULT_WEBHOOK_CONFIG,
+    WebhookConfig,
+)
 from shared.types.discord import (
     ApiLimits,
-    DiscordColor,
-    WebhookPayload,
 )
 
 
@@ -45,7 +42,10 @@ class EmbedFieldSchema(BaseModel):
         max_length=ApiLimits.FIELD_VALUE_LENGTH,
         description="Field value"
     )
-    inline: bool = Field(default=False, description="Display field inline")
+    inline: bool = Field(
+        default=False,
+        description="Display field inline"
+    )
 
     @model_validator(mode='after')
     def validate_content(self) -> 'EmbedFieldSchema':
@@ -115,7 +115,7 @@ class EmbedSchema(BaseModel):
         description="Embed URL"
     )
     color: Optional[int] = Field(
-        default=None,
+        default=DEFAULT_WEBHOOK_CONFIG["embed_color"],
         ge=0,
         le=0xFFFFFF,
         description="Embed color (hex)"
@@ -133,9 +133,8 @@ class EmbedSchema(BaseModel):
         default=None,
         description="Embed author"
     )
-    timestamp: Optional[str] = Field(
+    timestamp: Optional[datetime] = Field(
         default=None,
-        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$",
         description="ISO8601 timestamp"
     )
 
@@ -143,6 +142,7 @@ class EmbedSchema(BaseModel):
     def validate_embed(self) -> 'EmbedSchema':
         """Validate total embed length and content requirements."""
         total_length = 0
+
         if self.title:
             total_length += len(self.title)
         if self.description:
@@ -163,6 +163,13 @@ class EmbedSchema(BaseModel):
 
         return self
 
+    def to_dict(self) -> Dict:
+        """Convert embed to Discord API format."""
+        data = self.model_dump(exclude_none=True)
+        if self.timestamp:
+            data['timestamp'] = self.timestamp.isoformat()
+        return data
+
 
 class WebhookConfigSchema(BaseModel):
     """Schema for Discord webhook configuration validation."""
@@ -171,7 +178,7 @@ class WebhookConfigSchema(BaseModel):
         description="Discord webhook URL"
     )
     username: str = Field(
-        default="Mover Bot",
+        default=DEFAULT_WEBHOOK_CONFIG["username"],
         min_length=1,
         max_length=ApiLimits.USERNAME_LENGTH,
         description="Webhook username"
@@ -180,35 +187,16 @@ class WebhookConfigSchema(BaseModel):
         default=None,
         description="Webhook avatar URL"
     )
-    rate_limit: int = Field(
-        default=30,
-        ge=1,
-        le=60,
-        description="Rate limit per minute"
-    )
-    rate_period: int = Field(
-        default=60,
-        ge=30,
-        le=3600,
-        description="Rate limit period in seconds"
-    )
-    retry_attempts: int = Field(
-        default=3,
-        ge=1,
-        le=5,
-        description="Maximum retry attempts"
-    )
-    retry_delay: int = Field(
-        default=5,
-        ge=1,
-        le=30,
-        description="Delay between retries in seconds"
+    thread_name: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Thread name for forum posts"
     )
 
     @field_validator('webhook_url')
     @classmethod
     def validate_webhook_url(cls, v: HttpUrl) -> HttpUrl:
-        """Validate Discord webhook URL format and domain."""
+        """Validate Discord webhook URL format."""
         parsed = urlparse(str(v))
         if "discord.com" not in parsed.netloc:
             raise ValueError("Webhook URL must be from discord.com domain")
@@ -230,74 +218,24 @@ class WebhookConfigSchema(BaseModel):
 
         return v
 
-    @field_validator('avatar_url')
-    @classmethod
-    def validate_avatar_url(cls, v: Optional[HttpUrl]) -> Optional[HttpUrl]:
-        """Validate avatar URL format and domain."""
-        if v:
-            parsed = urlparse(str(v))
-            allowed_domains = {"cdn.discordapp.com", "i.imgur.com"}
-            if not any(domain in parsed.netloc for domain in allowed_domains):
-                raise ValueError("Avatar URL must be from Discord or Imgur domains")
-        return v
+    def to_webhook_config(self) -> WebhookConfig:
+        """Convert to WebhookConfig dictionary."""
+        return {
+            "url": str(self.webhook_url),
+            "username": self.username,
+            "avatar_url": str(self.avatar_url) if self.avatar_url else None,
+            "thread_name": self.thread_name,
+            "embed_color": DEFAULT_WEBHOOK_CONFIG["embed_color"]
+        }
 
-    class Config:
-        """Pydantic model configuration."""
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "examples": [
                 {
                     "webhook_url": "https://discord.com/api/webhooks/123/abc",
                     "username": "Mover Bot",
-                    "rate_limit": 30,
-                    "rate_period": 60,
-                    "retry_attempts": 3,
-                    "retry_delay": 5
+                    "thread_name": "Mover Status Updates"
                 }
             ]
         }
-
-
-def validate_webhook_payload(payload: WebhookPayload) -> bool:
-    """Validate webhook payload against Discord limits.
-
-    Args:
-        payload: Webhook payload to validate
-
-    Returns:
-        bool: True if payload is valid
-
-    Raises:
-        ValueError: If payload exceeds Discord limits
-    """
-    if len(payload.get("embeds", [])) > ApiLimits.EMBEDS_PER_MESSAGE:
-        raise ValueError(f"Maximum of {ApiLimits.EMBEDS_PER_MESSAGE} embeds allowed")
-
-    if "content" in payload and len(payload["content"]) > ApiLimits.CONTENT_LENGTH:
-        raise ValueError(f"Content exceeds {ApiLimits.CONTENT_LENGTH} characters")
-
-    if "username" in payload and len(payload["username"]) > ApiLimits.USERNAME_LENGTH:
-        raise ValueError(f"Username exceeds {ApiLimits.USERNAME_LENGTH} characters")
-
-    total_size = len(str(payload))  # Simple size estimation
-    if total_size > 8192:  # Discord's approximate payload size limit
-        raise ValueError("Webhook payload too large")
-
-    return True
-
-
-def get_color_for_status(status: str) -> int:
-    """Get appropriate color for status messages.
-
-    Args:
-        status: Status identifier
-
-    Returns:
-        int: Discord color code
-    """
-    status_colors = {
-        "success": DiscordColor.SUCCESS,
-        "warning": DiscordColor.WARNING,
-        "error": DiscordColor.ERROR,
-        "info": DiscordColor.INFO
     }
-    return status_colors.get(status.lower(), DiscordColor.INFO)
