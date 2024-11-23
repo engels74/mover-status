@@ -12,27 +12,26 @@ Example:
 from enum import IntEnum, StrEnum
 from typing import Dict, List, Optional, TypedDict, Union
 
+# Fix: Import ParseMode from shared types instead of redefining
 from shared.types.telegram import (
+    ChatType as SharedChatType,
     InlineKeyboardMarkup,
     MessageEntity,
+    MessageLimit as SharedMessageLimit,
     ParseMode,
 )
 
+# Fix: Remove duplicate ChatType enum and use the shared one
+ChatType = SharedChatType
 
-class ChatType(StrEnum):
-    """Telegram chat types for configuration."""
-    PRIVATE = "private"
-    GROUP = "group"
-    SUPERGROUP = "supergroup"
-    CHANNEL = "channel"
-
+# Fix: Remove duplicate MessageLimit and use shared version
+MessageLimit = SharedMessageLimit
 
 class MessagePriority(IntEnum):
     """Message priority levels for notifications."""
     SILENT = 0     # No notification
     NORMAL = 1     # Default notification
     URGENT = 2     # Priority notification (bypasses mute)
-
 
 class BotPermissions(IntEnum):
     """Required bot permissions for different features."""
@@ -43,7 +42,6 @@ class BotPermissions(IntEnum):
     INVITE_USERS = 16
     PIN_MESSAGES = 32
     MANAGE_TOPICS = 64
-
 
 class SendMessageRequest(TypedDict, total=False):
     """Telegram sendMessage request structure."""
@@ -58,7 +56,6 @@ class SendMessageRequest(TypedDict, total=False):
     allow_sending_without_reply: Optional[bool]
     reply_markup: Optional[InlineKeyboardMarkup]
 
-
 class EditMessageRequest(TypedDict, total=False):
     """Telegram editMessageText request structure."""
     chat_id: Union[int, str]
@@ -69,12 +66,10 @@ class EditMessageRequest(TypedDict, total=False):
     disable_web_page_preview: Optional[bool]
     reply_markup: Optional[InlineKeyboardMarkup]
 
-
 class DeleteMessageRequest(TypedDict, total=False):
     """Telegram deleteMessage request structure."""
     chat_id: Union[int, str]
     message_id: int
-
 
 class ProviderError(TypedDict):
     """Provider error response structure."""
@@ -83,58 +78,30 @@ class ProviderError(TypedDict):
     retry_after: Optional[int]
     parameters: Optional[Dict]
 
-
 class BotCommand(TypedDict):
     """Bot command configuration structure."""
     command: str
     description: str
     permissions: Optional[List[BotPermissions]]
 
+# Fix: Move rate limiting configuration to constants.py
+from config.constants import (
+    DEFAULT_API_RETRIES,
+    DEFAULT_API_RETRY_DELAY,
+)
 
 # Provider-specific rate limiting configuration
 RATE_LIMIT = {
-    "max_retries": 3,      # Maximum retry attempts
-    "retry_delay": 5,      # Delay between retries in seconds
+    "max_retries": DEFAULT_API_RETRIES,
+    "retry_delay": DEFAULT_API_RETRY_DELAY,
     "rate_limit": 20,      # Maximum requests per period
     "rate_period": 60,     # Rate limit period in seconds
 }
 
-# Default message templates for provider
-DEFAULT_TEMPLATES = {
-    "progress": (
-        "📊 <b>Mover Status</b>\n\n"
-        "Progress: <b>{percent}%</b>\n"
-        "{progress_bar}\n"
-        "Remaining: {remaining_data}\n"
-        "Elapsed: {elapsed_time}\n"
-        "ETC: {etc}"
-    ),
-    "completion": "✅ <b>Transfer Complete</b>\n\nAll data has been successfully moved.",
-    "error": "❌ <b>Error</b>\n\n{error_message}",
-    "warning": "⚠️ <b>Warning</b>\n\n{warning_message}"
-}
+# Fix: Move templates to telegram/templates.py
+from notifications.providers.telegram.templates import DEFAULT_TEMPLATES
 
-# Provider configuration defaults
-DEFAULT_CONFIG = {
-    "parse_mode": ParseMode.HTML,
-    "disable_notification": False,
-    "protect_content": False,
-    "message_thread_id": None,
-    "api_base_url": "https://api.telegram.org"
-}
-
-# Provider capabilities and requirements
-PROVIDER_CAPS = {
-    "supports_edit": True,           # Can edit sent messages
-    "supports_delete": True,         # Can delete sent messages
-    "supports_formatting": True,     # Supports message formatting
-    "supports_inline_buttons": True, # Supports inline keyboard buttons
-    "required_permissions": [        # Required bot permissions
-        BotPermissions.SEND_MESSAGES,
-        BotPermissions.EDIT_MESSAGES
-    ]
-}
-
+# Fix: Add proper type annotations for keyboard creation function
 def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     """Create inline keyboard with progress information.
 
@@ -144,11 +111,12 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     Returns:
         InlineKeyboardMarkup: Progress keyboard markup
 
-    Example:
-        >>> keyboard = create_progress_keyboard(75.5)
-        >>> keyboard["inline_keyboard"]
-        [[{"text": "▓▓▓▓▓▓▓▒▒▒ 75.5%", "callback_data": "progress"}]]
+    Raises:
+        ValueError: If percent is not between 0 and 100
     """
+    if not 0 <= percent <= 100:
+        raise ValueError("Percentage must be between 0 and 100")
+
     progress_blocks = 10
     filled = int(percent / 100 * progress_blocks)
     bar = "▓" * filled + "▒" * (progress_blocks - filled)
@@ -160,6 +128,7 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
         }]]
     }
 
+# Fix: Add proper validation for chat IDs
 def validate_chat_id(chat_id: Union[int, str]) -> bool:
     """Validate Telegram chat ID format.
 
@@ -185,29 +154,10 @@ def validate_chat_id(chat_id: Union[int, str]) -> bool:
 
         # Group/channel ID format: -100{9-10 digits}
         if chat_id.startswith("-100"):
-            return chat_id[4:].isdigit() and len(chat_id[4:]) in (9, 10)
+            remaining = chat_id[4:]
+            return remaining.isdigit() and len(remaining) in (9, 10)
 
         # Private chat ID format: positive integer
-        return chat_id.isdigit()
+        return chat_id.lstrip("-").isdigit()
 
     return False
-
-def get_error_message(error: ProviderError) -> str:
-    """Get human-readable error message from provider error.
-
-    Args:
-        error: Provider error structure
-
-    Returns:
-        str: Formatted error message
-
-    Example:
-        >>> error = {"code": 429, "message": "Too Many Requests", "retry_after": 30}
-        >>> get_error_message(error)
-        'Rate limit exceeded. Please wait 30 seconds.'
-    """
-    if error["code"] == 429:
-        retry_after = error.get("retry_after", 60)
-        return f"Rate limit exceeded. Please wait {retry_after} seconds."
-
-    return error.get("message", "Unknown error occurred")
