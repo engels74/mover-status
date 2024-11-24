@@ -1,26 +1,21 @@
 # utils/validators.py
 
 """
-Generic validation utilities for application configuration and settings.
-Provides type-safe validation functions for URLs, paths, and common configuration values.
-Provider-specific validation should be implemented in their respective modules.
-
-Functions:
-    validate_url: Generic URL validation with domain restrictions
-    validate_paths: Validate cache and excluded paths
-    validate_notification_increment: Validate notification increment percentage
-    validate_polling_interval: Validate monitoring interval value
+Base validation utilities for provider configurations.
+Provides reusable validation classes and functions for common configuration elements.
 
 Example:
-    >>> from pathlib import Path
-    >>> from utils.validators import validate_paths
-    >>> cache_path = Path("/mnt/cache")
-    >>> excluded = [Path("/mnt/cache/downloads")]
-    >>> validated_cache, validated_excluded = validate_paths(cache_path, excluded)
+    >>> class DiscordValidator(BaseProviderValidator):
+    ...     def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    ...         self.validate_rate_limits(config.get("rate_limit", 30))
+    ...         return config
 """
 
+import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, TypeVar, Union
 from urllib.parse import urlparse
 
 from pydantic import HttpUrl
@@ -28,151 +23,243 @@ from pydantic import HttpUrl
 from config.constants import (
     MAX_NOTIFICATION_INCREMENT,
     MIN_NOTIFICATION_INCREMENT,
+    PathLike,
 )
 
+ConfigT = TypeVar("ConfigT", bound=Dict[str, Any])
 
-def validate_url(
-    url: Optional[HttpUrl],
-    required_domain: str,
-    allowed_schemes: Optional[List[str]] = None,
-    max_length: int = 2048,
-) -> Optional[HttpUrl]:
-    """Validate URL format, scheme, and domain.
+@dataclass
+class ValidationResult:
+    """Container for validation results."""
+    is_valid: bool
+    errors: List[str]
+    warnings: List[str]
+    validated_data: Optional[Dict[str, Any]] = None
 
-    Args:
-        url: URL to validate
-        required_domain: Domain that must be present in URL
-        allowed_schemes: List of allowed URL schemes (defaults to ["https"])
-        max_length: Maximum allowed URL length
+class ValidationError(Exception):
+    """Base exception for validation errors."""
+    def __init__(self, message: str, field: Optional[str] = None):
+        self.field = field
+        super().__init__(message)
 
-    Returns:
-        Optional[HttpUrl]: Validated URL or None
+class ConfigurationError(ValidationError):
+    """Raised when configuration validation fails."""
+    pass
 
-    Raises:
-        ValueError: If URL format is invalid
-    """
-    if not url:
-        return None
+class RateLimitError(ValidationError):
+    """Raised when rate limit validation fails."""
+    pass
 
-    if allowed_schemes is None:
-        allowed_schemes = ["https"]
+class URLValidationError(ValidationError):
+    """Raised when URL validation fails."""
+    pass
 
-    try:
-        parsed = urlparse(str(url))
-        if not parsed.scheme or not parsed.netloc:
-            raise ValueError("Invalid URL format")
+class BaseProviderValidator(ABC):
+    """Abstract base class for provider-specific validators."""
 
-        if parsed.scheme not in allowed_schemes:
-            raise ValueError(f"URL scheme must be one of: {', '.join(allowed_schemes)}")
+    @abstractmethod
+    def validate_config(self, config: ConfigT) -> ConfigT:
+        """Validate complete provider configuration.
 
-        if len(str(url)) > max_length:
-            raise ValueError(f"URL length exceeds maximum of {max_length} characters")
+        Args:
+            config: Provider configuration dictionary
 
-        if required_domain not in parsed.netloc:
-            raise ValueError(f"URL must be from {required_domain} domain")
+        Returns:
+            ConfigT: Validated configuration dictionary
 
-        return url
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        pass
 
-    except Exception as err:
-        raise ValueError(f"URL validation failed: {err}") from err
+    @classmethod
+    def validate_rate_limits(
+        cls,
+        rate_limit: int,
+        rate_period: int,
+        min_limit: int = 1,
+        max_limit: int = 60,
+        min_period: int = 1,
+        max_period: int = 3600
+    ) -> None:
+        """Validate rate limiting configuration.
 
+        Args:
+            rate_limit: Maximum number of requests per period
+            rate_period: Time period in seconds
+            min_limit: Minimum allowed rate limit
+            max_limit: Maximum allowed rate limit
+            min_period: Minimum period in seconds
+            max_period: Maximum period in seconds
 
-def validate_paths(
-    cache_path: Path,
-    excluded_paths: List[Path],
-) -> Tuple[Path, List[Path]]:
-    """Validate cache path and excluded paths.
+        Raises:
+            RateLimitError: If rate limits are invalid
+        """
+        if not isinstance(rate_limit, int):
+            raise RateLimitError("Rate limit must be an integer")
+        if not isinstance(rate_period, int):
+            raise RateLimitError("Rate period must be an integer")
 
-    Args:
-        cache_path: Main cache directory path
-        excluded_paths: List of paths to exclude from monitoring
+        if not min_limit <= rate_limit <= max_limit:
+            raise RateLimitError(
+                f"Rate limit must be between {min_limit} and {max_limit}"
+            )
+        if not min_period <= rate_period <= max_period:
+            raise RateLimitError(
+                f"Rate period must be between {min_period} and {max_period} seconds"
+            )
 
-    Returns:
-        Tuple[Path, List[Path]]: Validated cache path and excluded paths
+    @classmethod
+    def validate_url(
+        cls,
+        url: Optional[Union[str, HttpUrl]],
+        required_domain: Optional[str] = None,
+        allowed_schemes: Optional[List[str]] = None,
+        required: bool = True,
+        max_length: int = 2048
+    ) -> Optional[str]:
+        """Validate URL format and constraints.
 
-    Raises:
-        ValueError: If paths are invalid or don't exist
-    """
-    # Validate cache path
-    if not isinstance(cache_path, Path):
-        raise ValueError("Cache path must be a Path object")
+        Args:
+            url: URL to validate
+            required_domain: Domain that must be present in URL
+            allowed_schemes: List of allowed URL schemes
+            required: Whether URL is required
+            max_length: Maximum allowed URL length
 
-    try:
-        cache_path = cache_path.resolve(strict=True)
-        if not cache_path.is_dir():
-            raise ValueError(f"Cache path must be a directory: {cache_path}")
-    except FileNotFoundError as err:
-        raise ValueError(f"Cache path does not exist: {cache_path}") from err
+        Returns:
+            Optional[str]: Validated URL string or None
 
-    # Validate excluded paths
-    validated_excluded: List[Path] = []
-    for path in excluded_paths:
-        if not isinstance(path, Path):
-            raise ValueError(f"Excluded path must be a Path object: {path}")
+        Raises:
+            URLValidationError: If URL validation fails
+        """
+        if not url:
+            if required:
+                raise URLValidationError("URL is required")
+            return None
+
+        url_str = str(url)
+        if len(url_str) > max_length:
+            raise URLValidationError(f"URL exceeds maximum length of {max_length}")
 
         try:
-            resolved_path = path.resolve(strict=True)
-            if not str(resolved_path).startswith(str(cache_path)):
-                raise ValueError(
-                    f"Excluded path must be within cache path: {resolved_path}"
+            parsed = urlparse(url_str)
+            if not all([parsed.scheme, parsed.netloc]):
+                raise URLValidationError("Invalid URL format")
+
+            if allowed_schemes and parsed.scheme not in allowed_schemes:
+                raise URLValidationError(
+                    f"URL scheme must be one of: {', '.join(allowed_schemes)}"
                 )
-            validated_excluded.append(resolved_path)
+
+            if required_domain and required_domain not in parsed.netloc:
+                raise URLValidationError(f"URL must be from {required_domain} domain")
+
+            return url_str
+
+        except Exception as err:
+            raise URLValidationError(f"URL validation failed: {err}") from err
+
+    @classmethod
+    def validate_paths(
+        cls,
+        base_path: PathLike,
+        excluded_paths: Optional[List[PathLike]] = None
+    ) -> tuple[Path, List[Path]]:
+        """Validate base path and excluded paths.
+
+        Args:
+            base_path: Main directory path to validate
+            excluded_paths: List of paths to exclude
+
+        Returns:
+            tuple[Path, List[Path]]: Validated base path and excluded paths
+
+        Raises:
+            ValidationError: If path validation fails
+        """
+        try:
+            base = Path(base_path).resolve(strict=True)
+            if not base.is_dir():
+                raise ValidationError(f"Base path must be a directory: {base}")
+
+            validated_excluded: List[Path] = []
+            if excluded_paths:
+                for path in excluded_paths:
+                    excluded = Path(path).resolve(strict=True)
+                    if not str(excluded).startswith(str(base)):
+                        raise ValidationError(
+                            f"Excluded path must be within base path: {excluded}"
+                        )
+                    validated_excluded.append(excluded)
+
+            return base, validated_excluded
+
         except FileNotFoundError as err:
-            raise ValueError(f"Excluded path does not exist: {path}") from err
+            raise ValidationError(f"Path does not exist: {err.filename}") from err
 
-    return cache_path, validated_excluded
+    @classmethod
+    def validate_notification_increment(
+        cls,
+        value: int,
+        min_value: int = MIN_NOTIFICATION_INCREMENT,
+        max_value: int = MAX_NOTIFICATION_INCREMENT
+    ) -> int:
+        """Validate notification increment percentage.
 
+        Args:
+            value: Increment percentage to validate
+            min_value: Minimum allowed increment
+            max_value: Maximum allowed increment
 
-def validate_notification_increment(value: int) -> int:
-    """Validate notification increment percentage.
+        Returns:
+            int: Validated increment value
 
-    Args:
-        value: Increment percentage to validate
+        Raises:
+            ValidationError: If increment is invalid
+        """
+        if not isinstance(value, int):
+            raise ValidationError("Notification increment must be an integer")
 
-    Returns:
-        int: Validated increment value
+        if not min_value <= value <= max_value:
+            raise ValidationError(
+                f"Notification increment must be between {min_value} and {max_value}"
+            )
 
-    Raises:
-        ValueError: If value is out of valid range
-    """
-    if not isinstance(value, int):
-        raise ValueError("Notification increment must be an integer")
+        return value
 
-    if value < MIN_NOTIFICATION_INCREMENT:
-        raise ValueError(
-            f"Notification increment must be at least {MIN_NOTIFICATION_INCREMENT}%"
-        )
+    @staticmethod
+    def validate_identifier(
+        value: str,
+        pattern: str = r"^[a-zA-Z0-9_-]+$",
+        min_length: int = 1,
+        max_length: int = 64
+    ) -> str:
+        """Validate string identifier format.
 
-    if value > MAX_NOTIFICATION_INCREMENT:
-        raise ValueError(
-            f"Notification increment cannot exceed {MAX_NOTIFICATION_INCREMENT}%"
-        )
+        Args:
+            value: String to validate
+            pattern: Regex pattern for valid format
+            min_length: Minimum string length
+            max_length: Maximum string length
 
-    return value
+        Returns:
+            str: Validated identifier
 
+        Raises:
+            ValidationError: If identifier is invalid
+        """
+        if not value or not isinstance(value, str):
+            raise ValidationError("Identifier must be a non-empty string")
 
-def validate_polling_interval(value: float) -> float:
-    """Validate polling interval value.
+        if not min_length <= len(value) <= max_length:
+            raise ValidationError(
+                f"Identifier length must be between {min_length} and {max_length}"
+            )
 
-    Args:
-        value: Polling interval in seconds
+        if not re.match(pattern, value):
+            raise ValidationError(
+                "Identifier can only contain letters, numbers, underscores, and hyphens"
+            )
 
-    Returns:
-        float: Validated interval value
-
-    Raises:
-        ValueError: If interval is invalid
-    """
-    if not isinstance(value, (int, float)):
-        raise ValueError("Polling interval must be a number")
-
-    if value <= 0:
-        raise ValueError("Polling interval must be positive")
-
-    if value < 0.1:
-        raise ValueError("Polling interval cannot be less than 0.1 seconds")
-
-    if value > 3600:  # 1 hour max
-        raise ValueError("Polling interval cannot exceed 3600 seconds (1 hour)")
-
-    return float(value)
+        return value
