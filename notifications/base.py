@@ -51,6 +51,10 @@ class MessageFormatError(NotificationError):
     """Raised when message formatting fails."""
 
 
+class ConfigurationError(NotificationError):
+    """Raised when provider configuration is invalid."""
+
+
 class MessageFormatterProtocol(Protocol):
     """Protocol defining message formatting interface."""
 
@@ -74,6 +78,43 @@ class NotificationProvider(ABC, MessageFormatterProtocol):
     Abstract base class for notification providers.
     Implements common functionality and defines required interface.
     """
+
+    @classmethod
+    def validate_config(
+        cls,
+        config: Dict[str, Any],
+        required_fields: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Validate provider configuration.
+
+        This is a base implementation that checks basic dictionary structure.
+        Providers should override this method to implement provider-specific validation.
+
+        Args:
+            config: Configuration dictionary to validate
+            required_fields: Optional list of required field names
+
+        Returns:
+            Dict[str, Any]: Validated configuration dictionary
+
+        Raises:
+            ConfigurationError: If configuration is invalid
+
+        Example:
+            >>> config = {"webhook_url": "https://example.com", "username": "bot"}
+            >>> validated = DiscordProvider.validate_config(config)
+        """
+        if not isinstance(config, dict):
+            raise ConfigurationError("Configuration must be a dictionary")
+
+        if required_fields:
+            missing = [field for field in required_fields if field not in config]
+            if missing:
+                raise ConfigurationError(
+                    f"Missing required configuration fields: {', '.join(missing)}"
+                )
+
+        return config
 
     def __init__(
         self,
@@ -176,7 +217,7 @@ class NotificationProvider(ABC, MessageFormatterProtocol):
 
         # Attempt notification with retries
         last_error = None
-        for attempt in range(self._retry_attempts + 1):  # Include initial attempt
+        for attempt in range(self._retry_attempts + 1):
             try:
                 if await self.send_notification(message):
                     self._last_notification_time = datetime.now()
