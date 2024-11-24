@@ -112,11 +112,9 @@ def format_duration(
 
     parts = []
     remaining = seconds
-
     for value, unit in intervals:
         if remaining < 1:
             break
-
         count = int(remaining // value)
         if count > 0:
             unit_str = f"{unit}s" if count != 1 else unit
@@ -173,7 +171,6 @@ def format_progress(
             width = 20
         if width < 2:
             raise ValueError("Width must be at least 2")
-
         fill_char, empty_char = chars or ('=', ' ')
         inner_width = width - 2  # Account for brackets
         filled = int(round(value / 100 * inner_width))
