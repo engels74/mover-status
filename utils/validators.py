@@ -1,16 +1,15 @@
 # utils/validators.py
 
 """
-Generic validation utilities for application configuration.
-Provides core validation functions for paths, intervals, and common configuration values.
-Provider-specific validation should use the validators defined in their respective modules.
+Generic validation utilities for application configuration and settings.
+Provides type-safe validation functions for URLs, paths, and common configuration values.
+Provider-specific validation should be implemented in their respective modules.
 
 Functions:
-    validate_paths: Validate cache and excluded paths
-    validate_notification_increment: Validate notification percentage
-    validate_polling_interval: Validate monitoring interval value
     validate_url: Generic URL validation with domain restrictions
-    validate_provider_config: Basic provider configuration validation
+    validate_paths: Validate cache and excluded paths
+    validate_notification_increment: Validate notification increment percentage
+    validate_polling_interval: Validate monitoring interval value
 
 Example:
     >>> from pathlib import Path
@@ -21,7 +20,7 @@ Example:
 """
 
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 from pydantic import HttpUrl
@@ -30,8 +29,6 @@ from config.constants import (
     MAX_NOTIFICATION_INCREMENT,
     MIN_NOTIFICATION_INCREMENT,
 )
-from config.providers.discord.schemas import WebhookConfigSchema
-from config.providers.telegram.schemas import BotConfigSchema
 
 
 def validate_url(
@@ -179,40 +176,3 @@ def validate_polling_interval(value: float) -> float:
         raise ValueError("Polling interval cannot exceed 3600 seconds (1 hour)")
 
     return float(value)
-
-
-def validate_provider_config(
-    config: dict,
-    required_fields: Optional[List[str]] = None,
-    provider_type: Optional[Literal["discord", "telegram"]] = None,
-) -> dict:
-    """Validate provider configuration dictionary.
-
-    Args:
-        config: Configuration dictionary to validate
-        required_fields: List of required field names
-        provider_type: Specific provider type for additional validation
-
-    Returns:
-        dict: Validated configuration dictionary
-
-    Raises:
-        ValueError: If configuration is invalid
-    """
-    if not isinstance(config, dict):
-        raise ValueError("Configuration must be a dictionary")
-
-    if required_fields:
-        missing = [field for field in required_fields if field not in config]
-        if missing:
-            raise ValueError(f"Missing required configuration fields: {', '.join(missing)}")
-
-    try:
-        if provider_type == "discord":
-            WebhookConfigSchema(**config)
-        elif provider_type == "telegram":
-            BotConfigSchema(**config)
-    except ValueError as err:
-        raise ValueError(f"Invalid {provider_type} configuration: {err}") from err
-
-    return config
