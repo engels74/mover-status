@@ -169,4 +169,4 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
-.project_overview/temp_progress.md
+/.project_overview
