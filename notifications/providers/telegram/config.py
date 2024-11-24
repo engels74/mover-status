@@ -1,47 +1,44 @@
 # notifications/providers/telegram/config.py
 
 """
-Runtime configuration management for Telegram bot notifications.
-Handles validation, normalization, and conversion of bot API configuration settings.
+Telegram bot configuration management and validation.
+Handles configuration parsing and validation using Pydantic models.
 
 Example:
     >>> from notifications.providers.telegram import TelegramConfig
     >>> config = TelegramConfig(
+    ...     enabled=True,
     ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-    ...     chat_id="-1001234567890",
-    ...     parse_mode="HTML"
+    ...     chat_id="-1001234567890"
     ... )
     >>> provider_config = config.to_provider_config()
 """
 
-import re
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
-from structlog import get_logger
+from pydantic import Field, HttpUrl, field_validator
 
-from notifications.providers.telegram.types import (
-    RATE_LIMIT,
+from config.providers.base import BaseProviderSettings
+from notifications.providers.telegram.schemas import BotConfigSchema
+from notifications.providers.telegram.validators import TelegramValidator
+from shared.types.telegram import (
     ChatType,
+    MessageLimit,
     ParseMode,
-    validate_chat_id,
 )
-from shared.types.telegram import MessageLimit
-
-logger = get_logger(__name__)
 
 
-class TelegramConfig(BaseModel):
+class TelegramConfig(BaseProviderSettings):
     """Telegram bot configuration settings."""
 
-    bot_token: str = Field(
-        ...,  # Required field
+    bot_token: Optional[str] = Field(
+        default=None,
         description="Telegram bot API token",
         examples=["123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"]
     )
 
-    chat_id: Union[int, str] = Field(
-        ...,  # Required field
+    chat_id: Optional[Union[int, str]] = Field(
+        default=None,
         description="Telegram chat ID (group, channel, or user)",
         examples=["-1001234567890", "@channelname"]
     )
@@ -67,15 +64,13 @@ class TelegramConfig(BaseModel):
         description="Optional thread ID for forum/topic messages"
     )
 
-    api_base_url: str = Field(
+    api_base_url: HttpUrl = Field(
         default="https://api.telegram.org",
         description="Telegram API base URL"
     )
 
     max_message_length: int = Field(
         default=MessageLimit.MESSAGE_TEXT,
-        ge=1,
-        le=MessageLimit.MESSAGE_TEXT,
         description="Maximum message length in characters"
     )
 
@@ -84,111 +79,103 @@ class TelegramConfig(BaseModel):
         description="Type of chat (private, group, supergroup, channel)"
     )
 
-    rate_limit: int = Field(
-        default=RATE_LIMIT["rate_limit"],
-        ge=1,
-        le=60,
-        description="Maximum number of messages per minute"
-    )
-
-    rate_period: int = Field(
-        default=RATE_LIMIT["rate_period"],
-        ge=30,
-        le=3600,
-        description="Rate limit period in seconds"
-    )
-
-    retry_attempts: int = Field(
-        default=RATE_LIMIT["max_retries"],
-        ge=1,
-        le=5,
-        description="Number of retry attempts for failed messages"
-    )
-
-    retry_delay: int = Field(
-        default=RATE_LIMIT["retry_delay"],
-        ge=1,
-        le=30,
-        description="Delay between retry attempts in seconds"
-    )
+    _validator: TelegramValidator = TelegramValidator()
 
     @field_validator("bot_token")
-    def validate_bot_token(cls, v: str) -> str:
-        """Validate Telegram bot token format.
+    @classmethod
+    def validate_bot_token(cls, v: Optional[str], info: Any) -> Optional[str]:
+        """Validate Telegram bot token format and presence.
 
         Args:
             v: Bot token to validate
+            info: Validation context information
 
         Returns:
-            str: Validated bot token
+            Optional[str]: Validated bot token
 
         Raises:
-            ValueError: If token format is invalid
+            ValueError: If token is invalid or missing when enabled
         """
-        if not v:
-            raise ValueError("Bot token is required")
+        enabled = info.data.get("enabled", False)
 
-        # Token format: <bot_id>:<token>
-        parts = v.split(":")
-        if len(parts) != 2:
-            raise ValueError("Invalid bot token format: missing separator")
-
-        bot_id, token = parts
-
-        if not bot_id.isdigit():
-            raise ValueError("Invalid bot token format: invalid bot ID")
-
-        if not re.match(r"^[A-Za-z0-9_-]{30,}$", token):
-            raise ValueError("Invalid bot token format: invalid token")
-
-        return v
+        try:
+            if v is not None:
+                cls._validator.validate_bot_token(v, required=enabled)
+            elif enabled:
+                raise ValueError("Bot token must be provided when Telegram is enabled")
+            return v
+        except Exception as err:
+            raise ValueError(str(err)) from err
 
     @field_validator("chat_id")
-    def validate_chat_id(cls, v: Union[int, str]) -> Union[int, str]:
+    @classmethod
+    def validate_chat_id(cls, v: Optional[Union[int, str]], info: Any) -> Optional[Union[int, str]]:
         """Validate Telegram chat ID format.
 
         Args:
             v: Chat ID to validate
+            info: Validation context information
 
         Returns:
-            Union[int, str]: Validated chat ID
+            Optional[Union[int, str]]: Validated chat ID
 
         Raises:
             ValueError: If chat ID format is invalid
         """
-        if not validate_chat_id(v):
-            raise ValueError(
-                "Invalid chat ID format. Must be an integer, '-100' prefixed ID, "
-                "or channel username starting with '@'"
-            )
-        return v
+        enabled = info.data.get("enabled", False)
+
+        try:
+            if v is not None:
+                return cls._validator.validate_chat_id(v, required=enabled)
+            elif enabled:
+                raise ValueError("Chat ID must be provided when Telegram is enabled")
+            return v
+        except Exception as err:
+            raise ValueError(str(err)) from err
 
     @field_validator("api_base_url")
-    def validate_api_url(cls, v: str) -> str:
-        """Validate API base URL format.
+    @classmethod
+    def validate_api_url(cls, v: HttpUrl) -> HttpUrl:
+        """Validate API base URL.
 
         Args:
             v: API URL to validate
 
         Returns:
-            str: Validated API URL
+            HttpUrl: Validated API URL
 
         Raises:
-            ValueError: If URL format is invalid
+            ValueError: If URL is invalid
         """
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("API URL must start with http:// or https://")
+        try:
+            cls._validator.validate_api_url(str(v))
+            return v
+        except Exception as err:
+            raise ValueError(str(err)) from err
 
-        if "telegram.org" not in v.lower():
-            raise ValueError("API URL must be from telegram.org domain")
+    @field_validator("max_message_length")
+    @classmethod
+    def validate_message_length(cls, v: int) -> int:
+        """Validate maximum message length.
 
-        return v.rstrip("/")  # Remove trailing slashes
-
-    def to_provider_config(self) -> dict:
-        """Convert configuration to provider-compatible dictionary.
+        Args:
+            v: Message length to validate
 
         Returns:
-            dict: Configuration dictionary for provider initialization
+            int: Validated message length
+
+        Raises:
+            ValueError: If length exceeds Telegram limits
+        """
+        if not 1 <= v <= MessageLimit.MESSAGE_TEXT:
+            raise ValueError(f"Message length must be between 1 and {MessageLimit.MESSAGE_TEXT}")
+        return v
+
+    def to_provider_config(self) -> Dict[str, Any]:
+        """Convert settings to Telegram provider configuration.
+
+        Returns:
+            Dict[str, Any]: Telegram provider configuration dictionary
 
         Example:
             >>> config = TelegramConfig(
@@ -198,47 +185,54 @@ class TelegramConfig(BaseModel):
             >>> provider_config = config.to_provider_config()
             >>> assert "bot_token" in provider_config
         """
-        config = {
-            "bot_token": self.bot_token,
-            "chat_id": self.chat_id,
-            "parse_mode": self.parse_mode,
-            "disable_notifications": self.disable_notifications,
-            "protect_content": self.protect_content,
-            "api_base_url": self.api_base_url,
-            "max_message_length": self.max_message_length,
-            "rate_limit": {
-                "limit": self.rate_limit,
-                "period": self.rate_period,
-                "retry_attempts": self.retry_attempts,
-                "retry_delay": self.retry_delay
-            }
-        }
+        # Get base configuration
+        config = super().to_provider_config()
 
-        # Add optional settings if set
-        if self.message_thread_id is not None:
-            config["message_thread_id"] = self.message_thread_id
-        if self.chat_type is not None:
-            config["chat_type"] = self.chat_type
+        # Create bot config using schema
+        bot_config = None
+        if self.bot_token and self.chat_id:
+            try:
+                bot_config = BotConfigSchema(
+                    bot_token=self.bot_token,
+                    chat_id=self.chat_id,
+                    parse_mode=self.parse_mode,
+                    disable_notifications=self.disable_notifications,
+                    protect_content=self.protect_content,
+                    message_thread_id=self.message_thread_id,
+                    api_base_url=str(self.api_base_url),
+                    max_message_length=self.max_message_length
+                ).model_dump()
+
+                # Validate complete bot configuration
+                self._validator.validate_config(bot_config)
+            except Exception as err:
+                raise ValueError(f"Invalid bot configuration: {err}") from err
+
+        # Add Telegram-specific configuration
+        config.update({
+            "bot_config": bot_config,
+            "chat_type": self.chat_type.value if self.chat_type else None
+        })
 
         return config
 
     class Config:
         """Pydantic model configuration."""
-        frozen = True  # Make the config immutable
         validate_assignment = True
-        allow_mutation = False
-        extra = "forbid"  # Prevent additional fields
-        title = "Telegram Bot Configuration"
+        extra = "forbid"
         json_schema_extra = {
             "examples": [
                 {
+                    "enabled": True,
                     "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
                     "chat_id": "-1001234567890",
                     "parse_mode": "HTML",
-                    "rate_limit": 20,
-                    "rate_period": 60,
-                    "retry_attempts": 3,
-                    "retry_delay": 5
+                    "rate_limit": {
+                        "rate_limit": 20,
+                        "rate_period": 60,
+                        "retry_attempts": 3,
+                        "retry_delay": 5
+                    }
                 }
             ]
         }
