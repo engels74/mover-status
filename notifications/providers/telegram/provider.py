@@ -5,24 +5,25 @@ Telegram bot notification provider implementation.
 Handles sending notifications via Telegram Bot API with proper rate limiting and error handling.
 
 Example:
-    >>> from notifications.telegram.provider import TelegramProvider
+    >>> from notifications.providers.telegram import TelegramProvider
     >>> provider = TelegramProvider({
-    ...     "bot_token": "YOUR_BOT_TOKEN",
-    ...     "chat_id": "YOUR_CHAT_ID",
-    ...     "parse_mode": "HTML"
+    ...     "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+    ...     "chat_id": "-1001234567890"
     ... })
     >>> async with provider:
     ...     await provider.notify_progress(75.5, "1.2 GB", "2 hours", "15:30")
 """
 
 import asyncio
+import re
 from typing import Any, Dict, Optional, Union
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
 from structlog import get_logger
 
 from notifications.base import NotificationError, NotificationProvider
+from notifications.providers.telegram.schemas import BotConfigSchema
 from notifications.providers.telegram.templates import (
     create_completion_message,
     create_error_message,
@@ -30,13 +31,12 @@ from notifications.providers.telegram.templates import (
 )
 from notifications.providers.telegram.types import (
     RATE_LIMIT,
-    ChatType,
     MessageLimit,
     MessagePriority,
     ParseMode,
     SendMessageRequest,
+    validate_message_length,
 )
-from shared.types.telegram import validate_message_length
 
 logger = get_logger(__name__)
 
@@ -64,6 +64,142 @@ class TelegramError(NotificationError):
 class TelegramProvider(NotificationProvider):
     """Telegram bot notification provider implementation."""
 
+    @classmethod
+    def _validate_bot_token(cls, token: str) -> None:
+        """Validate Telegram bot token format.
+
+        Args:
+            token: Bot token to validate
+
+        Raises:
+            ValueError: If token format is invalid
+        """
+        if not token:
+            raise ValueError("Bot token is required")
+
+        # Token format: <bot_id>:<token>
+        parts = token.split(":")
+        if len(parts) != 2:
+            raise ValueError("Invalid bot token format: missing separator")
+
+        bot_id, token_part = parts
+
+        if not bot_id.isdigit():
+            raise ValueError("Invalid bot token format: invalid bot ID")
+
+        if not re.match(r"^[A-Za-z0-9_-]{30,}$", token_part):
+            raise ValueError("Invalid bot token format: invalid token")
+
+    @classmethod
+    def _validate_chat_id(cls, chat_id: Union[int, str]) -> None:
+        """Validate Telegram chat ID format.
+
+        Args:
+            chat_id: Chat ID to validate
+
+        Raises:
+            ValueError: If chat ID format is invalid
+        """
+        if not chat_id:
+            raise ValueError("Chat ID is required")
+
+        if isinstance(chat_id, int):
+            return
+
+        chat_id_str = str(chat_id)
+
+        # Channel username format: @channel_name
+        if chat_id_str.startswith("@"):
+            if len(chat_id_str) < 2 or not chat_id_str[1:].replace("_", "").isalnum():
+                raise ValueError("Invalid channel username format")
+            return
+
+        # Group/supergroup format: -100{9,10 digits}
+        if chat_id_str.startswith("-100"):
+            remaining = chat_id_str[4:]
+            if not remaining.isdigit() or len(remaining) not in (9, 10):
+                raise ValueError("Invalid group/supergroup ID format")
+            return
+
+        # Basic group or private chat ID
+        if not chat_id_str.replace("-", "").isdigit():
+            raise ValueError("Invalid chat ID format")
+
+    @classmethod
+    def _validate_api_url(cls, url: str) -> None:
+        """Validate and normalize Telegram API URL.
+
+        Args:
+            url: API URL to validate
+
+        Raises:
+            ValueError: If URL format is invalid
+        """
+        if not url:
+            raise ValueError("API URL is required")
+
+        try:
+            parsed = urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                raise ValueError("Invalid API URL format")
+
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError("API URL must use HTTP(S) protocol")
+
+            if "telegram.org" not in parsed.netloc:
+                raise ValueError("API URL must be from telegram.org domain")
+
+        except Exception as err:
+            raise ValueError(f"Invalid API URL: {err}") from err
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate Telegram provider configuration.
+
+        Args:
+            config: Configuration dictionary to validate
+
+        Returns:
+            Dict[str, Any]: Validated configuration
+
+        Raises:
+            ValueError: If configuration is invalid
+        """
+        try:
+            # Validate required settings
+            cls._validate_bot_token(str(config.get("bot_token", "")))
+            cls._validate_chat_id(config.get("chat_id", ""))
+            cls._validate_api_url(str(config.get("api_base_url", "https://api.telegram.org")))
+
+            # Prepare validated configuration
+            validated = {
+                "bot_token": str(config["bot_token"]),
+                "chat_id": str(config["chat_id"]),
+                "parse_mode": config.get("parse_mode", ParseMode.HTML),
+                "disable_notifications": bool(config.get("disable_notifications", False)),
+                "protect_content": bool(config.get("protect_content", False)),
+                "message_thread_id": config.get("message_thread_id"),
+                "api_base_url": config.get("api_base_url", "https://api.telegram.org").rstrip("/"),
+                "max_message_length": min(
+                    int(config.get("max_message_length", MessageLimit.MESSAGE_TEXT)),
+                    MessageLimit.MESSAGE_TEXT
+                ),
+                "chat_type": config.get("chat_type"),
+                "rate_limit": config.get("rate_limit", RATE_LIMIT["rate_limit"]),
+                "rate_period": config.get("rate_period", RATE_LIMIT["rate_period"]),
+                "retry_attempts": config.get("retry_attempts", RATE_LIMIT["max_retries"]),
+                "retry_delay": config.get("retry_delay", RATE_LIMIT["retry_delay"]),
+            }
+
+            # Validate using schema
+            BotConfigSchema(**validated)
+            return validated
+
+        except ValueError:
+            raise
+        except Exception as err:
+            raise ValueError(f"Configuration validation failed: {err}") from err
+
     def __init__(self, config: Dict[str, Any]):
         """Initialize Telegram provider.
 
@@ -73,126 +209,40 @@ class TelegramProvider(NotificationProvider):
         Raises:
             ValueError: If required configuration is missing or invalid
         """
-        # Initialize rate limiting from config or defaults
-        rate_limit_config = config.get("rate_limit", {})
+        # Initialize with validated config
+        validated_config = self.validate_config(config)
         super().__init__(
-            rate_limit=rate_limit_config.get("limit", RATE_LIMIT["rate_limit"]),
-            rate_period=rate_limit_config.get("period", RATE_LIMIT["rate_period"]),
-            retry_attempts=rate_limit_config.get("retry_attempts", RATE_LIMIT["max_retries"]),
-            retry_delay=rate_limit_config.get("retry_delay", RATE_LIMIT["retry_delay"]),
+            rate_limit=validated_config["rate_limit"],
+            rate_period=validated_config["rate_period"],
+            retry_attempts=validated_config["retry_attempts"],
+            retry_delay=validated_config["retry_delay"],
         )
 
-        # Required configuration
-        self.bot_token = self._validate_config_str(config, "bot_token", "Bot token")
-        self.chat_id = self._validate_chat_id(config.get("chat_id"))
-
-        # Optional configuration
-        self.parse_mode = ParseMode(config.get("parse_mode", ParseMode.HTML))
-        self.disable_notifications = bool(config.get("disable_notifications", False))
-        self.protect_content = bool(config.get("protect_content", False))
-        self.message_thread_id = config.get("message_thread_id")
-        self.chat_type = ChatType(config["chat_type"]) if "chat_type" in config else None
-        self.api_base_url = self._validate_api_url(
-            config.get("api_base_url", "https://api.telegram.org")
-        )
-        self.max_message_length = min(
-            int(config.get("max_message_length", MessageLimit.MESSAGE_TEXT)),
-            MessageLimit.MESSAGE_TEXT
-        )
+        self.bot_token = validated_config["bot_token"]
+        self.chat_id = validated_config["chat_id"]
+        self.parse_mode = validated_config["parse_mode"]
+        self.disable_notifications = validated_config["disable_notifications"]
+        self.protect_content = validated_config["protect_content"]
+        self.message_thread_id = validated_config["message_thread_id"]
+        self.api_base_url = validated_config["api_base_url"]
+        self.max_message_length = validated_config["max_message_length"]
+        self.chat_type = validated_config["chat_type"]
 
         # Session management
         self.session: Optional[aiohttp.ClientSession] = None
         self._last_message_id: Optional[int] = None
-        self._message_priority = MessagePriority(
-            config.get("message_priority", MessagePriority.NORMAL)
-        )
+        self._message_priority = MessagePriority.NORMAL
 
-    def _validate_config_str(
-        self,
-        config: Dict[str, Any],
-        key: str,
-        display_name: str
-    ) -> str:
-        """Validate required string configuration value.
+    def _build_api_url(self, method: str) -> str:
+        """Build Telegram API URL for given method.
 
         Args:
-            config: Configuration dictionary
-            key: Configuration key
-            display_name: Human-readable name for error messages
+            method: API method name
 
         Returns:
-            str: Validated configuration value
-
-        Raises:
-            ValueError: If value is missing or invalid
+            str: Complete API URL
         """
-        value = config.get(key)
-        if not value or not isinstance(value, str):
-            raise ValueError(f"{display_name} must be a non-empty string")
-        return value.strip()
-
-    def _validate_chat_id(self, chat_id: Optional[Union[int, str]]) -> str:
-        """Validate Telegram chat ID.
-
-        Args:
-            chat_id: Chat ID to validate
-
-        Returns:
-            str: Validated chat ID
-
-        Raises:
-            ValueError: If chat ID is invalid
-        """
-        if not chat_id:
-            raise ValueError("Chat ID is required")
-
-        chat_id_str = str(chat_id)
-
-        # Channel username format: @channel_name
-        if chat_id_str.startswith("@"):
-            if len(chat_id_str) < 2 or not chat_id_str[1:].replace("_", "").isalnum():
-                raise ValueError("Invalid channel username format")
-            return chat_id_str
-
-        # Group/supergroup format: -100{9,10 digits}
-        if chat_id_str.startswith("-100"):
-            remaining = chat_id_str[4:]
-            if not remaining.isdigit() or len(remaining) not in (9, 10):
-                raise ValueError("Invalid group/supergroup ID format")
-            return chat_id_str
-
-        # Private chat or basic group format
-        if chat_id_str.replace("-", "").isdigit():
-            return chat_id_str
-
-        raise ValueError(
-            "Invalid chat ID format. Must be a channel username starting with '@', "
-            "a group ID starting with '-100', or a numeric chat ID"
-        )
-
-    def _validate_api_url(self, url: str) -> str:
-        """Validate and normalize Telegram API URL.
-
-        Args:
-            url: API URL to validate
-
-        Returns:
-            str: Normalized API URL
-
-        Raises:
-            ValueError: If URL is invalid
-        """
-        if not url:
-            raise ValueError("API URL is required")
-
-        url = url.rstrip("/")
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("API URL must start with http:// or https://")
-
-        if "api.telegram.org" not in url:
-            raise ValueError("API URL must be from api.telegram.org domain")
-
-        return url
+        return urljoin(f"{self.api_base_url}/bot{self.bot_token}/", method)
 
     async def __aenter__(self) -> "TelegramProvider":
         """Async context manager entry."""
@@ -215,17 +265,6 @@ class TelegramProvider(NotificationProvider):
         if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
-
-    def _build_api_url(self, method: str) -> str:
-        """Build Telegram API URL for given method.
-
-        Args:
-            method: API method name
-
-        Returns:
-            str: Complete API URL
-        """
-        return urljoin(f"{self.api_base_url}/bot{self.bot_token}/", method)
 
     async def _handle_rate_limit(
         self,
@@ -255,14 +294,14 @@ class TelegramProvider(NotificationProvider):
         self,
         method: str,
         data: SendMessageRequest,
-        retries: int = 3
+        retries: Optional[int] = None
     ) -> Dict[str, Any]:
         """Send request to Telegram API with retries.
 
         Args:
             method: API method name
             data: Request payload
-            retries: Number of retry attempts
+            retries: Optional retry attempts override
 
         Returns:
             Dict[str, Any]: API response data
@@ -274,16 +313,17 @@ class TelegramProvider(NotificationProvider):
             await self.connect()
 
         url = self._build_api_url(method)
+        max_retries = retries if retries is not None else self._retry_attempts
         last_error = None
 
-        for attempt in range(retries + 1):
+        for attempt in range(max_retries + 1):
             try:
                 async with self.session.post(url, json=data) as response:
                     response_data = await response.json()
 
                     # Handle rate limiting
                     if retry_after := await self._handle_rate_limit(response, response_data):
-                        if attempt < retries:
+                        if attempt < max_retries:
                             await asyncio.sleep(retry_after)
                             continue
                         raise TelegramError(
@@ -315,7 +355,7 @@ class TelegramProvider(NotificationProvider):
                 last_error = TelegramError(f"Telegram API request failed: {err}")
                 last_error.__cause__ = err
 
-            if attempt < retries:
+            if attempt < max_retries:
                 await asyncio.sleep(self._retry_delay * (attempt + 1))
                 continue
 
@@ -417,25 +457,42 @@ class TelegramProvider(NotificationProvider):
         except Exception as err:
             raise TelegramError(f"Failed to send progress update: {err}") from err
 
-    async def notify_completion(self) -> bool:
+    async def notify_completion(
+        self,
+        stats: Optional[Dict[str, Union[str, int, float]]] = None
+    ) -> bool:
         """Send completion notification.
+
+        Args:
+            stats: Optional transfer statistics to include
 
         Returns:
             bool: True if notification was sent successfully
         """
         try:
-            message_data = create_completion_message(parse_mode=self.parse_mode)
+            message_data = create_completion_message(
+                parse_mode=self.parse_mode,
+                include_stats=bool(stats),
+                stats=stats
+            )
             return await self.send_notification(message_data["text"])
         except TelegramError:
             raise
         except Exception as err:
             raise TelegramError(f"Failed to send completion notification: {err}") from err
 
-    async def notify_error(self, error_message: str) -> bool:
+    async def notify_error(
+        self,
+        error_message: str,
+        include_debug: bool = False,
+        debug_info: Optional[Dict[str, str]] = None
+    ) -> bool:
         """Send error notification.
 
         Args:
             error_message: Error description
+            include_debug: Whether to include debug information
+            debug_info: Optional debug information
 
         Returns:
             bool: True if notification was sent successfully
@@ -443,7 +500,10 @@ class TelegramProvider(NotificationProvider):
         try:
             message_data = create_error_message(
                 error_message,
-                parse_mode=self.parse_mode
+                parse_mode=self.parse_mode,
+                include_debug=include_debug,
+                debug_info=debug_info,
+                priority=MessagePriority.HIGH
             )
             return await self.send_notification(message_data["text"])
         except TelegramError:
@@ -454,7 +514,7 @@ class TelegramProvider(NotificationProvider):
     async def edit_message(
         self,
         message_id: Optional[int] = None,
-        **message_data
+        **message_data: Any
     ) -> bool:
         """Edit previous message.
 
@@ -493,7 +553,7 @@ class TelegramProvider(NotificationProvider):
         """Delete a message.
 
         Args:
-            message_id: Optional message ID to delete. Uses last sent message ID if not provided.
+            message_id: Optional message ID to delete
 
         Returns:
             bool: True if message was deleted successfully
