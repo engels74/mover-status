@@ -16,7 +16,7 @@ Example:
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
 from structlog import get_logger
 
@@ -26,8 +26,13 @@ from config.constants import (
 )
 from core.calculator import TransferStats
 from utils.formatters import format_duration, format_size, format_template
+from utils.validators import BaseProviderValidator, ValidationContext
 
 logger = get_logger(__name__)
+
+# Type variable for provider-specific config types
+TConfig = TypeVar('TConfig')
+TValidator = TypeVar('TValidator', bound=BaseProviderValidator)
 
 
 class NotificationError(Exception):
@@ -55,6 +60,19 @@ class ConfigurationError(NotificationError):
     """Raised when provider configuration is invalid."""
 
 
+class ValidationError(NotificationError):
+    """Raised when validation fails."""
+    def __init__(self, message: str, context: Optional[ValidationContext] = None):
+        """Initialize validation error with optional context.
+
+        Args:
+            message: Error description
+            context: Optional validation context with metrics
+        """
+        super().__init__(message)
+        self.context = context
+
+
 class MessageFormatterProtocol(Protocol):
     """Protocol defining message formatting interface."""
 
@@ -73,51 +91,64 @@ class MessageFormatterProtocol(Protocol):
         ...
 
 
-class NotificationProvider(ABC, MessageFormatterProtocol):
+class NotificationProvider(ABC, MessageFormatterProtocol, Generic[TConfig, TValidator]):
     """
     Abstract base class for notification providers.
     Implements common functionality and defines required interface.
+
+    Type Parameters:
+        TConfig: Provider-specific configuration type
+        TValidator: Provider-specific validator type
     """
+
+    # Class-level validator instance for config validation
+    _validator_class: Type[TValidator]
 
     @classmethod
     def validate_config(
         cls,
         config: Dict[str, Any],
-        required_fields: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """Validate provider configuration.
+        required_fields: Optional[List[str]] = None,
+        context: Optional[ValidationContext] = None,
+    ) -> TConfig:
+        """Validate provider configuration using the provider's validator.
 
-        This is a base implementation that checks basic dictionary structure.
-        Providers should override this method to implement provider-specific validation.
+        This implementation uses the provider's validator class to validate the config.
+        Providers should specify their validator class and override this method if needed.
 
         Args:
             config: Configuration dictionary to validate
             required_fields: Optional list of required field names
+            context: Optional validation context for metrics
 
         Returns:
-            Dict[str, Any]: Validated configuration dictionary
+            TConfig: Validated configuration object
 
         Raises:
-            ConfigurationError: If configuration is invalid
+            ValidationError: If validation fails
+            ConfigurationError: If configuration is invalid or validator is not set
 
         Example:
             >>> config = {"webhook_url": "https://example.com", "username": "bot"}
             >>> validated = DiscordProvider.validate_config(config)
         """
-        if not isinstance(config, dict):
-            raise ConfigurationError("Configuration must be a dictionary")
+        if not hasattr(cls, '_validator_class'):
+            raise ConfigurationError(
+                f"No validator class set for provider {cls.__name__}"
+            )
 
-        if required_fields:
-            missing = [field for field in required_fields if field not in config]
-            if missing:
-                raise ConfigurationError(
-                    f"Missing required configuration fields: {', '.join(missing)}"
-                )
-
-        return config
+        try:
+            validator = cls._validator_class()
+            return validator.validate(config, context=context)
+        except Exception as e:
+            raise ValidationError(
+                f"Configuration validation failed: {str(e)}",
+                context=context
+            ) from e
 
     def __init__(
         self,
+        config: TConfig,
         rate_limit: int = 1,
         rate_period: int = 60,
         retry_attempts: int = NOTIFICATION_RETRY_ATTEMPTS,
@@ -126,6 +157,7 @@ class NotificationProvider(ABC, MessageFormatterProtocol):
         """Initialize notification provider.
 
         Args:
+            config: Validated provider configuration
             rate_limit: Maximum number of notifications per period
             rate_period: Time period for rate limit in seconds
             retry_attempts: Number of retry attempts for failed notifications
@@ -133,7 +165,20 @@ class NotificationProvider(ABC, MessageFormatterProtocol):
 
         Raises:
             ValueError: If provided values are invalid
+            ValidationError: If config validation fails
         """
+        # Validate config using provider validator
+        try:
+            self.config = self.validate_config(config)
+        except ValidationError as e:
+            logger.error(
+                "Provider configuration validation failed",
+                provider=self.__class__.__name__,
+                error=str(e),
+                context=e.context
+            )
+            raise
+
         if rate_limit < 1:
             raise ValueError("Rate limit must be at least 1")
         if rate_period < 1:
