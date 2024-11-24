@@ -16,7 +16,6 @@ Example:
 """
 
 import asyncio
-from datetime import datetime
 from typing import Any, Dict, Optional, Union
 from urllib.parse import urljoin
 
@@ -30,7 +29,6 @@ from notifications.providers.telegram.templates import (
     create_progress_message,
 )
 from notifications.providers.telegram.types import (
-    MessageLimit,
     MessagePriority,
     SendMessageRequest,
 )
