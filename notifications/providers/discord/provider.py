@@ -5,26 +5,24 @@ Discord webhook notification provider implementation.
 Handles sending notifications via Discord webhooks with proper rate limiting and error handling.
 
 Example:
-    >>> from notifications.providers.discord import DiscordProvider
-    >>> provider = DiscordProvider({
-    ...     "webhook_url": "https://discord.com/api/webhooks/...",
-    ...     "username": "Mover Bot"
-    ... })
+    >>> from notifications.providers.discord import DiscordProvider, DiscordConfig
+    >>> config = DiscordConfig(
+    ...     webhook_url="https://discord.com/api/webhooks/...",
+    ...     username="Mover Bot"
+    ... )
+    >>> provider = DiscordProvider(config.to_provider_config())
     >>> async with provider:
     ...     await provider.notify_progress(75.5, "1.2 GB", "2 hours", "15:30")
 """
 
 import asyncio
-import re
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
-from urllib.parse import urlparse
 
 import aiohttp
 from structlog import get_logger
 
 from notifications.base import NotificationError, NotificationProvider
-from notifications.providers.discord.schemas import WebhookConfigSchema
 from notifications.providers.discord.templates import (
     create_completion_embed,
     create_error_embed,
@@ -32,16 +30,14 @@ from notifications.providers.discord.templates import (
     create_webhook_data,
 )
 from notifications.providers.discord.types import (
-    RATE_LIMIT,
     DiscordColor,
     NotificationResponse,
     RateLimitInfo,
     WebhookPayload,
 )
-from shared.types.discord import ApiLimits
+from notifications.providers.discord.validators import DiscordValidator
 
 logger = get_logger(__name__)
-
 
 class DiscordWebhookError(NotificationError):
     """Raised when Discord webhook request fails."""
@@ -60,131 +56,10 @@ class DiscordWebhookError(NotificationError):
         """
         super().__init__(message, code)
         self.retry_after = retry_after
-
+        self.is_transient = code in {408, 429, 500, 502, 503, 504} if code else False
 
 class DiscordProvider(NotificationProvider):
     """Discord webhook notification provider implementation."""
-
-    @classmethod
-    def _validate_webhook_url(cls, webhook_url: str) -> None:
-        """Validate Discord webhook URL format.
-
-        Args:
-            webhook_url: URL to validate
-
-        Raises:
-            ValueError: If URL format is invalid
-        """
-        if not webhook_url.strip():
-            raise ValueError("Webhook URL is required")
-
-        parsed = urlparse(webhook_url)
-        if not all([parsed.scheme, parsed.netloc, parsed.path]):
-            raise ValueError("Invalid webhook URL format")
-        if parsed.scheme not in ["http", "https"]:
-            raise ValueError("Webhook URL must use HTTP(S) protocol")
-        if "discord.com" not in parsed.netloc:
-            raise ValueError("Webhook URL must be from discord.com domain")
-
-        path_parts = parsed.path.strip("/").split("/")
-        if len(path_parts) != 4 or path_parts[0:2] != ["api", "webhooks"]:
-            raise ValueError("Invalid webhook URL path format")
-
-        webhook_id, token = path_parts[2:4]
-        if not webhook_id.isdigit():
-            raise ValueError("Invalid webhook ID format")
-        if not re.match(r"^[A-Za-z0-9_-]{60,80}$", token):
-            raise ValueError("Invalid webhook token format")
-
-    @classmethod
-    def _validate_avatar_url(cls, avatar_url: Optional[str]) -> None:
-        """Validate avatar URL if provided.
-
-        Args:
-            avatar_url: URL to validate
-
-        Raises:
-            ValueError: If URL format is invalid
-        """
-        if not avatar_url:
-            return
-
-        try:
-            parsed = urlparse(avatar_url)
-            if not all([parsed.scheme, parsed.netloc]):
-                raise ValueError("Invalid avatar URL format")
-
-            allowed_domains = {
-                "cdn.discordapp.com",
-                "media.discordapp.net",
-                "i.imgur.com"
-            }
-            if not any(domain in parsed.netloc for domain in allowed_domains):
-                raise ValueError(
-                    f"Avatar URL must be from: {', '.join(allowed_domains)}"
-                )
-        except Exception as err:
-            raise ValueError(f"Invalid avatar URL: {err}") from err
-
-    @classmethod
-    def _validate_basic_settings(cls, config: Dict[str, Any]) -> None:
-        """Validate basic configuration settings.
-
-        Args:
-            config: Configuration to validate
-
-        Raises:
-            ValueError: If settings are invalid
-        """
-        username = str(config.get("username", "Mover Bot"))
-        if not username or len(username) > ApiLimits.USERNAME_LENGTH:
-            raise ValueError(f"Username must be 1-{ApiLimits.USERNAME_LENGTH} characters")
-
-        if "embed_color" in config:
-            embed_color = int(config["embed_color"])
-            if not 0 <= embed_color <= 0xFFFFFF:
-                raise ValueError("Embed color must be a valid hex color (0-0xFFFFFF)")
-
-    @classmethod
-    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate Discord provider configuration.
-
-        Args:
-            config: Configuration dictionary to validate
-
-        Returns:
-            Dict[str, Any]: Validated configuration
-
-        Raises:
-            ValueError: If configuration is invalid
-        """
-        try:
-            # Validate components
-            cls._validate_webhook_url(str(config.get("webhook_url", "")))
-            cls._validate_avatar_url(config.get("avatar_url"))
-            cls._validate_basic_settings(config)
-
-            # Prepare validated configuration
-            validated = {
-                "webhook_url": str(config["webhook_url"]),
-                "username": str(config.get("username", "Mover Bot")),
-                "embed_color": config.get("embed_color", DiscordColor.INFO),
-                "avatar_url": config.get("avatar_url"),
-                "thread_name": config.get("thread_name"),
-                "rate_limit": config.get("rate_limit", RATE_LIMIT["rate_limit"]),
-                "rate_period": config.get("rate_period", RATE_LIMIT["rate_period"]),
-                "retry_attempts": config.get("retry_attempts", RATE_LIMIT["max_retries"]),
-                "retry_delay": config.get("retry_delay", RATE_LIMIT["retry_delay"]),
-            }
-
-            # Validate using schema
-            WebhookConfigSchema(**validated)
-            return validated
-
-        except ValueError:
-            raise
-        except Exception as err:
-            raise ValueError(f"Configuration validation failed: {err}") from err
 
     def __init__(self, config: Dict[str, Any]):
         """Initialize Discord provider.
@@ -195,24 +70,28 @@ class DiscordProvider(NotificationProvider):
         Raises:
             ValueError: If webhook configuration is invalid
         """
-        # Initialize with validated config
-        validated_config = self.validate_config(config)
+        # Validate configuration using dedicated validator
+        validator = DiscordValidator()
+        self._config = validator.validate_config(config)
+
         super().__init__(
-            rate_limit=validated_config["rate_limit"],
-            rate_period=validated_config["rate_period"],
-            retry_attempts=validated_config["retry_attempts"],
-            retry_delay=validated_config["retry_delay"],
+            rate_limit=self._config["rate_limit"],
+            rate_period=self._config["rate_period"],
+            retry_attempts=self._config["retry_attempts"],
+            retry_delay=self._config["retry_delay"],
         )
 
-        self.webhook_url = validated_config["webhook_url"]
-        self.username = validated_config["username"]
-        self.avatar_url = validated_config["avatar_url"]
-        self.embed_color = validated_config["embed_color"]
-        self.thread_name = validated_config["thread_name"]
+        # Extract validated configuration
+        self.webhook_url = self._config["webhook_url"]
+        self.username = self._config["username"]
+        self.avatar_url = self._config["avatar_url"]
+        self.embed_color = self._config["embed_color"]
+        self.thread_name = self._config["thread_name"]
 
-        # Session management
+        # Session and rate limit management
         self.session: Optional[aiohttp.ClientSession] = None
         self._last_rate_limit: Optional[RateLimitInfo] = None
+        self._current_backoff: float = self._retry_delay
 
     async def __aenter__(self) -> "DiscordProvider":
         """Async context manager entry."""
@@ -233,17 +112,46 @@ class DiscordProvider(NotificationProvider):
     async def disconnect(self) -> None:
         """Close aiohttp session."""
         if self.session and not self.session.closed:
-            await self.session.close()
-            self.session = None
+            try:
+                await self.session.close()
+            finally:
+                self.session = None
+                self._last_rate_limit = None
+                self._current_backoff = self._retry_delay
+
+    async def _update_rate_limit_info(
+        self,
+        response: aiohttp.ClientResponse
+    ) -> Optional[RateLimitInfo]:
+        """Update rate limit information from response headers.
+
+        Args:
+            response: API response to extract rate limit info from
+
+        Returns:
+            Optional[RateLimitInfo]: Updated rate limit information
+        """
+        try:
+            self._last_rate_limit = {
+                "limit": int(response.headers.get("X-RateLimit-Limit", 0)),
+                "remaining": int(response.headers.get("X-RateLimit-Remaining", 0)),
+                "reset_after": float(response.headers.get("X-RateLimit-Reset-After", 0)),
+                "bucket": response.headers.get("X-RateLimit-Bucket", ""),
+            }
+            return self._last_rate_limit
+        except (ValueError, KeyError, TypeError):
+            return None
 
     async def _handle_rate_limit(
         self,
-        response: aiohttp.ClientResponse
+        response: aiohttp.ClientResponse,
+        data: Dict[str, Any]
     ) -> Optional[int]:
         """Handle Discord rate limit response.
 
         Args:
-            response: API response to check for rate limiting
+            response: API response
+            data: Response data dictionary
 
         Returns:
             Optional[int]: Retry delay in seconds if rate limited
@@ -251,35 +159,44 @@ class DiscordProvider(NotificationProvider):
         Raises:
             DiscordWebhookError: If rate limit info is invalid
         """
-        if response.status != 429:  # Not rate limited
+        if response.status != 429:
             return None
 
         try:
-            data = await response.json()
-            retry_after = int(data.get("retry_after", 5))
+            retry_after = float(data.get("retry_after", 5))
             is_global = data.get("global", False)
 
-            self._last_rate_limit = {
-                "limit": int(response.headers.get("X-RateLimit-Limit", 0)),
-                "remaining": int(response.headers.get("X-RateLimit-Remaining", 0)),
-                "reset_after": float(response.headers.get("X-RateLimit-Reset-After", 0)),
-                "bucket": response.headers.get("X-RateLimit-Bucket", ""),
-            }
+            # Update rate limit info
+            rate_info = await self._update_rate_limit_info(response)
 
             logger.warning(
                 "Discord rate limit hit",
                 retry_after=retry_after,
                 is_global=is_global,
-                rate_limit=self._last_rate_limit,
+                rate_info=rate_info,
             )
 
-            return retry_after
+            return int(retry_after + 0.5)  # Round up to nearest second
 
         except (ValueError, KeyError) as err:
             raise DiscordWebhookError(
                 "Invalid rate limit response",
                 code=response.status
             ) from err
+
+    def _calculate_backoff(self, attempt: int) -> float:
+        """Calculate exponential backoff delay.
+
+        Args:
+            attempt: Current attempt number
+
+        Returns:
+            float: Delay in seconds
+        """
+        # Exponential backoff with jitter
+        import random
+        max_backoff = min(self._retry_delay * (2 ** attempt), 30)  # Cap at 30 seconds
+        return random.uniform(0, max_backoff)
 
     async def send_webhook(
         self,
@@ -311,8 +228,11 @@ class DiscordProvider(NotificationProvider):
                     json=data,
                     headers={"Content-Type": "application/json"}
                 ) as response:
-                    # Check for rate limiting
-                    if retry_after := await self._handle_rate_limit(response):
+                    # Update rate limit info for all responses
+                    await self._update_rate_limit_info(response)
+
+                    # Handle rate limiting
+                    if retry_after := await self._handle_rate_limit(response, await response.json()):
                         if attempt < max_retries:
                             await asyncio.sleep(retry_after)
                             continue
@@ -341,23 +261,20 @@ class DiscordProvider(NotificationProvider):
 
             except asyncio.TimeoutError as err:
                 last_error = DiscordWebhookError(
-                    "Discord webhook request timed out",
-                    code=None
+                    "Request timed out",
+                    code=408
                 )
                 last_error.__cause__ = err
-
             except aiohttp.ClientError as err:
-                last_error = DiscordWebhookError(
-                    f"Discord webhook request failed: {err}",
-                    code=None
-                )
+                last_error = DiscordWebhookError(f"Request failed: {err}")
                 last_error.__cause__ = err
 
             if attempt < max_retries:
-                await asyncio.sleep(self._retry_delay * (attempt + 1))
+                backoff = self._calculate_backoff(attempt)
+                await asyncio.sleep(backoff)
                 continue
 
-            raise last_error or DiscordWebhookError("Maximum retries exceeded")
+        raise last_error or DiscordWebhookError("Maximum retries exceeded")
 
     async def send_notification(self, message: str) -> bool:
         """Send notification via Discord webhook.
@@ -406,6 +323,9 @@ class DiscordProvider(NotificationProvider):
 
         Returns:
             bool: True if notification was sent successfully
+
+        Raises:
+            DiscordWebhookError: If notification fails
         """
         try:
             embed = create_progress_embed(
@@ -413,7 +333,8 @@ class DiscordProvider(NotificationProvider):
                 remaining=remaining,
                 elapsed=elapsed,
                 etc=etc,
-                description=description
+                description=description,
+                color=self.embed_color
             )
 
             webhook_data = create_webhook_data(
@@ -440,9 +361,15 @@ class DiscordProvider(NotificationProvider):
 
         Returns:
             bool: True if notification was sent successfully
+
+        Raises:
+            DiscordWebhookError: If notification fails
         """
         try:
-            embed = create_completion_embed(stats=stats)
+            embed = create_completion_embed(
+                stats=stats,
+                color=DiscordColor.SUCCESS
+            )
             webhook_data = create_webhook_data(
                 embeds=[embed],
                 username=self.username,
@@ -471,12 +398,16 @@ class DiscordProvider(NotificationProvider):
 
         Returns:
             bool: True if notification was sent successfully
+
+        Raises:
+            DiscordWebhookError: If notification fails
         """
         try:
             embed = create_error_embed(
                 error_message=error_message,
                 error_code=error_code,
-                error_details=error_details
+                error_details=error_details,
+                color=DiscordColor.ERROR
             )
 
             webhook_data = create_webhook_data(
@@ -490,6 +421,4 @@ class DiscordProvider(NotificationProvider):
             return True
 
         except Exception as err:
-            raise DiscordWebhookError(
-                f"Failed to send error notification: {err}"
-            ) from err
+            raise DiscordWebhookError(f"Failed to send error notification: {err}") from err
