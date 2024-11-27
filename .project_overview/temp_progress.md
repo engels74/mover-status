@@ -122,7 +122,7 @@
    - [x] `notifications/providers/discord/templates.py` - Discord message templates and formatting utilities
 
 5. Telegram Provider Implementation
-   - [ ] `config/providers/telegram/types.py` - Telegram provider type definitions
+   - [x] `config/providers/telegram/types.py` - Telegram provider type definitions
    - [ ] `config/providers/telegram/schemas.py` - Telegram configuration validation
    - [ ] `config/providers/telegram/settings.py` - Telegram settings management
    - [ ] `notifications/providers/telegram/types.py` - Telegram notification types
