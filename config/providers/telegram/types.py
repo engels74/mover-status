@@ -10,12 +10,9 @@ Example:
 """
 
 from enum import IntEnum
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import List, Optional, TypedDict, Union
 
-from config.constants import (
-    DEFAULT_API_RETRIES,
-    DEFAULT_API_RETRY_DELAY,
-)
+from config.constants import API, ErrorMessages, JsonDict
 from shared.providers.telegram import (
     ChatType as SharedChatType,
 )
@@ -32,11 +29,13 @@ from shared.providers.telegram import (
 ChatType = SharedChatType
 MessageLimit = SharedMessageLimit
 
+
 class MessagePriority(IntEnum):
     """Message priority levels for notifications."""
     SILENT = 0     # No notification
     NORMAL = 1     # Default notification
     URGENT = 2     # Priority notification (bypasses mute)
+
 
 class BotPermissions(IntEnum):
     """Required bot permissions for different features."""
@@ -48,18 +47,19 @@ class BotPermissions(IntEnum):
     PIN_MESSAGES = 32
     MANAGE_TOPICS = 64
 
+
 class SendMessageRequest(TypedDict, total=False):
     """Telegram sendMessage request structure."""
     chat_id: Union[int, str]
-    message_thread_id: Optional[int]
     text: str
     parse_mode: Optional[ParseMode]
     entities: Optional[List[MessageEntity]]
+    disable_web_page_preview: Optional[bool]
     disable_notification: Optional[bool]
     protect_content: Optional[bool]
-    reply_to_message_id: Optional[int]
-    allow_sending_without_reply: Optional[bool]
+    message_thread_id: Optional[int]
     reply_markup: Optional[InlineKeyboardMarkup]
+
 
 class EditMessageRequest(TypedDict, total=False):
     """Telegram editMessageText request structure."""
@@ -71,31 +71,36 @@ class EditMessageRequest(TypedDict, total=False):
     disable_web_page_preview: Optional[bool]
     reply_markup: Optional[InlineKeyboardMarkup]
 
+
 class DeleteMessageRequest(TypedDict, total=False):
     """Telegram deleteMessage request structure."""
     chat_id: Union[int, str]
     message_id: int
 
-class ProviderError(TypedDict):
+
+class ProviderError(TypedDict, total=False):
     """Provider error response structure."""
     code: int
     message: str
     retry_after: Optional[int]
-    parameters: Optional[Dict]
+    parameters: Optional[JsonDict]
 
-class BotCommand(TypedDict):
+
+class BotCommand(TypedDict, total=False):
     """Bot command configuration structure."""
     command: str
     description: str
     permissions: Optional[List[BotPermissions]]
 
+
 # Provider-specific rate limiting configuration
 RATE_LIMIT = {
-    "max_retries": DEFAULT_API_RETRIES,
-    "retry_delay": DEFAULT_API_RETRY_DELAY,
-    "rate_limit": 20,      # Maximum requests per period
-    "rate_period": 60,     # Rate limit period in seconds
+    "max_retries": API.DEFAULT_RETRIES,
+    "retry_delay": API.DEFAULT_RETRY_DELAY,
+    "per_second": MessageLimit.MESSAGES_PER_SECOND,
+    "per_minute": MessageLimit.MESSAGES_PER_MINUTE
 }
+
 
 def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     """Create inline keyboard with progress information.
@@ -110,18 +115,26 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
         ValueError: If percent is not between 0 and 100
     """
     if not 0 <= percent <= 100:
-        raise ValueError("Percentage must be between 0 and 100")
+        raise ValueError(ErrorMessages.INVALID_PERCENTAGE.format(value=percent))
 
-    progress_blocks = 10
-    filled = int(percent / 100 * progress_blocks)
-    bar = "▓" * filled + "▒" * (progress_blocks - filled)
+    # Create progress bar
+    total_slots = MessageLimit.BUTTONS_PER_ROW
+    filled = int(percent * total_slots / 100)
+    empty = total_slots - filled
 
-    return {
-        "inline_keyboard": [[{
-            "text": f"{bar} {percent:.1f}%",
-            "callback_data": "progress"
-        }]]
-    }
+    # Build keyboard layout
+    keyboard: List[List[JsonDict]] = [
+        [
+            {"text": "█" * filled + "░" * empty, "callback_data": f"progress_{percent}"}
+        ],
+        [
+            {"text": f"{percent:.1f}%", "callback_data": "percent"},
+            {"text": "Cancel", "callback_data": "cancel"}
+        ]
+    ]
+
+    return {"inline_keyboard": keyboard}
+
 
 def validate_chat_id(chat_id: Union[int, str]) -> bool:
     """Validate Telegram chat ID format.
@@ -142,16 +155,27 @@ def validate_chat_id(chat_id: Union[int, str]) -> bool:
         return True
 
     if isinstance(chat_id, str):
-        # Channel username format: @username
+        # Channel username format
         if chat_id.startswith("@"):
-            return len(chat_id) > 1 and chat_id[1:].isalnum()
+            username = chat_id[1:]
+            return (
+                len(username) <= MessageLimit.USERNAME_LENGTH and
+                username.isalnum()
+            )
 
-        # Group/channel ID format: -100{9-10 digits}
+        # Group/channel ID format
         if chat_id.startswith("-100"):
-            remaining = chat_id[4:]
-            return remaining.isdigit() and len(remaining) in (9, 10)
+            try:
+                int(chat_id)
+                return True
+            except ValueError:
+                return False
 
-        # Private chat ID format: positive integer
-        return chat_id.lstrip("-").isdigit()
+        # Private chat ID format
+        try:
+            int(chat_id)
+            return True
+        except ValueError:
+            return False
 
     return False
