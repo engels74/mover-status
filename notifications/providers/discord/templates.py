@@ -17,6 +17,7 @@ Example:
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
+from config.constants import ErrorMessages, JsonDict, JsonValue
 from shared.providers.discord import (
     ApiLimits,
     DiscordColor,
@@ -264,9 +265,14 @@ def validate_title(title: Optional[str]) -> int:
     """
     if not title:
         return 0
-    if len(title) > ApiLimits.TITLE_LENGTH:
-        raise ValueError(f"Title exceeds {ApiLimits.TITLE_LENGTH} characters")
-    return len(title)
+
+    length = len(title)
+    if length > ApiLimits.TITLE_LENGTH:
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="title",
+            max_length=ApiLimits.TITLE_LENGTH
+        ))
+    return length
 
 
 def validate_description(description: Optional[str]) -> int:
@@ -283,9 +289,14 @@ def validate_description(description: Optional[str]) -> int:
     """
     if not description:
         return 0
-    if len(description) > ApiLimits.DESCRIPTION_LENGTH:
-        raise ValueError(f"Description exceeds {ApiLimits.DESCRIPTION_LENGTH} characters")
-    return len(description)
+
+    length = len(description)
+    if length > ApiLimits.DESCRIPTION_LENGTH:
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="description",
+            max_length=ApiLimits.DESCRIPTION_LENGTH
+        ))
+    return length
 
 
 def validate_fields(fields: Optional[List[EmbedField]]) -> int:
@@ -303,16 +314,29 @@ def validate_fields(fields: Optional[List[EmbedField]]) -> int:
     if not fields:
         return 0
 
-    if len(fields) > ApiLimits.FIELDS_COUNT:
-        raise ValueError(f"Maximum of {ApiLimits.FIELDS_COUNT} fields allowed")
-
     total_length = 0
+    if len(fields) > ApiLimits.FIELDS_COUNT:
+        raise ValueError(ErrorMessages.FIELD_COUNT_EXCEEDED.format(
+            max_count=ApiLimits.FIELDS_COUNT
+        ))
+
     for field in fields:
-        if len(field["name"]) > ApiLimits.FIELD_NAME_LENGTH:
-            raise ValueError(f"Field name exceeds {ApiLimits.FIELD_NAME_LENGTH} characters")
-        if len(field["value"]) > ApiLimits.FIELD_VALUE_LENGTH:
-            raise ValueError(f"Field value exceeds {ApiLimits.FIELD_VALUE_LENGTH} characters")
-        total_length += len(field["name"]) + len(field["value"])
+        name_length = len(field["name"])
+        value_length = len(field["value"])
+
+        if name_length > ApiLimits.FIELD_NAME_LENGTH:
+            raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+                field=f"field name '{field['name']}'",
+                max_length=ApiLimits.FIELD_NAME_LENGTH
+            ))
+
+        if value_length > ApiLimits.FIELD_VALUE_LENGTH:
+            raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+                field=f"field value for '{field['name']}'",
+                max_length=ApiLimits.FIELD_VALUE_LENGTH
+            ))
+
+        total_length += name_length + value_length
 
     return total_length
 
@@ -331,9 +355,14 @@ def validate_footer(footer: Optional[Dict[str, str]]) -> int:
     """
     if not footer or "text" not in footer:
         return 0
-    if len(footer["text"]) > ApiLimits.FOOTER_TEXT_LENGTH:
-        raise ValueError(f"Footer text exceeds {ApiLimits.FOOTER_TEXT_LENGTH} characters")
-    return len(footer["text"])
+
+    length = len(footer["text"])
+    if length > ApiLimits.FOOTER_TEXT_LENGTH:
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="footer text",
+            max_length=ApiLimits.FOOTER_TEXT_LENGTH
+        ))
+    return length
 
 
 def validate_author(author: Optional[Dict[str, str]]) -> int:
@@ -351,7 +380,10 @@ def validate_author(author: Optional[Dict[str, str]]) -> int:
     if not author or "name" not in author:
         return 0
     if len(author["name"]) > ApiLimits.AUTHOR_NAME_LENGTH:
-        raise ValueError(f"Author name exceeds {ApiLimits.AUTHOR_NAME_LENGTH} characters")
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="author name",
+            max_length=ApiLimits.AUTHOR_NAME_LENGTH
+        ))
     return len(author["name"])
 
 
@@ -372,7 +404,57 @@ def validate_embed_lengths(embed: Embed) -> None:
     total_length += validate_author(embed.get("author"))
 
     if total_length > ApiLimits.TOTAL_LENGTH:
-        raise ValueError(f"Total embed length exceeds {ApiLimits.TOTAL_LENGTH} characters")
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="total embed length",
+            max_length=ApiLimits.TOTAL_LENGTH
+        ))
+
+
+def _create_embed_dict(embed: Embed) -> JsonDict:
+    """Convert Embed object to JsonDict format.
+
+    Args:
+        embed: Discord embed to convert
+
+    Returns:
+        JsonDict: Formatted embed dictionary
+    """
+    embed_dict: JsonDict = {}
+
+    # Add basic fields
+    if embed.title:
+        embed_dict["title"] = embed.title
+    if embed.description:
+        embed_dict["description"] = embed.description
+    if embed.color:
+        embed_dict["color"] = embed.color
+
+    # Add nested structures
+    if embed.author:
+        author_dict: Dict[str, JsonValue] = {"name": embed.author.name}
+        if embed.author.url:
+            author_dict["url"] = embed.author.url
+        if embed.author.icon_url:
+            author_dict["icon_url"] = embed.author.icon_url
+        embed_dict["author"] = author_dict
+
+    if embed.footer:
+        footer_dict: Dict[str, JsonValue] = {"text": embed.footer.text}
+        if embed.footer.icon_url:
+            footer_dict["icon_url"] = embed.footer.icon_url
+        embed_dict["footer"] = footer_dict
+
+    if embed.fields:
+        embed_dict["fields"] = [
+            {
+                "name": field.name,
+                "value": field.value,
+                **({"inline": field.inline} if field.inline is not None else {})
+            }
+            for field in embed.fields
+        ]
+
+    return embed_dict
 
 
 def create_webhook_payload(
@@ -393,34 +475,27 @@ def create_webhook_payload(
         WebhookPayload: Complete webhook payload
 
     Raises:
-        ValueError: If payload exceeds Discord limits
+        ValueError: If payload exceeds Discord limits or nesting depth
     """
-    if len(embeds) > ApiLimits.EMBEDS_PER_MESSAGE:
-        raise ValueError(f"Maximum of {ApiLimits.EMBEDS_PER_MESSAGE} embeds allowed")
-
-    for embed in embeds:
-        validate_embed_lengths(embed)
+    # Validate username length
+    if len(username) > ApiLimits.USERNAME_LENGTH:
+        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
+            field="username",
+            max_length=ApiLimits.USERNAME_LENGTH
+        ))
 
     # Create base payload
-    payload: WebhookPayload = {
-        "username": truncate_string(username, ApiLimits.USERNAME_LENGTH),
-        "embeds": embeds
-    }
+    payload: JsonDict = {"username": username, "embeds": []}
 
+    # Add optional fields
     if avatar_url:
         payload["avatar_url"] = avatar_url
 
-    # Add forum-specific settings if enabled
-    if forum_config and forum_config.get("enabled"):
-        if forum_config.get("auto_thread"):
-            thread_name = forum_config.get("default_thread_name")
-            if thread_name:
-                payload["thread_name"] = truncate_string(
-                    thread_name,
-                    ApiLimits.CHANNEL_NAME_LENGTH
-                )
+    # Convert embeds to dict format
+    payload["embeds"] = [_create_embed_dict(embed) for embed in embeds]
 
-            if forum_config.get("thread_archive_duration"):
-                payload["thread_auto_archive_duration"] = forum_config["thread_archive_duration"]
+    # Add forum configuration if provided
+    if forum_config:
+        payload["thread_name"] = forum_config.thread_name
 
     return payload
