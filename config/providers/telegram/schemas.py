@@ -12,7 +12,6 @@ Example:
     ... )
 """
 
-import re
 from typing import List, Optional, Union
 
 from pydantic import (
@@ -22,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from config.constants import API, ErrorMessages
+from config.providers.base import ProviderConfigModel
 from config.providers.telegram.types import validate_chat_id
 from shared.providers.telegram import (
     MessageEntity,
@@ -51,27 +52,27 @@ class MessageEntitySchema(BaseModel):
         default=None,
         description="URL for text_link entities"
     )
-    user: Optional[dict] = Field(
-        default=None,
-        description="User object for text_mention entities"
-    )
     language: Optional[str] = Field(
         default=None,
         min_length=1,
-        max_length=64,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        max_length=8,
+        pattern=r"^[a-zA-Z0-9-]+$",
         description="Programming language for pre entities"
     )
 
-    @model_validator(mode='after')
-    def validate_entity_requirements(self) -> 'MessageEntitySchema':
-        """Validate entity type-specific requirements."""
+    @model_validator(mode="after")
+    def validate_entity_type(self) -> "MessageEntitySchema":
+        """Validate entity type and required fields."""
         if self.type == "text_link" and not self.url:
-            raise ValueError("URL is required for text_link entities")
-        if self.type == "text_mention" and not self.user:
-            raise ValueError("User object is required for text_mention entities")
-        if self.type == "pre" and self.language and not re.match(r"^[a-zA-Z0-9_-]+$", self.language):
-            raise ValueError("Invalid language format for pre entity")
+            raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                field="url",
+                context="for text_link entities"
+            ))
+        if self.type == "pre" and not self.language:
+            raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                field="language",
+                context="for pre entities"
+            ))
         return self
 
 
@@ -94,12 +95,17 @@ class InlineKeyboardButtonSchema(BaseModel):
         description="Data to send in callback query"
     )
 
-    @model_validator(mode='after')
-    def validate_button_options(self) -> 'InlineKeyboardButtonSchema':
+    @model_validator(mode="after")
+    def validate_button_options(self) -> "InlineKeyboardButtonSchema":
         """Validate button has exactly one optional field."""
-        option_count = sum(1 for opt in [self.url, self.callback_data] if opt is not None)
-        if option_count != 1:
-            raise ValueError("Button must have exactly one of: url, callback_data")
+        options = [
+            bool(self.url),
+            bool(self.callback_data)
+        ]
+        if sum(options) != 1:
+            raise ValueError(ErrorMessages.INVALID_BUTTON_CONFIG.format(
+                button=self.text
+            ))
         return self
 
 
@@ -111,18 +117,18 @@ class InlineKeyboardMarkupSchema(BaseModel):
         description="Array of button rows"
     )
 
-    @model_validator(mode='after')
-    def validate_keyboard_structure(self) -> 'InlineKeyboardMarkupSchema':
+    @model_validator(mode="after")
+    def validate_keyboard_structure(self) -> "InlineKeyboardMarkupSchema":
         """Validate keyboard dimensions and limits."""
         for row in self.inline_keyboard:
             if len(row) > MessageLimit.BUTTONS_PER_ROW:
-                raise ValueError(
-                    f"Maximum {MessageLimit.BUTTONS_PER_ROW} buttons per row allowed"
-                )
+                raise ValueError(ErrorMessages.ROW_TOO_LONG.format(
+                    max_buttons=MessageLimit.BUTTONS_PER_ROW
+                ))
         return self
 
 
-class BotConfigSchema(BaseModel):
+class BotConfigSchema(ProviderConfigModel):
     """Schema for Telegram bot configuration validation."""
     bot_token: str = Field(
         ...,
@@ -157,58 +163,61 @@ class BotConfigSchema(BaseModel):
         description="Telegram Bot API base URL"
     )
     rate_limit: int = Field(
-        default=20,
+        default=MessageLimit.MESSAGES_PER_MINUTE,
         ge=1,
-        le=60,
+        le=MessageLimit.MESSAGES_PER_MINUTE,
         description="Rate limit per minute"
     )
     rate_period: int = Field(
-        default=60,
-        ge=30,
-        le=3600,
+        default=API.DEFAULT_RATE_PERIOD,
+        ge=API.MIN_RATE_PERIOD,
+        le=API.MAX_RATE_PERIOD,
         description="Rate limit period in seconds"
     )
     retry_attempts: int = Field(
-        default=3,
-        ge=1,
-        le=5,
+        default=API.DEFAULT_RETRIES,
+        ge=API.MIN_RETRIES,
+        le=API.MAX_RETRIES,
         description="Maximum retry attempts"
     )
     retry_delay: int = Field(
-        default=5,
-        ge=1,
-        le=30,
+        default=API.DEFAULT_RETRY_DELAY,
+        ge=API.MIN_RETRY_DELAY,
+        le=API.MAX_RETRY_DELAY,
         description="Delay between retries in seconds"
     )
 
-    @model_validator(mode='after')
-    def validate_chat_id_format(self) -> 'BotConfigSchema':
-        """Validate chat ID format."""
-        if not validate_chat_id(self.chat_id):
-            raise ValueError("Invalid chat ID format")
-        return self
-
-    @model_validator(mode='after')
-    def validate_api_url(self) -> 'BotConfigSchema':
-        """Validate API base URL."""
-        url_str = str(self.api_base_url).rstrip('/')
-        if "api.telegram.org" not in url_str:
-            raise ValueError("API URL must be from api.telegram.org domain")
-        return self
-
-    class Config:
-        """Pydantic model configuration."""
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "examples": [
                 {
                     "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
                     "chat_id": "-1001234567890",
                     "parse_mode": "HTML",
-                    "rate_limit": 20,
-                    "rate_period": 60
+                    "rate_limit": MessageLimit.MESSAGES_PER_MINUTE,
+                    "rate_period": API.DEFAULT_RATE_PERIOD
                 }
             ]
         }
+    }
+
+    @model_validator(mode="after")
+    def validate_chat_id_format(self) -> "BotConfigSchema":
+        """Validate chat ID format."""
+        if not validate_chat_id(self.chat_id):
+            raise ValueError(ErrorMessages.INVALID_CHAT_ID.format(
+                chat_id=self.chat_id
+            ))
+        return self
+
+    @model_validator(mode="after")
+    def validate_api_url(self) -> "BotConfigSchema":
+        """Validate API base URL."""
+        if not str(self.api_base_url).startswith("https://"):
+            raise ValueError(ErrorMessages.INSECURE_URL.format(
+                url=self.api_base_url
+            ))
+        return self
 
 
 def validate_message_content(
@@ -227,21 +236,30 @@ def validate_message_content(
     Raises:
         ValueError: If content exceeds Telegram limits
     """
-    if not text:
-        raise ValueError("Message text cannot be empty")
+    # Check text length
+    if len(text) > MessageLimit.MESSAGE_TEXT:
+        raise ValueError(ErrorMessages.MESSAGE_TOO_LONG.format(
+            max_length=MessageLimit.MESSAGE_TEXT
+        ))
 
-    if len(text.encode('utf-16')) // 2 > MessageLimit.MESSAGE_TEXT:
-        raise ValueError(f"Text exceeds {MessageLimit.MESSAGE_TEXT} UTF-16 code units")
-
+    # Validate entities if present
     if entities:
         if len(entities) > MessageLimit.ENTITIES:
-            raise ValueError(f"Maximum {MessageLimit.ENTITIES} entities allowed")
+            raise ValueError(ErrorMessages.TOO_MANY_ENTITIES.format(
+                max_entities=MessageLimit.ENTITIES
+            ))
 
-        text_length = len(text.encode('utf-16')) // 2
+        # Check entity positions
+        text_length = len(text)
         for entity in entities:
-            offset = entity["offset"]
-            length = entity["length"]
-            if offset < 0 or length <= 0 or offset + length > text_length:
-                raise ValueError("Invalid entity position or length")
+            if entity.offset < 0 or entity.offset >= text_length:
+                raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET.format(
+                    offset=entity.offset
+                ))
+            if entity.offset + entity.length > text_length:
+                raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH.format(
+                    length=entity.length,
+                    offset=entity.offset
+                ))
 
     return True
