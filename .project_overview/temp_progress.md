@@ -70,27 +70,35 @@
    - Added validation in constructor
    - Fixed code style and import organization
 
+8. From notifications/providers/discord/templates.py:
+   - Embed creation now strictly validates against Discord API limits
+   - All template functions now require explicit type annotations
+   - Forum support added to webhook payloads
+   - Progress embeds now use dynamic color based on completion percentage
+   - Error embeds require non-empty error message
+
 **Required Follow-up Tasks:**
 1. Update all files that directly import constants to use new class prefix
 2. Update all files that access settings to use new nested structure
 3. Update notification providers to handle new message types
 4. Update webhook provider to handle non-optional embeds
-5. Update validation code to use new validation functions
-6. Update type hints using the new enum types
-7. Update environment variable documentation
-8. Update example configurations
-9. Add documentation for NotificationState usage
-10. Update webhook implementations for new constraints
-11. Update provider implementations for thread safety
-12. Update Discord provider to handle new error types
-13. Update documentation with new validation requirements
-14. Update type hints in dependent files to use new domain sets
-15. Consolidate Discord validation into shared types module
-16. Remove redundant validation files
-17. Update imports to use centralized Discord types
-18. Document new Discord validation structure
-19. Update configuration examples with timeout settings
-20. Add timeout configuration to documentation
+5. Update templates.py to handle JsonDict nesting limits in webhook payloads
+6. Ensure templates.py error messages align with new centralized error classes
+7. Update type hints using the new enum types
+8. Update environment variable documentation
+9. Update example configurations
+10. Add documentation for NotificationState usage
+11. Update webhook implementations for new constraints
+12. Update provider implementations for thread safety
+13. Update Discord provider to handle new error types
+14. Update documentation with new validation requirements
+15. Update type hints in dependent files to use new domain sets
+16. Consolidate Discord validation into shared types module
+17. Remove redundant validation files
+18. Update imports to use centralized Discord types
+19. Document new Discord validation structure
+20. Update configuration examples with timeout settings
+21. Add timeout configuration to documentation
 
 **Review Order & Progress:**
 
@@ -111,7 +119,7 @@
    - [x] `config/providers/discord/settings.py` - Discord settings management with shared validation
    - [x] `notifications/providers/discord/validators.py` - Discord message validation using shared rules
    - [x] `notifications/providers/discord/provider.py` - Discord provider implementation
-   - [ ] `notifications/providers/discord/templates.py` - Discord message templates
+   - [x] `notifications/providers/discord/templates.py` - Discord message templates and formatting utilities
 
 5. Telegram Provider Implementation
    - [ ] `config/providers/telegram/types.py` - Telegram provider type definitions
