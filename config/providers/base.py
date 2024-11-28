@@ -16,15 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import JsonSchemaValue
 
 from config.constants import (
-    DEFAULT_API_RETRIES,
-    DEFAULT_API_RETRY_DELAY,
-    DEFAULT_API_TIMEOUT,
-    DEFAULT_MESSAGE_TEMPLATE,
-    DEFAULT_NOTIFICATION_INCREMENT,
-    MAX_NOTIFICATION_INCREMENT,
-    MIN_NOTIFICATION_INCREMENT,
-    JsonDict,
+    API,
     MessagePriority,
+    JsonDict,
+    Templates,
 )
 
 
@@ -46,14 +41,14 @@ class RateLimitSettings(BaseModel):
     )
 
     retry_attempts: int = Field(
-        default=DEFAULT_API_RETRIES,
+        default=API.DEFAULT_RETRIES,
         ge=1,
         le=5,
         description="Number of retry attempts for failed messages"
     )
 
     retry_delay: int = Field(
-        default=DEFAULT_API_RETRY_DELAY,
+        default=API.DEFAULT_RETRY_DELAY,
         ge=1,
         le=30,
         description="Delay between retry attempts in seconds"
@@ -78,7 +73,7 @@ class ApiSettings(BaseModel):
     """Common API settings for providers."""
 
     timeout: int = Field(
-        default=DEFAULT_API_TIMEOUT,
+        default=API.DEFAULT_TIMEOUT,
         ge=1,
         le=300,
         description="API request timeout in seconds"
@@ -158,7 +153,7 @@ class BaseProviderSettings(BaseModel):
     )
 
     message_template: Optional[str] = Field(
-        default=DEFAULT_MESSAGE_TEMPLATE,
+        default=Templates.DEFAULT_MESSAGE,
         min_length=1,
         description="Custom message template for notifications"
     )
@@ -169,9 +164,9 @@ class BaseProviderSettings(BaseModel):
     )
 
     notification_increment: int = Field(
-        default=DEFAULT_NOTIFICATION_INCREMENT,
-        ge=MIN_NOTIFICATION_INCREMENT,
-        le=MAX_NOTIFICATION_INCREMENT,
+        default=API.DEFAULT_NOTIFICATION_INCREMENT,
+        ge=API.MIN_NOTIFICATION_INCREMENT,
+        le=API.MAX_NOTIFICATION_INCREMENT,
         description="Progress percentage increment for notifications"
     )
 
@@ -195,7 +190,7 @@ class BaseProviderSettings(BaseModel):
             ValueError: If template format is invalid
         """
         if v is None:
-            return DEFAULT_MESSAGE_TEMPLATE
+            return Templates.DEFAULT_MESSAGE
 
         required_placeholders = {"{percent}", "{remaining_data}", "{etc}"}
         found_placeholders = set(cls._extract_placeholders(v))
@@ -275,7 +270,7 @@ class BaseProviderSettings(BaseModel):
                     "User-Agent": "MoverStatus/1.0"
                 }
             },
-            "message_template": DEFAULT_MESSAGE_TEMPLATE,
+            "message_template": Templates.DEFAULT_MESSAGE,
             "message_priority": "normal",
             "notification_increment": 25,
             "tags": ["status", "mover"]
