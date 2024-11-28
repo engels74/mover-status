@@ -185,6 +185,12 @@
 
 **Required Follow-up Tasks:**
 1. Update all files that directly import constants to use new class prefix
+   - [x] `config/providers/base.py` - Updated to use API and Templates class prefixes
+   - [ ] `utils/validators.py` - Needs update for notification increment constants
+   - [ ] `config/providers/telegram/types.py` - Needs update for API and message-related constants
+   - [ ] `notifications/base.py` - Needs update for API and notification-related constants
+   - [ ] `config/providers/telegram/settings.py` - Needs update for API and error message constants
+   - [ ] `notifications/factory.py` - Needs update for NotificationProvider class prefix
 2. Update all files that access settings to use new nested structure
 3. Update notification providers to handle new message types
 4. Update webhook provider to handle non-optional embeds
@@ -209,40 +215,6 @@
 20. Update providers to use new progress bar styles
 21. Update providers to use new time formats
 22. Add color support to provider messages
-
-**Review Order & Progress:**
-
-1. Core Configuration
-   - [x] `config/constants.py` - Core constants, types, and base configurations
-   - [x] `config/settings.py` - Main settings management and environment handling
-
-2. Shared Type Definitions
-   - [x] `shared/types/discord/__init__.py` - Centralized Discord types, constants, and validation
-   - [x] `shared/types/telegram.py` - Telegram-specific shared types
-
-3. Base Provider Files
-   - [x] `config/providers/base.py` - Base configuration models for providers
-   - [x] `notifications/base.py` - Abstract notification provider implementation
-
-4. Discord Provider Implementation
-   - [x] `config/providers/discord/schemas.py` - Discord configuration validation using shared types
-   - [x] `config/providers/discord/settings.py` - Discord settings management with shared validation
-   - [x] `notifications/providers/discord/validators.py` - Discord message validation using shared rules
-   - [x] `notifications/providers/discord/provider.py` - Discord provider implementation
-   - [x] `notifications/providers/discord/templates.py` - Discord message templates and formatting utilities
-
-5. Telegram Provider Implementation
-   - [x] `config/providers/telegram/types.py` - Telegram provider type definitions
-   - [x] `config/providers/telegram/schemas.py` - Telegram configuration validation
-   - [x] `config/providers/telegram/settings.py` - Telegram settings management
-   - [x] `notifications/providers/telegram/types.py` - Telegram notification types
-   - [x] `notifications/providers/telegram/provider.py` - Telegram provider implementation
-   - [x] `notifications/providers/telegram/templates.py` - Telegram message templates
-
-6. Utility Files
-   - [x] `utils/formatters.py` - Data formatting utilities
-   - [x] `utils/validators.py` - Configuration validation utilities
-   - [x] `utils/version.py` - Version checking and comparison
 
 **Recent Changes:**
 1. Discord Validation Consolidation

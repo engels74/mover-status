@@ -12,7 +12,7 @@ Example:
 from enum import IntEnum
 from typing import List, Optional, TypedDict, Union
 
-from config.constants import API, ErrorMessages, JsonDict
+from config.constants import Errors, JsonDict
 from shared.providers.telegram import (
     ChatType as SharedChatType,
 )
@@ -95,8 +95,8 @@ class BotCommand(TypedDict, total=False):
 
 # Provider-specific rate limiting configuration
 RATE_LIMIT = {
-    "max_retries": API.DEFAULT_RETRIES,
-    "retry_delay": API.DEFAULT_RETRY_DELAY,
+    "max_retries": 5,
+    "retry_delay": 1,
     "per_second": MessageLimit.MESSAGES_PER_SECOND,
     "per_minute": MessageLimit.MESSAGES_PER_MINUTE
 }
@@ -115,7 +115,7 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
         ValueError: If percent is not between 0 and 100
     """
     if not 0 <= percent <= 100:
-        raise ValueError(ErrorMessages.INVALID_PERCENTAGE.format(value=percent))
+        raise ValueError(Errors.INVALID_PERCENTAGE.format(value=percent))
 
     # Create progress bar
     total_slots = MessageLimit.BUTTONS_PER_ROW

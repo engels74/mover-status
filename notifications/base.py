@@ -45,8 +45,8 @@ TConfig = TypeVar('TConfig', bound=Dict[str, Any])
 TValidator = TypeVar('TValidator', bound=BaseModel)
 
 # Constants
-MAX_HISTORY_SIZE: Final[int] = 100
-MIN_NOTIFICATION_INTERVAL: Final[float] = 0.1  # seconds
+MAX_HISTORY_SIZE: Final[int] = Notification.MAX_HISTORY_SIZE
+MIN_NOTIFICATION_INTERVAL: Final[float] = API.MIN_NOTIFICATION_INTERVAL  # seconds
 
 
 class NotificationError(Exception):

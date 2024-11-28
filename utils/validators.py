@@ -21,8 +21,7 @@ from urllib.parse import urlparse
 from pydantic import HttpUrl
 
 from config.constants import (
-    MAX_NOTIFICATION_INCREMENT,
-    MIN_NOTIFICATION_INCREMENT,
+    API,
     PathLike,
 )
 
@@ -429,8 +428,8 @@ class BaseProviderValidator(ABC):
     def validate_notification_increment(
         cls,
         value: int,
-        min_value: int = MIN_NOTIFICATION_INCREMENT,
-        max_value: int = MAX_NOTIFICATION_INCREMENT,
+        min_value: int = API.MIN_NOTIFICATION_INCREMENT,
+        max_value: int = API.MAX_NOTIFICATION_INCREMENT,
         context: Optional[ValidationContext] = None
     ) -> int:
         """Validate notification increment percentage.
