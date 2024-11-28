@@ -97,6 +97,16 @@
     - Changed error message format to use centralized messages
     - Added validation for chat ID formats
 
+11. From config/providers/telegram/settings.py:
+    - Added TelegramSettings class extending BaseProviderSettings
+    - Added validation for bot tokens and chat IDs
+    - Added HTTPS enforcement for API URLs
+    - Added rate limiting configuration using API constants
+    - Changed error messages to use centralized format
+    - Added field constraints directly in Field definitions
+    - Added proper type hints and docstrings
+    - Updated example configuration with constants
+
 **Required Follow-up Tasks:**
 1. Update all files that directly import constants to use new class prefix
 2. Update all files that access settings to use new nested structure
@@ -144,7 +154,7 @@
 5. Telegram Provider Implementation
    - [x] `config/providers/telegram/types.py` - Telegram provider type definitions
    - [x] `config/providers/telegram/schemas.py` - Telegram configuration validation
-   - [ ] `config/providers/telegram/settings.py` - Telegram settings management
+   - [x] `config/providers/telegram/settings.py` - Telegram settings management
    - [ ] `notifications/providers/telegram/types.py` - Telegram notification types
    - [ ] `notifications/providers/telegram/provider.py` - Telegram provider implementation
    - [ ] `notifications/providers/telegram/templates.py` - Telegram message templates

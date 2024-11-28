@@ -18,13 +18,14 @@ from typing import Any, Dict, Optional, Union
 
 from pydantic import Field, HttpUrl, field_validator
 
+from config.constants import API, ErrorMessages
 from config.providers.base import BaseProviderSettings
 from config.providers.telegram.schemas import BotConfigSchema
+from config.providers.telegram.types import validate_chat_id
 from shared.providers.telegram import (
     ChatType,
     MessageLimit,
     ParseMode,
-    validate_chat_id,
 )
 
 
@@ -65,13 +66,15 @@ class TelegramSettings(BaseProviderSettings):
     )
 
     api_base_url: HttpUrl = Field(
-        default="https://api.telegram.org",
+        default=API.TELEGRAM_BASE_URL,
         description="Telegram API base URL"
     )
 
     max_message_length: int = Field(
         default=MessageLimit.MESSAGE_TEXT,
-        description="Maximum message length in characters"
+        description="Maximum message length in characters",
+        ge=1,
+        le=MessageLimit.MESSAGE_TEXT
     )
 
     chat_type: Optional[ChatType] = Field(
@@ -97,15 +100,18 @@ class TelegramSettings(BaseProviderSettings):
         enabled = info.data.get("enabled", False)
 
         if enabled and not v:
-            raise ValueError("Bot token must be provided when Telegram is enabled")
+            raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                field="bot_token",
+                context="when Telegram is enabled"
+            ))
 
         if v:
             # Token format: numbers:alphanumeric-_
-            pattern = r"^\d+:[A-Za-z0-9_-]{30,}$"
-            if not re.match(pattern, v):
-                raise ValueError(
-                    "Invalid bot token format. Expected format: NUMBER:ALPHANUMERIC"
-                )
+            pattern = re.compile(r"^\d+:[A-Za-z0-9_-]{35,}$")
+            if not pattern.match(v):
+                raise ValueError(ErrorMessages.INVALID_BOT_TOKEN.format(
+                    token=v
+                ))
 
         return v
 
@@ -127,14 +133,16 @@ class TelegramSettings(BaseProviderSettings):
         enabled = info.data.get("enabled", False)
 
         if enabled and v is None:
-            raise ValueError("Chat ID must be provided when Telegram is enabled")
+            raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                field="chat_id",
+                context="when Telegram is enabled"
+            ))
 
         if v is not None:
             if not validate_chat_id(v):
-                raise ValueError(
-                    "Invalid chat ID format. Must be an integer, '-100' prefixed ID, "
-                    "or channel username starting with '@'"
-                )
+                raise ValueError(ErrorMessages.INVALID_CHAT_ID.format(
+                    chat_id=v
+                ))
 
         return v
 
@@ -153,11 +161,16 @@ class TelegramSettings(BaseProviderSettings):
             ValueError: If URL is invalid
         """
         parsed = str(v).rstrip("/")
-        if not parsed.startswith(("http://", "https://")):
-            raise ValueError("API URL must start with http:// or https://")
+        if not parsed.startswith("https://"):
+            raise ValueError(ErrorMessages.INSECURE_URL.format(
+                url=parsed
+            ))
 
-        if "api.telegram.org" not in parsed:
-            raise ValueError("API URL must be from api.telegram.org domain")
+        if API.TELEGRAM_DOMAIN not in parsed:
+            raise ValueError(ErrorMessages.INVALID_API_DOMAIN.format(
+                domain=API.TELEGRAM_DOMAIN,
+                url=parsed
+            ))
 
         return HttpUrl(parsed)
 
@@ -176,16 +189,18 @@ class TelegramSettings(BaseProviderSettings):
             ValueError: If length exceeds Telegram limits
         """
         if not 1 <= v <= MessageLimit.MESSAGE_TEXT:
-            raise ValueError(
-                f"Message length must be between 1 and {MessageLimit.MESSAGE_TEXT}"
-            )
+            raise ValueError(ErrorMessages.VALUE_OUT_OF_RANGE.format(
+                field="max_message_length",
+                min=1,
+                max=MessageLimit.MESSAGE_TEXT
+            ))
         return v
 
-    def to_provider_config(self) -> Dict:
+    def to_provider_config(self) -> Dict[str, Any]:
         """Convert settings to Telegram provider configuration.
 
         Returns:
-            Dict: Telegram provider configuration dictionary
+            Dict[str, Any]: Telegram provider configuration dictionary
         """
         # Get base configuration
         config = super().to_provider_config()
@@ -224,10 +239,10 @@ class TelegramSettings(BaseProviderSettings):
                     "parse_mode": "HTML",
                     "disable_notifications": False,
                     "rate_limit": {
-                        "rate_limit": 20,
-                        "rate_period": 60,
-                        "retry_attempts": 3,
-                        "retry_delay": 5
+                        "rate_limit": MessageLimit.MESSAGES_PER_MINUTE,
+                        "rate_period": API.DEFAULT_RATE_PERIOD,
+                        "retry_attempts": API.DEFAULT_RETRIES,
+                        "retry_delay": API.DEFAULT_RETRY_DELAY
                     }
                 }
             ]
