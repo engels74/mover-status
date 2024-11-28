@@ -21,12 +21,9 @@ import aiofiles
 from structlog import get_logger
 
 from config.constants import (
-    MonitorEvent,
-    MonitorState,
-    ProcessState,
-)
-from config.constants import (
-    NotificationProvider as ProviderType,
+    Events,
+    States,
+    NotificationProvider,
 )
 from config.settings import Settings
 from core.calculator import TransferCalculator, TransferStats
@@ -133,12 +130,12 @@ class DirectoryScanner:
 @dataclass
 class MonitorStats:
     """Combined monitoring statistics."""
-    process_state: ProcessState = ProcessState.UNKNOWN
+    process_state: States.ProcessState = States.ProcessState.UNKNOWN
     transfer_stats: Optional[TransferStats] = None
     last_notification: Optional[datetime] = None
     error_count: int = 0
     start_time: Optional[datetime] = None
-    events: Set[MonitorEvent] = field(default_factory=set)
+    events: Set[Events.MonitorEvent] = field(default_factory=set)
 
 class MoverMonitor:
     """Coordinates process monitoring, transfer tracking, and notifications."""
@@ -159,11 +156,11 @@ class MoverMonitor:
         self._scanner = DirectoryScanner(excluded)
 
         # Use Dict[str, NotificationProvider] for type hints to avoid name collision
-        self._providers: Dict[str, NotificationError] = {}
-        self._state = MonitorState.IDLE
+        self._providers: Dict[str, NotificationProvider] = {}
+        self._state = States.MonitorState.IDLE
         self._stopping = False
         self._tasks: Set[asyncio.Task] = set()
-        self._event_handlers: Dict[Type[MonitorEvent], Set[callable]] = {}
+        self._event_handlers: Dict[Type[Events.MonitorEvent], Set[callable]] = {}
 
     async def __aenter__(self) -> 'MoverMonitor':
         """Async context manager entry."""
@@ -173,7 +170,7 @@ class MoverMonitor:
         """Async context manager exit."""
         await self.stop()
 
-    def subscribe(self, event_type: Type[MonitorEvent], handler: callable) -> None:
+    def subscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
         """Subscribe to monitor events.
 
         Args:
@@ -184,7 +181,7 @@ class MoverMonitor:
             self._event_handlers[event_type] = set()
         self._event_handlers[event_type].add(handler)
 
-    def unsubscribe(self, event_type: Type[MonitorEvent], handler: callable) -> None:
+    def unsubscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
         """Unsubscribe from monitor events.
 
         Args:
@@ -194,7 +191,7 @@ class MoverMonitor:
         if event_type in self._event_handlers:
             self._event_handlers[event_type].discard(handler)
 
-    async def _notify_event(self, event: MonitorEvent) -> None:
+    async def _notify_event(self, event: Events.MonitorEvent) -> None:
         """Notify subscribers of an event.
 
         Args:
@@ -220,18 +217,18 @@ class MoverMonitor:
         Raises:
             RuntimeError: If monitoring is already active
         """
-        if self._state != MonitorState.IDLE:
+        if self._state != States.MonitorState.IDLE:
             raise RuntimeError("Monitor is already running")
 
         try:
-            self._state = MonitorState.STARTING
+            self._state = States.MonitorState.STARTING
             logger.info("Starting mover monitor")
 
             # Initialize notification providers
             await self._setup_providers()
 
             # Start monitoring
-            self._state = MonitorState.MONITORING
+            self._state = States.MonitorState.MONITORING
             monitoring_task = asyncio.create_task(self._monitoring_loop())
             self._tasks.add(monitoring_task)
             monitoring_task.add_done_callback(self._tasks.discard)
@@ -243,13 +240,13 @@ class MoverMonitor:
                 version_task.add_done_callback(self._tasks.discard)
 
         except Exception as err:
-            self._state = MonitorState.ERROR
+            self._state = States.MonitorState.ERROR
             logger.error("Monitor start failed", error=str(err))
             raise RuntimeError("Failed to start monitoring") from err
 
     async def stop(self) -> None:
         """Stop the monitoring system gracefully."""
-        if self._state == MonitorState.STOPPED:
+        if self._state == States.MonitorState.STOPPED:
             return
 
         logger.info("Stopping mover monitor")
@@ -265,7 +262,7 @@ class MoverMonitor:
 
         # Clean up
         await self._cleanup()
-        self._state = MonitorState.STOPPED
+        self._state = States.MonitorState.STOPPED
         logger.info("Monitor stopped")
 
     async def _setup_providers(self) -> None:
@@ -273,9 +270,9 @@ class MoverMonitor:
         for provider_id in self._settings.active_providers:
             try:
                 config = None
-                if provider_id == ProviderType.DISCORD:
+                if provider_id == NotificationProvider.DISCORD:
                     config = self._settings.discord.to_provider_config()
-                elif provider_id == ProviderType.TELEGRAM:
+                elif provider_id == NotificationProvider.TELEGRAM:
                     config = self._settings.telegram.to_provider_config()
 
                 if config:
@@ -369,7 +366,7 @@ class MoverMonitor:
 
             if new_state != self._stats.process_state:
                 self._stats.process_state = new_state
-                await self._notify_event(MonitorEvent.STATE_CHANGED)
+                await self._notify_event(Events.MonitorEvent.STATE_CHANGED)
 
             # Handle process state
             if is_running and not self._stats.start_time:
@@ -381,7 +378,7 @@ class MoverMonitor:
                     "Transfer started",
                     initial_size=format_size(initial_size)
                 )
-                await self._notify_event(MonitorEvent.TRANSFER_STARTED)
+                await self._notify_event(Events.MonitorEvent.TRANSFER_STARTED)
 
             elif is_running:
                 # Process is running
@@ -389,7 +386,7 @@ class MoverMonitor:
                 stats = self._calculator.update_progress(current_size)
                 self._stats.transfer_stats = stats
                 await self._send_notifications(stats)
-                await self._notify_event(MonitorEvent.TRANSFER_PROGRESS)
+                await self._notify_event(Events.MonitorEvent.TRANSFER_PROGRESS)
 
             elif self._stats.start_time and not is_running:
                 # Process just completed
@@ -402,14 +399,14 @@ class MoverMonitor:
                 self._stats.start_time = None
                 self._stats.transfer_stats = None
                 logger.info("Transfer completed")
-                await self._notify_event(MonitorEvent.TRANSFER_COMPLETED)
+                await self._notify_event(Events.MonitorEvent.TRANSFER_COMPLETED)
 
         except Exception as err:
             self._stats.error_count += 1
             logger.error("Monitoring update error", error=str(err))
             if self._stats.error_count >= 3:
-                self._state = MonitorState.ERROR
-                await self._notify_event(MonitorEvent.ERROR)
+                self._state = States.MonitorState.ERROR
+                await self._notify_event(Events.MonitorEvent.ERROR)
                 raise RuntimeError("Too many monitoring errors") from err
 
     async def _monitoring_loop(self) -> None:
@@ -440,14 +437,14 @@ class MoverMonitor:
                         current=str(version_checker.current_version),
                         latest=latest_version
                     )
-                    await self._notify_event(MonitorEvent.UPDATE_AVAILABLE)
+                    await self._notify_event(Events.MonitorEvent.UPDATE_AVAILABLE)
             except Exception as err:
                 logger.error("Version check error", error=str(err))
 
             await asyncio.sleep(3600)  # Check once per hour
 
     @property
-    def state(self) -> MonitorState:
+    def state(self) -> States.MonitorState:
         """Get current monitor state."""
         return self._state
 

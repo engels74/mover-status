@@ -17,11 +17,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Union
 
-from config.constants import (
-    SECONDS_PER_DAY,
-    SECONDS_PER_HOUR,
-    SECONDS_PER_MINUTE,
-)
+from config.constants import TimeConstants
 
 
 class ProgressStyle(str, Enum):
@@ -152,9 +148,9 @@ def format_duration(  # noqa: C901
 
     seconds = float(seconds)
     intervals = [
-        (SECONDS_PER_DAY, "d", "day"),
-        (SECONDS_PER_HOUR, "h", "hour"),
-        (SECONDS_PER_MINUTE, "m", "minute"),
+        (TimeConstants.SECONDS_PER_DAY, "d", "day"),
+        (TimeConstants.SECONDS_PER_HOUR, "h", "hour"),
+        (TimeConstants.SECONDS_PER_MINUTE, "m", "minute"),
         (1, "s", "second")
     ]
 

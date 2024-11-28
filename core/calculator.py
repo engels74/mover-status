@@ -20,7 +20,7 @@ from typing import Deque, List, Optional, Tuple
 
 from structlog import get_logger
 
-from config.constants import ByteSize
+from config.constants import Units
 from config.settings import Settings
 from utils.formatters import format_size
 
@@ -28,217 +28,145 @@ logger = get_logger(__name__)
 
 @dataclass
 class TransferStats:
-    """Statistics for ongoing data transfer."""
-    initial_size: ByteSize           # Initial cache size
-    current_size: ByteSize          # Current cache size
-    bytes_moved: ByteSize           # Total bytes moved
-    transfer_rate: float            # Current transfer rate (bytes/sec)
-    percent_complete: float         # Progress percentage
-    start_time: datetime           # Transfer start time
-    estimated_completion: Optional[datetime] = None  # Estimated completion time
-    moving_average_window: int = field(default=5, repr=False)  # Window size for rate calculation
-    _rate_history: Deque[float] = field(default_factory=lambda: deque(maxlen=5), repr=False)
+    """Statistics for a data transfer operation."""
+    initial_size: int = 0
+    current_size: int = 0
+    bytes_transferred: int = 0
+    bytes_remaining: int = 0
+    percent_complete: float = 0.0
+    transfer_rate: float = 0.0  # bytes/second
+    elapsed_time: float = 0.0  # seconds
+    remaining_time: float = 0.0  # seconds
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
-    def update_rate(self, new_rate: float) -> None:
-        """Update transfer rate using moving average.
-
-        Args:
-            new_rate: New transfer rate to add to history
-        """
-        self._rate_history.append(new_rate)
-        self.transfer_rate = sum(self._rate_history) / len(self._rate_history)
 
 class TransferCalculator:
-    """
-    Calculates and tracks data transfer progress.
-    Maintains historical data for accurate rate and ETA calculations.
-    """
+    """Calculates transfer progress and statistics."""
 
     def __init__(self, settings: Settings):
         """Initialize calculator with settings.
 
         Args:
-            settings: Application settings instance
+            settings: Application settings
         """
         self._settings = settings
-        self._window_size = 5  # Number of samples for moving average
-        self._transfer_history: List[Tuple[datetime, ByteSize]] = []
-        self._current_stats: Optional[TransferStats] = None
-        self._initial_size: Optional[ByteSize] = None
+        self._initial_size: Optional[int] = None
         self._start_time: Optional[datetime] = None
-        self._min_sample_interval = 0.5  # Minimum seconds between samples
-        self._last_sample_time: Optional[datetime] = None
+        self._last_update: Optional[datetime] = None
+        self._last_size: Optional[int] = None
+        self._rate_history: Deque[float] = deque(maxlen=10)
 
-    def initialize_transfer(self, initial_size: ByteSize) -> None:
-        """Initialize new transfer monitoring.
+    def initialize_transfer(self, initial_size: int) -> None:
+        """Initialize a new transfer operation.
 
         Args:
-            initial_size: Initial size of cache directory in bytes
-
-        Raises:
-            ValueError: If initial size is invalid
+            initial_size: Initial size in bytes
         """
         if initial_size <= 0:
             raise ValueError("Initial size must be positive")
 
+        if initial_size > Units.ByteSize.PETABYTE:
+            raise ValueError(f"Initial size exceeds maximum ({format_size(Units.ByteSize.PETABYTE)})")
+
         self._initial_size = initial_size
         self._start_time = datetime.now()
-        self._transfer_history.clear()
-        self._last_sample_time = None
-        self._current_stats = TransferStats(
-            initial_size=initial_size,
-            current_size=initial_size,
-            bytes_moved=0,
-            transfer_rate=0.0,
-            percent_complete=0.0,
-            start_time=self._start_time
-        )
-        logger.info(
-            "Transfer monitoring initialized",
+        self._last_update = None
+        self._last_size = None
+        self._rate_history.clear()
+
+        logger.debug(
+            "Transfer initialized",
             initial_size=format_size(initial_size)
         )
 
-    def update_progress(self, current_size: ByteSize) -> TransferStats:
-        """Update transfer progress with current cache size.
+    def update_progress(self, current_size: int) -> TransferStats:
+        """Update transfer progress and calculate statistics.
 
         Args:
-            current_size: Current size of cache directory in bytes
+            current_size: Current size in bytes
 
         Returns:
             TransferStats: Updated transfer statistics
 
         Raises:
-            ValueError: If transfer not initialized or current size invalid
+            ValueError: If transfer not initialized or invalid size
         """
-        if not self._initial_size or not self._start_time:
+        if self._initial_size is None or self._start_time is None:
             raise ValueError("Transfer not initialized")
 
         if current_size < 0:
             raise ValueError("Current size cannot be negative")
 
+        if current_size > self._initial_size:
+            logger.warning(
+                "Current size exceeds initial size",
+                current=format_size(current_size),
+                initial=format_size(self._initial_size)
+            )
+            current_size = self._initial_size
+
+        # Calculate basic metrics
         now = datetime.now()
+        elapsed = (now - self._start_time).total_seconds()
+        bytes_transferred = self._initial_size - current_size
+        bytes_remaining = current_size
+        percent_complete = (bytes_transferred / self._initial_size) * 100
 
-        # Enforce minimum sample interval
-        if (self._last_sample_time and
-            (now - self._last_sample_time).total_seconds() < self._min_sample_interval):
-            return self._current_stats
+        # Calculate transfer rate
+        if self._last_update and self._last_size is not None:
+            time_delta = (now - self._last_update).total_seconds()
+            if time_delta > 0:
+                size_delta = abs(current_size - self._last_size)
+                current_rate = size_delta / time_delta
+                self._rate_history.append(current_rate)
 
-        # Update transfer history
-        self._transfer_history.append((now, current_size))
-        if len(self._transfer_history) > self._window_size:
-            self._transfer_history.pop(0)
+        # Update tracking variables
+        self._last_update = now
+        self._last_size = current_size
 
-        # Calculate bytes moved and progress
-        bytes_moved = max(0, self._initial_size - current_size)
-        total_bytes = bytes_moved + current_size
-
-        # Handle edge case where total_bytes is 0
-        percent_complete = (bytes_moved / total_bytes * 100) if total_bytes > 0 else 0.0
-
-        # Calculate transfer rate using weighted moving average
-        transfer_rate = self._calculate_transfer_rate()
-
-        # Estimate completion time
-        estimated_completion = self._estimate_completion_time(
-            current_size, transfer_rate
-        ) if transfer_rate > 0 else None
-
-        # Update current stats
-        self._current_stats = TransferStats(
-            initial_size=self._initial_size,
-            current_size=current_size,
-            bytes_moved=bytes_moved,
-            transfer_rate=transfer_rate,
-            percent_complete=min(100.0, percent_complete),  # Ensure doesn't exceed 100%
-            start_time=self._start_time,
-            estimated_completion=estimated_completion
+        # Calculate average transfer rate
+        transfer_rate = (
+            sum(self._rate_history) / len(self._rate_history)
+            if self._rate_history
+            else 0.0
         )
 
-        self._last_sample_time = now
-        return self._current_stats
+        # Estimate remaining time
+        remaining_time = (
+            bytes_remaining / transfer_rate if transfer_rate > 0 else 0.0
+        )
 
-    def _calculate_transfer_rate(self) -> float:
-        """Calculate current transfer rate using weighted moving average.
+        # Create statistics object
+        stats = TransferStats(
+            initial_size=self._initial_size,
+            current_size=current_size,
+            bytes_transferred=bytes_transferred,
+            bytes_remaining=bytes_remaining,
+            percent_complete=round(percent_complete, 2),
+            transfer_rate=transfer_rate,
+            elapsed_time=elapsed,
+            remaining_time=remaining_time,
+            start_time=self._start_time,
+            end_time=now if percent_complete >= 100 else None
+        )
 
-        Returns:
-            float: Transfer rate in bytes per second
-        """
-        if len(self._transfer_history) < 2:
-            return 0.0
+        logger.debug(
+            "Progress updated",
+            percent=f"{stats.percent_complete:.1f}%",
+            remaining=format_size(stats.bytes_remaining),
+            rate=f"{format_size(stats.transfer_rate)}/s"
+        )
 
-        rates = []
-        weights = []
-        total_weight = 0
-
-        # Calculate weighted rates between consecutive samples
-        for i in range(1, len(self._transfer_history)):
-            time_prev, size_prev = self._transfer_history[i - 1]
-            time_curr, size_curr = self._transfer_history[i]
-
-            time_diff = (time_curr - time_prev).total_seconds()
-            if time_diff > 0:
-                size_diff = max(0, size_prev - size_curr)  # Ensure non-negative
-                rate = size_diff / time_diff
-                # More recent samples get higher weights
-                weight = i / len(self._transfer_history)
-                rates.append(rate)
-                weights.append(weight)
-                total_weight += weight
-
-        # Calculate weighted average
-        if not rates or total_weight == 0:
-            return 0.0
-
-        weighted_sum = sum(rate * weight for rate, weight in zip(rates, weights, strict=False))
-        return weighted_sum / total_weight
-
-    def _estimate_completion_time(
-        self,
-        current_size: ByteSize,
-        transfer_rate: float,
-        confidence_factor: float = 1.1  # 10% buffer
-    ) -> Optional[datetime]:
-        """Estimate transfer completion time.
-
-        Args:
-            current_size: Current cache directory size
-            transfer_rate: Current transfer rate (bytes/sec)
-            confidence_factor: Buffer factor for estimation
-
-        Returns:
-            Optional[datetime]: Estimated completion time or None if cannot estimate
-        """
-        if transfer_rate <= 0 or current_size <= 0:
-            return None
-
-        try:
-            # Calculate remaining time with buffer
-            seconds_remaining = (current_size / transfer_rate) * confidence_factor
-
-            # Apply reasonable bounds
-            max_remaining = timedelta(days=7)  # Cap at 1 week
-            seconds_remaining = min(seconds_remaining, max_remaining.total_seconds())
-
-            return datetime.now() + timedelta(seconds=seconds_remaining)
-
-        except (ZeroDivisionError, OverflowError):
-            return None
-
-    def get_current_stats(self) -> Optional[TransferStats]:
-        """Get current transfer statistics.
-
-        Returns:
-            Optional[TransferStats]: Current statistics or None if not initialized
-        """
-        return self._current_stats
+        return stats
 
     def reset(self) -> None:
         """Reset calculator state."""
-        self._transfer_history.clear()
         self._initial_size = None
         self._start_time = None
-        self._current_stats = None
-        self._last_sample_time = None
+        self._last_update = None
+        self._last_size = None
+        self._rate_history.clear()
         logger.info("Transfer calculator reset")
 
     async def monitor_transfer(
@@ -275,7 +203,7 @@ class TransferCalculator:
                     logger.debug(
                         "Transfer progress updated",
                         current_size=format_size(stats.current_size),
-                        bytes_moved=format_size(stats.bytes_moved),
+                        bytes_transferred=format_size(stats.bytes_transferred),
                         percent_complete=f"{stats.percent_complete:.1f}%",
                         transfer_rate=f"{format_size(int(stats.transfer_rate))}/s"
                     )
@@ -292,3 +220,22 @@ class TransferCalculator:
         except Exception as err:
             logger.error("Transfer monitoring error", error=str(err))
             raise
+
+    def get_current_stats(self) -> Optional[TransferStats]:
+        """Get current transfer statistics.
+
+        Returns:
+            Optional[TransferStats]: Current statistics or None if not initialized
+        """
+        return TransferStats(
+            initial_size=self._initial_size,
+            current_size=self._last_size,
+            bytes_transferred=self._initial_size - self._last_size,
+            bytes_remaining=self._last_size,
+            percent_complete=0.0,
+            transfer_rate=0.0,
+            elapsed_time=0.0,
+            remaining_time=0.0,
+            start_time=self._start_time,
+            end_time=None
+        ) if self._initial_size and self._last_size else None

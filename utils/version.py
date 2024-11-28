@@ -14,11 +14,7 @@ from typing import Optional, Tuple
 import aiohttp
 from structlog import get_logger
 
-from config.constants import (
-    CURRENT_VERSION,
-    GITHUB_API_RELEASES_URL,
-    VERSION_CHECK_INTERVAL,
-)
+from config.constants import TimeConstants, Version
 
 logger = get_logger(__name__)
 
@@ -33,6 +29,9 @@ class Version:
     minor: int
     patch: int
     prerelease: Optional[str] = None
+
+    CURRENT = Version.CURRENT
+    GITHUB_API_URL = Version.GITHUB_API_URL
 
     @classmethod
     def from_string(cls, version_str: str) -> "Version":
@@ -100,6 +99,7 @@ class Version:
             and self.prerelease < other.prerelease
         )
 
+
 class VersionChecker:
     """
     Handles version checking against GitHub releases.
@@ -110,7 +110,7 @@ class VersionChecker:
         """Initialize version checker."""
         self._latest_version: Optional[Version] = None
         self._last_check: Optional[datetime] = None
-        self._current = Version.from_string(CURRENT_VERSION)
+        self._current = Version.from_string(Version.CURRENT)
 
     @property
     def current_version(self) -> Version:
@@ -137,7 +137,7 @@ class VersionChecker:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(GITHUB_API_RELEASES_URL) as response:
+                async with session.get(Version.GITHUB_API_URL) as response:
                     response.raise_for_status()
                     data = await response.json()
 
@@ -185,47 +185,8 @@ class VersionChecker:
             return False
 
         cache_age = datetime.now() - self._last_check
-        return cache_age < timedelta(seconds=VERSION_CHECK_INTERVAL)
+        return cache_age < timedelta(seconds=TimeConstants.VERSION_CHECK_INTERVAL)
 
-    async def check_for_updates(self) -> Tuple[bool, Optional[str]]:
-        """Check if updates are available.
-
-        Returns:
-            Tuple[bool, Optional[str]]: Tuple containing:
-                - bool: True if update available, False otherwise
-                - Optional[str]: Latest version string if update available, None otherwise
-
-        Note:
-            This method handles all exceptions internally and logs errors
-            without propagating them to the caller.
-        """
-        try:
-            latest = await self.get_latest_version()
-            update_available = latest > self._current
-            
-            if update_available:
-                logger.info(
-                    "Update available",
-                    current_version=str(self._current),
-                    latest_version=str(latest),
-                )
-                return True, str(latest)
-            
-            logger.debug(
-                "No updates available",
-                current_version=str(self._current),
-                latest_version=str(latest),
-            )
-            return False, None
-
-        except Exception as err:
-            logger.error(
-                "Update check failed",
-                error=str(err),
-                error_type=type(err).__name__,
-                current_version=str(self._current),
-            )
-            return False, None
 
 # Global version checker instance
 version_checker = VersionChecker()

@@ -8,8 +8,8 @@ Example:
     >>> from notifications.telegram.templates import create_progress_message
     >>> message = create_progress_message(
     ...     percent=75.5,
-    ...     remaining="1.2 GB",
-    ...     elapsed="2 hours",
+    ...     remaining_data="1.2 GB",
+    ...     elapsed_time="2 hours",
     ...     etc="15:30"
     ... )
 """
@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Union
 
 from structlog import get_logger
 
-from config.constants import MessagePriority
+from config.constants import Notification
 from shared.providers.telegram.types import (
     InlineKeyboardMarkup,
     MessageEntity,
@@ -56,6 +56,7 @@ The file transfer has been successfully completed.
 {warning_message}""",
 }
 
+
 def escape_html(text: str) -> str:
     """Escape HTML special characters in text.
 
@@ -78,6 +79,7 @@ def escape_html(text: str) -> str:
     }
     return "".join(html_escape_table.get(c, c) for c in str(text))
 
+
 def escape_markdown(text: str) -> str:
     """Escape Markdown special characters in text.
 
@@ -94,27 +96,26 @@ def escape_markdown(text: str) -> str:
     markdown_escape_chars = r"_*[]()~`>#+-=|{}.!"
     return "".join(f"\\{c}" if c in markdown_escape_chars else c for c in str(text))
 
+
 def create_progress_message(
     percent: float,
-    remaining: str,
-    elapsed: str,
+    remaining_data: str,
+    elapsed_time: str,
     etc: str,
-    parse_mode: ParseMode = ParseMode.HTML,
+    priority: Notification.Priority = Notification.Priority.NORMAL,
     add_keyboard: bool = True,
     description: Optional[str] = None,
-    priority: MessagePriority = MessagePriority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create formatted progress update message.
 
     Args:
         percent: Progress percentage (0-100)
-        remaining: Remaining data amount
-        elapsed: Elapsed time
+        remaining_data: Remaining data amount
+        elapsed_time: Elapsed time
         etc: Estimated time of completion
-        parse_mode: Message parsing mode
+        priority: Message priority level
         add_keyboard: Whether to add inline keyboard
         description: Optional description
-        priority: Message priority level
 
     Returns:
         Dict: Formatted message data
@@ -126,11 +127,12 @@ def create_progress_message(
         raise ValueError("Percent must be between 0 and 100")
 
     # Escape special characters based on parse mode
+    parse_mode = ParseMode.HTML
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
     escaped_values = {
         "percent": escape_func(f"{percent:.1f}"),
-        "remaining_data": escape_func(remaining),
-        "elapsed_time": escape_func(elapsed),
+        "remaining_data": escape_func(remaining_data),
+        "elapsed_time": escape_func(elapsed_time),
         "etc": escape_func(etc),
     }
 
@@ -148,7 +150,7 @@ def create_progress_message(
     response_data = {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": priority == MessagePriority.LOW,
+        "disable_notification": priority == Notification.Priority.LOW,
     }
 
     # Add inline keyboard if requested
@@ -163,19 +165,18 @@ def create_progress_message(
 
     return response_data
 
+
 def create_completion_message(
-    parse_mode: ParseMode = ParseMode.HTML,
+    stats: str,
+    priority: Notification.Priority = Notification.Priority.NORMAL,
     include_stats: bool = True,
-    stats: Optional[Dict[str, str]] = None,
-    priority: MessagePriority = MessagePriority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create completion notification message.
 
     Args:
-        parse_mode: Message parsing mode
-        include_stats: Whether to include transfer statistics
-        stats: Optional transfer statistics
+        stats: Transfer statistics summary
         priority: Message priority level
+        include_stats: Whether to include transfer statistics
 
     Returns:
         Dict: Formatted message data
@@ -183,6 +184,7 @@ def create_completion_message(
     Raises:
         ValueError: If message exceeds length limits
     """
+    parse_mode = ParseMode.HTML
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
     stats_text = ""
 
@@ -199,15 +201,16 @@ def create_completion_message(
     return {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": priority == MessagePriority.LOW,
+        "disable_notification": priority == Notification.Priority.LOW,
     }
+
 
 def create_error_message(
     error_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     include_debug: bool = False,
     debug_info: Optional[Dict[str, str]] = None,
-    priority: MessagePriority = MessagePriority.HIGH,
+    priority: Notification.Priority = Notification.Priority.HIGH,
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create error notification message.
 
@@ -249,11 +252,12 @@ def create_error_message(
         "disable_notification": False,  # Error messages always notify
     }
 
+
 def create_status_message(
     status_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     keyboard: Optional[InlineKeyboardMarkup] = None,
-    priority: MessagePriority = MessagePriority.NORMAL,
+    priority: Notification.Priority = Notification.Priority.NORMAL,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create status update message.
 
@@ -282,7 +286,7 @@ def create_status_message(
     response_data = {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": priority == MessagePriority.LOW,
+        "disable_notification": priority == Notification.Priority.LOW,
     }
 
     if keyboard:
@@ -290,11 +294,12 @@ def create_status_message(
 
     return response_data
 
+
 def create_warning_message(
     warning_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     keyboard: Optional[InlineKeyboardMarkup] = None,
-    priority: MessagePriority = MessagePriority.HIGH,
+    priority: Notification.Priority = Notification.Priority.HIGH,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create warning notification message.
 
@@ -330,6 +335,7 @@ def create_warning_message(
         response_data["reply_markup"] = keyboard
 
     return response_data
+
 
 def extract_html_entities(text: str) -> tuple[str, List[MessageEntity]]:
     """Extract message entities from HTML-formatted text.
