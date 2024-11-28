@@ -189,35 +189,26 @@
 3. Update notification providers to handle new message types
 4. Update webhook provider to handle non-optional embeds
 5. Update templates.py to handle JsonDict nesting limits in webhook payloads
-6. Ensure templates.py error messages align with new centralized error classes
+6. ~~Ensure templates.py error messages align with new centralized error classes~~ ✅
+   - Added centralized error messages in both Discord and Telegram templates
+   - Updated all error messages to include proper context
+   - Standardized error format across providers
 7. Update type hints using the new enum types
-8. Update environment variable documentation
-9. Update example configurations
-10. Add documentation for NotificationState usage
-11. Update webhook implementations for new constraints
-12. Update provider implementations for thread safety
-13. Update Discord provider to handle new error types
-14. Update documentation with new validation requirements
-15. Update type hints in dependent files to use new domain sets
-16. Consolidate Discord validation into shared types module
-17. Remove redundant validation files
-18. Update imports to use centralized Discord types
-19. Document new Discord validation structure
-20. Update configuration examples with timeout settings
-21. Add timeout configuration to documentation
-22. ~~Update Telegram templates to handle new message types~~ ✅
-23. ~~Update Telegram templates to use shared validation rules~~ ✅
-24. ~~Add proper error context to Telegram templates~~ ✅
-25. ~~Update Telegram template documentation~~ ✅
-26. Add timeout configuration to Telegram templates
-27. Update configuration examples with new Telegram settings
-28. Add rate limiting documentation for Telegram provider
-29. Add state management documentation for Telegram provider
-30. Update error handling documentation for Telegram provider
-31. Update providers to use new progress bar styles
-32. Update providers to use new time formats
-33. Add color support to provider messages
-34. Update documentation with new formatting options
+8. Update provider implementations for thread safety
+9. Update Discord provider to handle new error types
+10. Update type hints in dependent files to use new domain sets
+11. ~~Consolidate Discord validation into shared types module~~ ✅
+12. ~~Remove redundant validation files~~ ✅
+13. ~~Update imports to use centralized Discord types~~ ✅
+14. ~~Document new Discord validation structure~~ ✅
+15. ~~Update Telegram templates to handle new message types~~ ✅
+16. ~~Update Telegram templates to use shared validation rules~~ ✅
+17. ~~Add proper error context to Telegram templates~~ ✅
+18. ~~Update Telegram template documentation~~ ✅
+19. Add timeout configuration to Telegram templates
+20. Update providers to use new progress bar styles
+21. Update providers to use new time formats
+22. Add color support to provider messages
 
 **Review Order & Progress:**
 
