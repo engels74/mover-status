@@ -5,69 +5,48 @@ Type definitions and constants for Telegram bot notifications.
 Defines message structure, API limits, and formatting options for Telegram bot API.
 
 Example:
-    >>> from notifications.telegram.types import ParseMode, MessageLimit
-    >>> MAX_LENGTH = MessageLimit.MESSAGE_TEXT
-    >>> mode = ParseMode.HTML
+    >>> from notifications.providers.telegram.types import MessagePriority, validate_message_length
+    >>> priority = MessagePriority.NORMAL
+    >>> text = validate_message_length("Hello, World!")
 """
 
-from enum import Enum, IntEnum
-from typing import List, Optional, TypedDict, Union
+from enum import IntEnum
+from typing import Dict, List, Optional, TypedDict, Union
 
-from shared.providers.telegram import (  # Absolute import path
+from config.constants import ErrorMessages
+from shared.providers.telegram import (
     MessageEntity,
+    MessageLimit,
+    ParseMode,
 )
-
-
-class ChatType(str, Enum):
-    """Telegram chat types."""
-    PRIVATE = "private"
-    GROUP = "group"
-    SUPERGROUP = "supergroup"
-    CHANNEL = "channel"
-
-
-class MessageEntityType(str, Enum):
-    """Telegram message entity types for text formatting."""
-    BOLD = "bold"
-    ITALIC = "italic"
-    CODE = "code"
-    PRE = "pre"
-    TEXT_LINK = "text_link"
-    MENTION = "mention"
-    HASHTAG = "hashtag"
-    URL = "url"
 
 
 class MessagePriority(IntEnum):
     """Message priority levels affecting notification behavior."""
     SILENT = 0     # No notification
     NORMAL = 1     # Default notification
-    PRIORITY = 2   # Urgent notification (bypasses mute)
+    URGENT = 2     # Priority notification (bypasses mute)
 
 
-class MessageLimit(IntEnum):
-    """Telegram API message limits."""
-    MESSAGE_TEXT = 4096      # Maximum message text length
-    CAPTION_TEXT = 1024      # Maximum media caption length
-    MESSAGE_ENTITIES = 100   # Maximum message entities
-    MESSAGES_PER_SECOND = 30 # Maximum messages per second
-    MESSAGES_PER_MINUTE = 20 # Maximum messages per minute to same chat
-    MESSAGE_THREADS = 100    # Maximum message threads per chat
+class NotificationState(TypedDict, total=False):
+    """Telegram notification state tracking."""
+    message_id: int
+    chat_id: Union[int, str]
+    thread_id: Optional[int]
+    priority: MessagePriority
+    retry_count: int
+    last_error: Optional[str]
+    last_update: float
 
 
-class ReplyMarkup(TypedDict, total=False):
-    """Base type for all reply markup options."""
-    pass
-
-
-class InlineKeyboardButton(TypedDict):
+class InlineKeyboardButton(TypedDict, total=False):
     """Telegram inline keyboard button structure."""
-    text: str
-    url: Optional[str]
-    callback_data: Optional[str]
+    text: str                       # Button text (required)
+    url: Optional[str]              # Optional URL to open
+    callback_data: Optional[str]    # Optional callback data
 
 
-class InlineKeyboardMarkup(ReplyMarkup):
+class InlineKeyboardMarkup(TypedDict):
     """Telegram inline keyboard markup structure."""
     inline_keyboard: List[List[InlineKeyboardButton]]
 
@@ -76,33 +55,61 @@ class SendMessageRequest(TypedDict, total=False):
     """Structure for sendMessage API request."""
     chat_id: Union[int, str]
     text: str
-    parse_mode: Optional[str]
+    parse_mode: Optional[ParseMode]
     entities: Optional[List[MessageEntity]]
     disable_notification: Optional[bool]
     protect_content: Optional[bool]
-    reply_markup: Optional[ReplyMarkup]
+    message_thread_id: Optional[int]
+    reply_markup: Optional[InlineKeyboardMarkup]
 
 
-# Rate Limiting Configuration
-RATE_LIMIT = {
-    "max_retries": 3,      # Maximum number of retry attempts
-    "retry_delay": 5,      # Delay between retries in seconds
-    "rate_limit": 20,      # Maximum requests per rate period
-    "rate_period": 60,     # Rate limit period in seconds
-}
+class EditMessageRequest(TypedDict, total=False):
+    """Structure for editMessageText API request."""
+    chat_id: Union[int, str]
+    message_id: int
+    text: str
+    parse_mode: Optional[ParseMode]
+    entities: Optional[List[MessageEntity]]
+    message_thread_id: Optional[int]
+    reply_markup: Optional[InlineKeyboardMarkup]
 
-# Default message templates
-DEFAULT_TEMPLATES = {
+
+class DeleteMessageRequest(TypedDict, total=False):
+    """Structure for deleteMessage API request."""
+    chat_id: Union[int, str]
+    message_id: int
+    message_thread_id: Optional[int]
+
+
+# Default message templates with HTML formatting
+DEFAULT_TEMPLATES: Dict[str, str] = {
     "progress": (
         "📊 <b>Transfer Progress</b>\n"
-        "├ Progress: <b>{percent}%</b>\n"
-        "├ Remaining: {remaining_data}\n"
-        "├ Elapsed: {elapsed_time}\n"
-        "└ ETC: {etc}"
+        "├ Progress: <b>{percent:.1f}%</b>\n"
+        "├ Speed: {speed}/s\n"
+        "├ Remaining: {remaining}\n"
+        "├ Elapsed: {elapsed}\n"
+        "└ ETA: {eta}"
     ),
-    "completion": "✅ <b>Transfer Complete!</b>\nAll data has been successfully moved.",
-    "error": "❌ <b>Transfer Error</b>\n{error_message}"
+    "completion": (
+        "✅ <b>Transfer Complete</b>\n"
+        "├ Total Size: {total_size}\n"
+        "├ Duration: {duration}\n"
+        "├ Average Speed: {avg_speed}/s\n"
+        "└ Files Moved: {files_moved}"
+    ),
+    "error": (
+        "❌ <b>Transfer Error</b>\n"
+        "├ Error: {error}\n"
+        "├ Details: {details}\n"
+        "└ Retry Count: {retry_count}"
+    ),
+    "warning": (
+        "⚠️ <b>Warning</b>\n"
+        "{message}"
+    )
 }
+
 
 def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     """Create inline keyboard with progress information.
@@ -113,38 +120,58 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
     Returns:
         InlineKeyboardMarkup: Formatted inline keyboard
 
+    Raises:
+        ValueError: If percent is not between 0 and 100
+
     Example:
         >>> keyboard = create_progress_keyboard(75.5)
         >>> keyboard["inline_keyboard"]
         [[{"text": "▰▰▰▰▰▰▰▱▱▱ 75.5%", "callback_data": "progress"}]]
     """
-    # Create progress bar
-    progress_blocks = 10
-    filled = int(percent / 100 * progress_blocks)
-    bar = "▰" * filled + "▱" * (progress_blocks - filled)
+    if not 0 <= percent <= 100:
+        raise ValueError(ErrorMessages.INVALID_PERCENTAGE.format(
+            value=percent
+        ))
 
-    return {
-        "inline_keyboard": [[{
-            "text": f"{bar} {percent:.1f}%",
-            "callback_data": "progress"
-        }]]
-    }
+    # Create progress bar
+    total_slots = MessageLimit.BUTTONS_PER_ROW
+    filled = int(percent * total_slots / 100)
+    empty = total_slots - filled
+
+    # Build keyboard layout
+    keyboard: List[List[InlineKeyboardButton]] = [
+        [
+            {
+                "text": "█" * filled + "░" * empty,
+                "callback_data": f"progress_{percent:.1f}"
+            }
+        ],
+        [
+            {"text": f"{percent:.1f}%", "callback_data": "percent"},
+            {"text": "Cancel", "callback_data": "cancel"}
+        ]
+    ]
+
+    return {"inline_keyboard": keyboard}
+
 
 def validate_message_length(
     text: str,
-    limit: MessageLimit = MessageLimit.MESSAGE_TEXT
+    limit: int = MessageLimit.MESSAGE_TEXT,
+    truncate: bool = True
 ) -> str:
-    """Validate and truncate message if needed.
+    """Validate and optionally truncate message text.
 
     Args:
         text: Message text to validate
-        limit: Maximum length limit to apply
+        limit: Maximum length limit (default: MESSAGE_TEXT)
+        truncate: Whether to truncate text if too long (default: True)
 
     Returns:
         str: Validated message text
 
     Raises:
-        ValueError: If text is empty
+        ValueError: If text is empty or too long when truncate is False
 
     Example:
         >>> long_text = "x" * 5000
@@ -153,8 +180,13 @@ def validate_message_length(
         True
     """
     if not text:
-        raise ValueError("Message text cannot be empty")
+        raise ValueError(ErrorMessages.EMPTY_MESSAGE)
 
     if len(text) > limit:
+        if not truncate:
+            raise ValueError(ErrorMessages.MESSAGE_TOO_LONG.format(
+                max_length=limit
+            ))
         return text[:(limit - 3)] + "..."
+
     return text
