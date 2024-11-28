@@ -9,12 +9,12 @@ mover_status/
 │   └── providers/
 │       ├── base.py
 │       ├── discord/
-│       │   ├── config.py
 │       │   ├── schemas.py
+│       │   ├── settings.py
 │       │   └── types.py
 │       └── telegram/
-│           ├── config.py
 │           ├── schemas.py
+│           ├── settings.py
 │           └── types.py
 ├── core/
 │   ├── calculator.py
@@ -27,13 +27,11 @@ mover_status/
 │       ├── discord/
 │       │   ├── __init__.py
 │       │   ├── provider.py
-│       │   ├── templates.py
-│       │   └── validators.py
+│       │   └── templates.py
 │       └── telegram/
 │           ├── __init__.py
 │           ├── provider.py
-│           ├── templates.py
-│           └── validators.py
+│           └── templates.py
 ├── shared/
 │   └── providers/
 │       ├── discord/
@@ -113,8 +111,39 @@ The Discord integration uses a centralized type system in `shared.providers.disc
   - `settings.py`: Settings management with validation
 
 - **Runtime (`notifications.providers.discord/`)**
-  - `validators.py`: Message validation using shared rules
   - `provider.py`: Webhook handling and message delivery
+  - `templates.py`: Message formatting and structure
+
+### Telegram Integration Structure
+
+#### Centralized Types and Validation
+The Telegram integration uses a centralized type system in `shared.providers.telegram`:
+- **Type Definitions**
+  - `ParseMode`: Message parsing modes (HTML, Markdown)
+  - `MessageEntity`: Text formatting entities
+  - `InlineKeyboardMarkup`: Interactive keyboard layouts
+  - Other TypedDict definitions for Telegram types
+
+- **Constants and Limits**
+  - `MessageLimit`: Message content limits
+  - `ApiLimit`: API constraints and rate limits
+  - `ChatType`: Available chat types
+  - Message entity type constants
+
+- **Validation Rules**
+  - Message length validation
+  - UTF-16 encoding handling
+  - Entity validation and extraction
+  - Common validation messages
+
+#### Provider Implementation
+- **Configuration (`config.providers.telegram/`)**
+  - `schemas.py`: Pydantic models using shared types
+  - `settings.py`: Settings management with validation
+
+- **Runtime (`notifications.providers.telegram/`)**
+  - `provider.py`: Bot API handling and message delivery
+  - `templates.py`: Message formatting and templates
 
 ### File Requirements
 Every Python file must include:
