@@ -14,12 +14,10 @@ Example:
 """
 
 import asyncio
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
-from pathlib import Path
-from typing import Dict, FrozenSet, Optional, Set
+from typing import Optional
 
 import psutil
 from structlog import get_logger

@@ -22,8 +22,8 @@ from structlog import get_logger
 
 from config.constants import (
     Events,
-    States,
     NotificationProvider,
+    States,
 )
 from config.settings import Settings
 from core.calculator import TransferCalculator, TransferStats

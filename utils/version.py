@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import total_ordering
-from typing import Optional, Tuple
+from typing import Optional
 
 import aiohttp
 from structlog import get_logger
@@ -153,7 +153,7 @@ class VersionChecker:
                     try:
                         self._latest_version = Version.from_string(latest_tag)
                     except ValueError as err:
-                        raise ValueError(f"Invalid version format in GitHub release: {err}")
+                        raise ValueError(f"Invalid version format in GitHub release: {err}") from err
 
                     self._last_check = datetime.now()
 
@@ -177,7 +177,7 @@ class VersionChecker:
 
     def _is_cache_valid(self) -> bool:
         """Check if cached version is still valid.
-        
+
         Returns:
             bool: True if cache is valid, False otherwise
         """

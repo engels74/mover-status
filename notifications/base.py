@@ -15,7 +15,7 @@ Example:
 
 import asyncio
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import (
     Any,
     Dict,
@@ -23,13 +23,10 @@ from typing import (
     Generic,
     List,
     Optional,
-    Protocol,
-    Set,
-    Type,
     TypeVar,
 )
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from structlog import get_logger
 
 from config.constants import (

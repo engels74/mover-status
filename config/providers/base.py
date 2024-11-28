@@ -17,8 +17,8 @@ from pydantic.json_schema import JsonSchemaValue
 
 from config.constants import (
     API,
-    MessagePriority,
     JsonDict,
+    MessagePriority,
     Templates,
 )
 

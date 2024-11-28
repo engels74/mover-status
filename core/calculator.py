@@ -14,9 +14,9 @@ Example:
 
 import asyncio
 from collections import deque
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Deque, List, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Deque, Optional
 
 from structlog import get_logger
 
