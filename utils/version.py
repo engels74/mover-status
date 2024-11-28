@@ -106,7 +106,7 @@ class VersionChecker:
     Implements caching to avoid excessive API requests.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize version checker."""
         self._latest_version: Optional[Version] = None
         self._last_check: Optional[datetime] = None
@@ -128,6 +128,7 @@ class VersionChecker:
 
         Raises:
             aiohttp.ClientError: If GitHub API request fails
+            ValueError: If GitHub API response is invalid or no releases found
         """
         # Use cached version if available and not expired
         if not force_check and self._is_cache_valid():
@@ -140,18 +141,27 @@ class VersionChecker:
                     response.raise_for_status()
                     data = await response.json()
 
-                    if not data:
-                        raise ValueError("No releases found")
+                    if not isinstance(data, list) or not data:
+                        raise ValueError("Invalid or empty GitHub API response")
+
+                    release = data[0]
+                    if not isinstance(release, dict) or "tag_name" not in release:
+                        raise ValueError("Invalid release format in GitHub API response")
 
                     # Get latest release version
-                    latest_tag = data[0]["tag_name"].lstrip("v")
-                    self._latest_version = Version.from_string(latest_tag)
+                    latest_tag = release["tag_name"].lstrip("v")
+                    try:
+                        self._latest_version = Version.from_string(latest_tag)
+                    except ValueError as err:
+                        raise ValueError(f"Invalid version format in GitHub release: {err}")
+
                     self._last_check = datetime.now()
 
                     logger.debug(
                         "Version check completed",
                         current_version=str(self._current),
                         latest_version=str(self._latest_version),
+                        cache_updated=True,
                     )
 
                     return self._latest_version
@@ -160,12 +170,17 @@ class VersionChecker:
             logger.error(
                 "Failed to check for updates",
                 error=str(err),
+                error_type=type(err).__name__,
                 current_version=str(self._current),
             )
             raise
 
     def _is_cache_valid(self) -> bool:
-        """Check if cached version is still valid."""
+        """Check if cached version is still valid.
+        
+        Returns:
+            bool: True if cache is valid, False otherwise
+        """
         if self._latest_version is None or self._last_check is None:
             return False
 
@@ -176,15 +191,40 @@ class VersionChecker:
         """Check if updates are available.
 
         Returns:
-            Tuple[bool, Optional[str]]: (update_available, latest_version_str)
+            Tuple[bool, Optional[str]]: Tuple containing:
+                - bool: True if update available, False otherwise
+                - Optional[str]: Latest version string if update available, None otherwise
+
+        Note:
+            This method handles all exceptions internally and logs errors
+            without propagating them to the caller.
         """
         try:
             latest = await self.get_latest_version()
-            if latest > self._current:
+            update_available = latest > self._current
+            
+            if update_available:
+                logger.info(
+                    "Update available",
+                    current_version=str(self._current),
+                    latest_version=str(latest),
+                )
                 return True, str(latest)
+            
+            logger.debug(
+                "No updates available",
+                current_version=str(self._current),
+                latest_version=str(latest),
+            )
             return False, None
+
         except Exception as err:
-            logger.error("Update check failed", error=str(err))
+            logger.error(
+                "Update check failed",
+                error=str(err),
+                error_type=type(err).__name__,
+                current_version=str(self._current),
+            )
             return False, None
 
 # Global version checker instance
