@@ -14,30 +14,82 @@ Functions:
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional, Union
 
 from config.constants import (
-    BYTES_PER_GB,
-    BYTES_PER_KB,
-    BYTES_PER_MB,
-    BYTES_PER_TB,
     SECONDS_PER_DAY,
     SECONDS_PER_HOUR,
     SECONDS_PER_MINUTE,
-    TEMPLATE_PLACEHOLDERS,
-    Percentage,
 )
 
 
-def format_size(bytes_value: Union[int, float], precision: int = 2) -> str:
+class ProgressStyle(str, Enum):
+    """Progress bar style options."""
+    ASCII = "ascii"      # [====    ]
+    UNICODE = "unicode"  # [████░░░░]
+    BLOCKS = "blocks"    # [▓▓▓▓░░░░]
+    DOTS = "dots"       # [●●●●○○○○]
+    ARROW = "arrow"     # [→→→→----]
+
+
+class SizeUnit(str, Enum):
+    """Size unit systems."""
+    BINARY = "binary"    # Uses 1024 (KiB, MiB, etc.)
+    DECIMAL = "decimal"  # Uses 1000 (KB, MB, etc.)
+
+
+class TimeFormat(str, Enum):
+    """Time format options."""
+    SHORT = "short"      # 2h 30m
+    MEDIUM = "medium"    # 2 hours 30 minutes
+    LONG = "long"        # 2 hours and 30 minutes
+    PRECISE = "precise"  # 2 hours, 30 minutes, and 15 seconds
+
+
+# Progress bar style definitions
+PROGRESS_STYLES = {
+    ProgressStyle.ASCII: ("=", "-", "[", "]"),
+    ProgressStyle.UNICODE: ("█", "░", "│", "│"),
+    ProgressStyle.BLOCKS: ("▓", "░", "│", "│"),
+    ProgressStyle.DOTS: ("●", "○", "│", "│"),
+    ProgressStyle.ARROW: ("→", "-", "│", "│"),
+}
+
+# Size unit multipliers
+BINARY_UNITS = [
+    (1, "B"),
+    (1024, "KiB"),
+    (1024**2, "MiB"),
+    (1024**3, "GiB"),
+    (1024**4, "TiB"),
+    (1024**5, "PiB"),
+]
+
+DECIMAL_UNITS = [
+    (1, "B"),
+    (1000, "KB"),
+    (1000**2, "MB"),
+    (1000**3, "GB"),
+    (1000**4, "TB"),
+    (1000**5, "PB"),
+]
+
+
+def format_size(
+    bytes_value: Union[int, float],
+    precision: int = 2,
+    unit_system: SizeUnit = SizeUnit.DECIMAL
+) -> str:
     """Convert byte size to human-readable format.
 
     Args:
         bytes_value: Size in bytes
         precision: Number of decimal places to include (must be non-negative)
+        unit_system: Unit system to use (binary or decimal)
 
     Returns:
-        str: Formatted size string (e.g., "1.23 GB")
+        str: Formatted size string (e.g., "1.23 GB" or "1.23 GiB")
 
     Raises:
         ValueError: If bytes_value or precision is negative
@@ -45,44 +97,40 @@ def format_size(bytes_value: Union[int, float], precision: int = 2) -> str:
     Examples:
         >>> format_size(1234567890)
         '1.15 GB'
-        >>> format_size(1234567890, precision=1)
-        '1.1 GB'
+        >>> format_size(1234567890, unit_system=SizeUnit.BINARY)
+        '1.07 GiB'
     """
     if bytes_value < 0:
         raise ValueError("Byte size cannot be negative")
     if precision < 0:
         raise ValueError("Precision cannot be negative")
 
-    bytes_value = float(bytes_value)  # Convert to float for division
-    units = ["B", "KB", "MB", "GB", "TB", "PB"]
-    unit_boundaries = [1, BYTES_PER_KB, BYTES_PER_MB, BYTES_PER_GB, BYTES_PER_TB]
+    bytes_value = float(bytes_value)
+    units = BINARY_UNITS if unit_system == SizeUnit.BINARY else DECIMAL_UNITS
 
     # Find appropriate unit
-    unit_index = 0
-    for i, boundary in enumerate(unit_boundaries):
-        if bytes_value < boundary:
+    for factor, _unit in units:
+        if bytes_value < factor * (1024 if unit_system == SizeUnit.BINARY else 1000):
             break
-        unit_index = i
 
     # Handle special case for bytes
-    if unit_index == 0:
-        return f"{int(bytes_value)} {units[0]}"
+    if factor == 1:
+        return f"{int(bytes_value)} B"
 
-    # Calculate value in appropriate unit
-    value = bytes_value / unit_boundaries[unit_index]
-    return f"{value:.{precision}f} {units[unit_index]}"
+    value = bytes_value / factor
+    return f"{value:.{precision}f} {_unit}"
 
 
-def format_duration(
+def format_duration(  # noqa: C901
     seconds: Union[int, float],
-    include_seconds: bool = True,
+    format_type: TimeFormat = TimeFormat.MEDIUM,
     max_units: int = 2
 ) -> str:
     """Format duration in seconds to human-readable string.
 
     Args:
         seconds: Duration in seconds
-        include_seconds: Whether to include seconds in output
+        format_type: Time format style
         max_units: Maximum number of units to include (default 2)
 
     Returns:
@@ -94,58 +142,68 @@ def format_duration(
     Examples:
         >>> format_duration(3665)
         '1 hour 1 minute'
-        >>> format_duration(3665, max_units=3)
-        '1 hour 1 minute 5 seconds'
+        >>> format_duration(3665, format_type=TimeFormat.SHORT)
+        '1h 1m'
     """
     if seconds < 0:
         raise ValueError("Duration cannot be negative")
     if max_units < 1:
         raise ValueError("max_units must be at least 1")
 
-    seconds = float(seconds)  # Convert to float for division
+    seconds = float(seconds)
     intervals = [
-        (SECONDS_PER_DAY, "day"),
-        (SECONDS_PER_HOUR, "hour"),
-        (SECONDS_PER_MINUTE, "minute"),
-        (1, "second")
+        (SECONDS_PER_DAY, "d", "day"),
+        (SECONDS_PER_HOUR, "h", "hour"),
+        (SECONDS_PER_MINUTE, "m", "minute"),
+        (1, "s", "second")
     ]
 
     parts = []
     remaining = seconds
-    for value, unit in intervals:
+
+    for value, short_unit, long_unit in intervals:
         if remaining < 1:
             break
         count = int(remaining // value)
         if count > 0:
-            unit_str = f"{unit}s" if count != 1 else unit
-            parts.append(f"{count} {unit_str}")
+            if format_type == TimeFormat.SHORT:
+                parts.append(f"{count}{short_unit}")
+            else:
+                unit_str = f"{long_unit}s" if count != 1 else long_unit
+                parts.append(f"{count} {unit_str}")
             remaining %= value
 
         if len(parts) >= max_units:
             break
 
-    if not include_seconds and parts and "second" in parts[-1]:
-        parts.pop()
-
     if not parts:
-        return "0 seconds" if include_seconds else "0 minutes"
+        return "0s" if format_type == TimeFormat.SHORT else "0 seconds"
 
-    return " ".join(parts[:max_units])
+    if format_type == TimeFormat.LONG:
+        if len(parts) > 1:
+            return f"{', '.join(parts[:-1])} and {parts[-1]}"
+        return parts[0]
+    elif format_type == TimeFormat.MEDIUM:
+        return " ".join(parts)
+    else:
+        return "".join(parts)
 
 
 def format_progress(
-    value: Percentage,
-    style: str = "percent",
+    value: Union[int, float],
+    style: Union[str, ProgressStyle] = ProgressStyle.ASCII,
     width: Optional[int] = None,
-    chars: Optional[tuple[str, str]] = None
+    show_percent: bool = True,
+    color: bool = False
 ) -> str:
     """Format progress value as percentage or progress bar.
 
     Args:
         value: Progress value (0-100)
-        style: Format style ("percent" or "bar")
-        width: Width of progress bar (if style="bar")
-        chars: Tuple of (fill_char, empty_char) for progress bar
+        style: Progress bar style
+        width: Width of progress bar
+        show_percent: Whether to show percentage
+        color: Whether to use ANSI color codes
 
     Returns:
         str: Formatted progress string
@@ -155,28 +213,52 @@ def format_progress(
 
     Examples:
         >>> format_progress(75.5)
-        '75.5%'
-        >>> format_progress(75.5, style="bar", width=20)
-        '[===============     ]'
+        '[===============     ] 75.5%'
+        >>> format_progress(75.5, style=ProgressStyle.UNICODE)
+        '│████████░░░░│ 75.5%'
     """
     if not isinstance(value, (int, float)):
         raise ValueError("Progress value must be a number")
     if not 0 <= value <= 100:
         raise ValueError("Progress value must be between 0 and 100")
 
-    if style == "percent":
-        return f"{value:.1f}%"
-    elif style == "bar":
-        if width is None:
-            width = 20
-        if width < 2:
-            raise ValueError("Width must be at least 2")
-        fill_char, empty_char = chars or ('=', ' ')
-        inner_width = width - 2  # Account for brackets
-        filled = int(round(value / 100 * inner_width))
-        return f"[{fill_char * filled}{empty_char * (inner_width - filled)}]"
+    # Get style characters
+    try:
+        style_enum = ProgressStyle(style)
+        fill_char, empty_char, left_border, right_border = PROGRESS_STYLES[style_enum]
+    except ValueError as e:
+        raise ValueError(f"Invalid style. Use one of: {', '.join(s.value for s in ProgressStyle)}") from e
+
+    # Set bar width
+    if width is None:
+        width = 20
+
+    if width < 2:
+        raise ValueError("Width must be at least 2")
+
+    # Calculate filled and empty portions
+    inner_width = width - 2  # Account for borders
+    filled = int(round(value / 100 * inner_width))
+    empty = inner_width - filled
+
+    # Build progress bar
+    if color:
+        # Color gradient based on progress
+        if value < 33:
+            color_code = "\033[91m"  # Red
+        elif value < 66:
+            color_code = "\033[93m"  # Yellow
+        else:
+            color_code = "\033[92m"  # Green
+        reset_code = "\033[0m"
+        bar = f"{left_border}{color_code}{fill_char * filled}{empty_char * empty}{reset_code}{right_border}"
     else:
-        raise ValueError("Invalid style. Use 'percent' or 'bar'")
+        bar = f"{left_border}{fill_char * filled}{empty_char * empty}{right_border}"
+
+    # Add percentage if requested
+    if show_percent:
+        return f"{bar} {value:.1f}%"
+    return bar
 
 
 def format_timestamp(
@@ -210,8 +292,8 @@ def format_timestamp(
     if relative:
         delta = datetime.now() - dt
         if delta.total_seconds() < 0:
-            return format_duration(-delta.total_seconds(), include_seconds=False) + " from now"
-        return format_duration(delta.total_seconds(), include_seconds=False) + " ago"
+            return format_duration(-delta.total_seconds(), format_type=TimeFormat.MEDIUM) + " from now"
+        return format_duration(delta.total_seconds(), format_type=TimeFormat.MEDIUM) + " ago"
 
     if format_str is None:
         format_str = "%Y-%m-%d %H:%M:%S"
@@ -224,13 +306,13 @@ def format_timestamp(
 
 def format_eta(
     completion_time: datetime,
-    short_format: bool = False
+    format_type: TimeFormat = TimeFormat.MEDIUM
 ) -> str:
     """Format estimated completion time.
 
     Args:
         completion_time: Estimated completion datetime
-        short_format: Whether to use short format
+        format_type: Time format style
 
     Returns:
         str: Formatted ETA string
@@ -242,8 +324,8 @@ def format_eta(
         >>> future = datetime.now() + timedelta(hours=2)
         >>> format_eta(future)
         'in 2 hours'
-        >>> format_eta(future, short_format=True)
-        '14:00'
+        >>> format_eta(future, format_type=TimeFormat.SHORT)
+        'in 2h'
     """
     if not isinstance(completion_time, datetime):
         raise ValueError("completion_time must be a datetime object")
@@ -254,24 +336,20 @@ def format_eta(
     if delta.total_seconds() < 0:
         raise ValueError("Completion time cannot be in the past")
 
-    if short_format:
-        # If same day, show only time
-        if completion_time.date() == now.date():
-            return completion_time.strftime("%H:%M")
-        # If within a week, show day and time
-        if delta.days < 7:
-            return completion_time.strftime("%a %H:%M")
-        # Otherwise show date and time
-        return completion_time.strftime("%Y-%m-%d %H:%M")
-
-    return f"in {format_duration(delta.total_seconds(), include_seconds=False)}"
+    duration = format_duration(delta.total_seconds(), format_type=format_type)
+    return f"in {duration}"
 
 
-def format_template(template: str, **kwargs) -> str:
+def format_template(
+    template: str,
+    validate: bool = True,
+    **kwargs
+) -> str:
     """Format template string with provided values.
 
     Args:
         template: Template string with placeholders
+        validate: Whether to validate against predefined placeholders
         **kwargs: Values to substitute in template
 
     Returns:
@@ -288,12 +366,18 @@ def format_template(template: str, **kwargs) -> str:
     if not template:
         raise ValueError("Template string cannot be empty")
 
-    # Get required placeholders from template
+    # Get placeholders from template
     placeholders = {
         p.strip("{}")
-        for p in TEMPLATE_PLACEHOLDERS.values()
+        for p in kwargs.keys()
         if p.strip("{}") in template
     }
+
+    # Validate against predefined placeholders if requested
+    if validate:
+        invalid = {p for p in placeholders if p not in kwargs.keys()}
+        if invalid:
+            raise ValueError(f"Invalid template placeholders: {', '.join(invalid)}")
 
     # Check for required values
     missing = placeholders - set(kwargs.keys())
