@@ -184,13 +184,7 @@
     - Added proper testing
 
 **Required Follow-up Tasks:**
-1. Update all files that directly import constants to use new class prefix
-   - [x] `config/providers/base.py` - Updated to use API and Templates class prefixes
-   - [ ] `utils/validators.py` - Needs update for notification increment constants
-   - [ ] `config/providers/telegram/types.py` - Needs update for API and message-related constants
-   - [ ] `notifications/base.py` - Needs update for API and notification-related constants
-   - [ ] `config/providers/telegram/settings.py` - Needs update for API and error message constants
-   - [ ] `notifications/factory.py` - Needs update for NotificationProvider class prefix
+1. ~~Update all files that directly import constants to use new class prefix~~ ✅
 2. Update all files that access settings to use new nested structure
 3. Update notification providers to handle new message types
 4. Update webhook provider to handle non-optional embeds
