@@ -16,7 +16,7 @@ Example:
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum, auto
+from enum import StrEnum
 from typing import Optional
 
 import psutil
@@ -27,13 +27,13 @@ from config.settings import Settings
 
 logger = get_logger(__name__)
 
-class ProcessState(str, Enum):
+class ProcessState(StrEnum):
     """Possible states of the mover process."""
-    UNKNOWN = auto()    # Initial state
-    RUNNING = auto()    # Process is active
-    STOPPED = auto()    # Process has stopped
-    ERROR = auto()      # Error occurred
-    ZOMBIE = auto()     # Process is zombie/defunct
+    UNKNOWN = "unknown"    # Initial state
+    RUNNING = "running"    # Process is active
+    STOPPED = "stopped"    # Process has stopped
+    ERROR = "error"        # Error occurred
+    ZOMBIE = "zombie"      # Process is zombie/defunct
 
 @dataclass(frozen=True)
 class ProcessStats:

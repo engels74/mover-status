@@ -415,7 +415,7 @@ class NotificationFactory:
             raise ProviderConfigError(f"No configuration available for provider: {provider_id}")
         return provider_config
 
-    def _validate_config(
+    async def _validate_config(
         self,
         provider_id: str,
         validator_class: Type[BaseProviderValidator],
@@ -522,7 +522,7 @@ class NotificationFactory:
             # Get and validate configuration
             provider_config = self._get_config(provider_id, config)
             if validate:
-                provider_config = self._validate_config(
+                provider_config = await self._validate_config(
                     provider_id,
                     validator_class,
                     provider_config,
@@ -709,6 +709,7 @@ class NotificationFactory:
             # Clear provider references
             self._active_providers.clear()
             self._registered_configs.clear()
+            self._validator_cache.clear()
 
     async def _cleanup_provider(
         self,

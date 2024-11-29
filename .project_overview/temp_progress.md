@@ -190,7 +190,7 @@
 4. ~~Update webhook provider to handle non-optional embeds~~ ✅
 5. ~~Update templates.py to handle JsonDict nesting limits in webhook payloads~~ ✅
 6. ~~Ensure templates.py error messages align with new centralized error classes~~ ✅
-7. Update type hints using the new enum types
+7. ~~Update type hints using the new enum types~~ ✅
 8. Update provider implementations for thread safety
 9. Update Discord provider to handle new error types
 10. Update type hints in dependent files to use new domain sets
@@ -205,8 +205,8 @@
 19. Add timeout configuration to Telegram templates
 20. Update providers to use new progress bar styles
 21. Update providers to use new time formats
-22. Add color support to provider messages
-
+22. Add color support to provider messages (should be optional for the user)
+ 
 **Recent Changes:**
 1. Discord Validation Consolidation
    - Created centralized `shared.types.discord` module

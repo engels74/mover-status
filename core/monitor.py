@@ -22,13 +22,12 @@ from structlog import get_logger
 
 from config.constants import (
     Events,
-    NotificationProvider,
     States,
 )
 from config.settings import Settings
 from core.calculator import TransferCalculator, TransferStats
 from core.process import ProcessManager
-from notifications.base import NotificationError
+from notifications.base import NotificationError, NotificationProvider
 from notifications.factory import notification_factory
 from utils.formatters import format_size
 from utils.version import version_checker
@@ -155,7 +154,7 @@ class MoverMonitor:
         excluded = {Path(p).resolve() for p in settings.filesystem.excluded_paths}
         self._scanner = DirectoryScanner(excluded)
 
-        # Use Dict[str, NotificationProvider] for type hints to avoid name collision
+        # Provider management
         self._providers: Dict[str, NotificationProvider] = {}
         self._state = States.MonitorState.IDLE
         self._stopping = False

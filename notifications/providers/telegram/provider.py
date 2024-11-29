@@ -123,6 +123,11 @@ class TelegramProvider(NotificationProvider):
         self._consecutive_errors: int = 0
         self._last_error_time: Optional[datetime] = None
         self._tags: Set[str] = set(self._config.get("tags", []))
+        
+        # Thread safety
+        self._session_lock = asyncio.Lock()
+        self._state_lock = asyncio.Lock()
+        self._message_lock = asyncio.Lock()
 
     def _build_api_url(self, method: str) -> str:
         """Build Telegram API URL for given method.
@@ -146,16 +151,18 @@ class TelegramProvider(NotificationProvider):
 
     async def connect(self) -> None:
         """Initialize aiohttp session for API requests."""
-        if not self.session or self.session.closed:
-            self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=30)
-            )
+        async with self._session_lock:
+            if not self.session or self.session.closed:
+                self.session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=30)
+                )
 
     async def disconnect(self) -> None:
         """Close aiohttp session."""
-        if self.session and not self.session.closed:
-            await self.session.close()
-            self.session = None
+        async with self._session_lock:
+            if self.session and not self.session.closed:
+                await self.session.close()
+                self.session = None
 
     async def _handle_rate_limit(
         self,
@@ -259,24 +266,20 @@ class TelegramProvider(NotificationProvider):
         error.__cause__ = err
         return error
 
-    def _update_error_state(self, error: TelegramError) -> None:
+    async def _update_error_state(self, error: TelegramError) -> None:
         """Update provider state after an error.
 
         Args:
             error: The error that occurred
         """
-        self._consecutive_errors += 1
-        self._state.last_error = error
-        self._state.last_error_time = datetime.now()
-
-        # Disable provider if too many consecutive errors
-        if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-            self._state.disabled = True
-            logger.error(
-                "Telegram provider disabled due to excessive errors",
-                consecutive_errors=self._consecutive_errors,
-                last_error=str(self._state.last_error)
-            )
+        async with self._state_lock:
+            self._consecutive_errors += 1
+            self._last_error_time = datetime.now()
+            self._state.last_error = error
+            
+            # Reset error count after successful operation
+            if not isinstance(error, TelegramError):
+                self._consecutive_errors = 0
 
     def _calculate_priority_delay(self, base_delay: float) -> float:
         """Calculate delay based on message priority.
@@ -386,30 +389,33 @@ class TelegramProvider(NotificationProvider):
         Raises:
             TelegramError: If API request fails
         """
-        try:
-            # Create message based on type
-            message_data = self._create_typed_message(message, message_type, level, **kwargs)
+        async with self._message_lock:
+            try:
+                # Set message priority for rate limiting
+                self._message_priority = priority
 
-            # Prepare API request
-            request = {
-                "chat_id": self.chat_id,
-                "parse_mode": self.parse_mode,
-                "disable_notification": self.disable_notifications,
-                "protect_content": self.protect_content,
-                "message_thread_id": self.message_thread_id,
-                **message_data
-            }
+                # Create message data based on type
+                message_data = await self._create_typed_message(
+                    message, message_type, level, **kwargs
+                )
 
-            # Send API request
-            response = await self._send_api_request("sendMessage", request)
-            self._last_message_id = response.get("result", {}).get("message_id")
-            return True
+                # Send API request with retries
+                response = await self._send_api_request(
+                    "sendMessage",
+                    message_data,
+                    retries=self._priority_retry_attempts.get(priority)
+                )
 
-        except Exception as err:
-            raise TelegramError(
-                f"Failed to send notification: {err}",
-                context={"message_type": message_type.value}
-            ) from err
+                # Store message ID for editing
+                if "message_id" in response:
+                    self._last_message_id = response["message_id"]
+
+                return True
+
+            except Exception as err:
+                error = self._handle_request_error(err, "sendMessage")
+                await self._update_error_state(error)
+                raise error
 
     def _create_typed_message(
         self,
