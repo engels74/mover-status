@@ -19,8 +19,8 @@ from typing import Dict, List, Optional, Union
 
 from structlog import get_logger
 
-from config.constants import Notification
-from shared.providers.telegram.types import (
+from config.constants import MessagePriority
+from notifications.providers.telegram.types import (
     InlineKeyboardMarkup,
     MessageEntity,
     ParseMode,
@@ -102,7 +102,7 @@ def create_progress_message(
     remaining_data: str,
     elapsed_time: str,
     etc: str,
-    priority: Notification.Priority = Notification.Priority.NORMAL,
+    priority: MessagePriority = MessagePriority.NORMAL,
     add_keyboard: bool = True,
     description: Optional[str] = None,
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
@@ -113,7 +113,7 @@ def create_progress_message(
         remaining_data: Remaining data amount
         elapsed_time: Elapsed time
         etc: Estimated time of completion
-        priority: Message priority level
+        priority: Message priority level (LOW, NORMAL, HIGH)
         add_keyboard: Whether to add inline keyboard
         description: Optional description
 
@@ -150,7 +150,7 @@ def create_progress_message(
     response_data = {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": priority == Notification.Priority.LOW,
+        "disable_notification": priority == MessagePriority.LOW,
     }
 
     # Add inline keyboard if requested
@@ -167,15 +167,15 @@ def create_progress_message(
 
 
 def create_completion_message(
-    stats: str,
-    priority: Notification.Priority = Notification.Priority.NORMAL,
-    include_stats: bool = True,
+    stats: Optional[Dict[str, Union[str, int, float]]] = None,
+    priority: MessagePriority = MessagePriority.NORMAL,
+    include_stats: bool = True
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create completion notification message.
 
     Args:
-        stats: Transfer statistics summary
-        priority: Message priority level
+        stats: Optional transfer statistics
+        priority: Message priority level (LOW, NORMAL, HIGH)
         include_stats: Whether to include transfer statistics
 
     Returns:
@@ -184,24 +184,23 @@ def create_completion_message(
     Raises:
         ValueError: If message exceeds length limits
     """
-    parse_mode = ParseMode.HTML
-    escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
+    # Format statistics if included
     stats_text = ""
-
-    # Add statistics if requested and available
     if include_stats and stats:
-        stats_text = "\n\n📊 Transfer Statistics:"
+        stats_text = "\n\nStatistics:"
         for key, value in stats.items():
-            stats_text += f"\n• {escape_func(key)}: {escape_func(value)}"
+            stats_text += f"\n• {key}: {value}"
 
-    # Format and validate message
+    # Format the message using template
     message = DEFAULT_TEMPLATES["completion"].format(stats=stats_text)
+
+    # Validate message length
     message = validate_message_length(message)
 
     return {
         "text": message,
-        "parse_mode": parse_mode,
-        "disable_notification": priority == Notification.Priority.LOW,
+        "parse_mode": ParseMode.HTML,
+        "disable_notification": priority == MessagePriority.LOW
     }
 
 
@@ -210,7 +209,7 @@ def create_error_message(
     parse_mode: ParseMode = ParseMode.HTML,
     include_debug: bool = False,
     debug_info: Optional[Dict[str, str]] = None,
-    priority: Notification.Priority = Notification.Priority.HIGH,
+    priority: MessagePriority = MessagePriority.HIGH
 ) -> Dict[str, Union[str, List[MessageEntity]]]:
     """Create error notification message.
 
@@ -219,7 +218,7 @@ def create_error_message(
         parse_mode: Message parsing mode
         include_debug: Whether to include debug information
         debug_info: Optional debug information
-        priority: Message priority level
+        priority: Message priority level (LOW, NORMAL, HIGH)
 
     Returns:
         Dict: Formatted message data
@@ -227,29 +226,33 @@ def create_error_message(
     Raises:
         ValueError: If error_message is empty or message exceeds length limits
     """
-    if not error_message.strip():
+    if not error_message:
         raise ValueError("Error message cannot be empty")
 
+    # Escape special characters based on parse mode
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
-    debug_text = ""
+    error_text = escape_func(error_message)
 
     # Add debug information if requested
+    debug_text = ""
     if include_debug and debug_info:
-        debug_text = "\n\n🔍 Debug Information:"
+        debug_text = "\n\nDebug Information:"
         for key, value in debug_info.items():
             debug_text += f"\n• {escape_func(key)}: {escape_func(value)}"
 
-    # Format and validate message
+    # Format the message using template
     message = DEFAULT_TEMPLATES["error"].format(
-        error_message=escape_func(error_message),
+        error_message=error_text,
         debug_info=debug_text
     )
+
+    # Validate message length
     message = validate_message_length(message)
 
     return {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": False,  # Error messages always notify
+        "disable_notification": False  # Always notify for errors
     }
 
 
@@ -257,7 +260,7 @@ def create_status_message(
     status_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     keyboard: Optional[InlineKeyboardMarkup] = None,
-    priority: Notification.Priority = Notification.Priority.NORMAL,
+    priority: MessagePriority = MessagePriority.NORMAL
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create status update message.
 
@@ -265,7 +268,7 @@ def create_status_message(
         status_message: Status update text
         parse_mode: Message parsing mode
         keyboard: Optional inline keyboard
-        priority: Message priority level
+        priority: Message priority level (LOW, NORMAL, HIGH)
 
     Returns:
         Dict: Formatted message data
@@ -273,22 +276,27 @@ def create_status_message(
     Raises:
         ValueError: If status_message is empty or message exceeds length limits
     """
-    if not status_message.strip():
+    if not status_message:
         raise ValueError("Status message cannot be empty")
 
+    # Escape special characters based on parse mode
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
-    message = DEFAULT_TEMPLATES["status"].format(
-        status_message=escape_func(status_message)
-    )
+    status_text = escape_func(status_message)
 
-    # Validate and prepare response
+    # Format the message using template
+    message = DEFAULT_TEMPLATES["status"].format(status_message=status_text)
+
+    # Validate message length
     message = validate_message_length(message)
+
+    # Prepare response data
     response_data = {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": priority == Notification.Priority.LOW,
+        "disable_notification": priority == MessagePriority.LOW
     }
 
+    # Add keyboard if provided
     if keyboard:
         response_data["reply_markup"] = keyboard
 
@@ -299,7 +307,7 @@ def create_warning_message(
     warning_message: str,
     parse_mode: ParseMode = ParseMode.HTML,
     keyboard: Optional[InlineKeyboardMarkup] = None,
-    priority: Notification.Priority = Notification.Priority.HIGH,
+    priority: MessagePriority = MessagePriority.HIGH
 ) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
     """Create warning notification message.
 
@@ -307,7 +315,7 @@ def create_warning_message(
         warning_message: Warning description
         parse_mode: Message parsing mode
         keyboard: Optional inline keyboard
-        priority: Message priority level
+        priority: Message priority level (LOW, NORMAL, HIGH)
 
     Returns:
         Dict: Formatted message data
@@ -315,22 +323,27 @@ def create_warning_message(
     Raises:
         ValueError: If warning_message is empty or message exceeds length limits
     """
-    if not warning_message.strip():
+    if not warning_message:
         raise ValueError("Warning message cannot be empty")
 
+    # Escape special characters based on parse mode
     escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
-    message = DEFAULT_TEMPLATES["warning"].format(
-        warning_message=escape_func(warning_message)
-    )
+    warning_text = escape_func(warning_message)
 
-    # Validate and prepare response
+    # Format the message using template
+    message = DEFAULT_TEMPLATES["warning"].format(warning_message=warning_text)
+
+    # Validate message length
     message = validate_message_length(message)
+
+    # Prepare response data
     response_data = {
         "text": message,
         "parse_mode": parse_mode,
-        "disable_notification": False,  # Warning messages always notify
+        "disable_notification": priority == MessagePriority.LOW
     }
 
+    # Add keyboard if provided
     if keyboard:
         response_data["reply_markup"] = keyboard
 

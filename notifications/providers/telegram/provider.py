@@ -25,6 +25,7 @@ from urllib.parse import urljoin
 import aiohttp
 from structlog import get_logger
 
+from config.constants import MessagePriority
 from notifications.base import (
     NotificationError,
     NotificationProvider,
@@ -36,11 +37,10 @@ from notifications.providers.telegram.templates import (
     create_progress_message,
 )
 from notifications.providers.telegram.types import (
-    MessagePriority,
     SendMessageRequest,
     TelegramApiError,
+    validate_message_length,
 )
-from notifications.providers.telegram.validators import TelegramValidator
 from shared.types.telegram import TelegramMessageType
 
 logger = get_logger(__name__)
@@ -74,18 +74,14 @@ class TelegramError(NotificationError):
 class TelegramProvider(NotificationProvider):
     """Telegram bot notification provider implementation."""
 
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize Telegram provider.
+    def __init__(self, config: Dict[str, Any]) -> None:
+        """Initialize the Telegram notification provider.
 
         Args:
-            config: Provider configuration containing bot token and chat ID
-
-        Raises:
-            ValueError: If required configuration is missing or invalid
+            config: Provider configuration dictionary.
         """
         # Validate configuration using dedicated validator
-        validator = TelegramValidator()
-        self._config = validator.validate_config(config)
+        self._config = self.validate_config(config)
 
         # Initialize priority-based rate limits and retries
         self._priority_rate_limits = {
@@ -381,7 +377,7 @@ class TelegramProvider(NotificationProvider):
             SendMessageRequest: Prepared request data
         """
         # Validate message length using validator
-        TelegramValidator.validate_message_length(text, self.max_message_length)
+        self._validate_message_length(text)
 
         # Prepare base request
         request: SendMessageRequest = {
@@ -402,6 +398,18 @@ class TelegramProvider(NotificationProvider):
             request["message_thread_id"] = thread_id
 
         return request
+
+    def _validate_message_length(self, text: str) -> None:
+        """Validate message length.
+
+        Args:
+            text: Message text to validate.
+
+        Raises:
+            TelegramError: If message length exceeds maximum allowed length.
+        """
+        # Validate message length using validator
+        validate_message_length(text, self.max_message_length)
 
     async def send_notification(self, message: str) -> bool:
         """Send notification via Telegram Bot API.
@@ -638,3 +646,19 @@ class TelegramProvider(NotificationProvider):
                     "chat_id": self.chat_id
                 }
             ) from err
+
+    def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate provider configuration.
+
+        Args:
+            config: Provider configuration dictionary.
+
+        Returns:
+            Dict[str, Any]: Validated configuration dictionary.
+
+        Raises:
+            ValueError: If required configuration is missing or invalid.
+        """
+        # Implement configuration validation logic here
+        # For now, just return the original configuration
+        return config

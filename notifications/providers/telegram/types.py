@@ -5,27 +5,18 @@ Type definitions and constants for Telegram bot notifications.
 Defines message structure, API limits, and formatting options for Telegram bot API.
 
 Example:
-    >>> from notifications.providers.telegram.types import MessagePriority, validate_message_length
-    >>> priority = MessagePriority.NORMAL
+    >>> from notifications.providers.telegram.types import validate_message_length
     >>> text = validate_message_length("Hello, World!")
 """
 
-from enum import IntEnum
 from typing import Dict, List, Optional, TypedDict, Union
 
-from config.constants import ErrorMessages
+from config.constants import ErrorMessages, MessagePriority
 from shared.providers.telegram import (
     MessageEntity,
     MessageLimit,
     ParseMode,
 )
-
-
-class MessagePriority(IntEnum):
-    """Message priority levels affecting notification behavior."""
-    LOW = 0      # Low priority, can be delayed/dropped
-    NORMAL = 1   # Default notification priority
-    HIGH = 2     # High priority, immediate delivery
 
 
 class NotificationState(TypedDict, total=False):

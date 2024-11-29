@@ -17,6 +17,7 @@ Example:
 
 from typing import TYPE_CHECKING
 
+from config.constants import MessagePriority
 from notifications.providers.telegram.config import TelegramConfig
 from notifications.providers.telegram.provider import TelegramError, TelegramProvider
 from notifications.providers.telegram.types import ParseMode
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
         InlineKeyboardMarkup,
         MessageEntity,
         MessageLimit,
-        MessagePriority,
         SendMessageRequest,
     )
 
@@ -46,6 +46,7 @@ __all__ = [
     "TelegramError",
     # Enums and constants
     "ParseMode",
+    "MessagePriority",
     # Template functions
     "create_completion_message",
     "create_error_message",
@@ -57,7 +58,6 @@ __all__ = [
     "SendMessageRequest",
     "InlineKeyboardButton",
     "InlineKeyboardMarkup",
-    "MessagePriority",
     "ChatType",
 ]
 
