@@ -152,7 +152,7 @@ class MoverMonitor:
         self._calculator = TransferCalculator(settings)
 
         # Initialize directory scanner
-        excluded = {Path(p).resolve() for p in settings.excluded_paths}
+        excluded = {Path(p).resolve() for p in settings.filesystem.excluded_paths}
         self._scanner = DirectoryScanner(excluded)
 
         # Use Dict[str, NotificationProvider] for type hints to avoid name collision
@@ -314,7 +314,7 @@ class MoverMonitor:
             RuntimeError: If size calculation fails
         """
         try:
-            cache_path = Path(self._settings.cache_path)
+            cache_path = Path(self._settings.filesystem.cache_path)
             if not await aiofiles.os.path.exists(str(cache_path)):
                 raise RuntimeError(f"Cache path does not exist: {cache_path}")
             return await self._scanner.get_size(cache_path)
