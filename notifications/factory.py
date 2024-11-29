@@ -2,15 +2,28 @@
 
 """
 Factory for notification provider creation and management.
-Provides centralized provider registration and instantiation handling.
+Provides centralized provider registration, instantiation, and priority-based configuration handling.
+
+The factory supports priority-based message handling with three levels:
+- LOW: For non-urgent messages that can be delayed or dropped
+- NORMAL: Default priority for regular messages
+- HIGH: For urgent messages requiring immediate delivery
+
+Each priority level can have its own configuration settings, including rate limits and retry attempts.
+The factory tracks priority-based statistics and manages validator caching for improved performance.
 
 Examples:
-    # Register a new provider class:
+    # Register a new provider class with priority support:
     >>> @NotificationFactory.register("custom")
     ... class CustomProvider(NotificationProvider):
     ...     def __init__(self, config: Dict[str, Any]):
     ...         super().__init__()
     ...         self.client = CustomClient(config["api_key"])
+    ...         self._priority_rate_limits = {
+    ...             MessagePriority.LOW: config["rate_limit"] // 2,
+    ...             MessagePriority.NORMAL: config["rate_limit"],
+    ...             MessagePriority.HIGH: config["rate_limit"] * 2
+    ...         }
     ...
     ...     async def send_notification(self, message: str) -> bool:
     ...         return await self.client.send(message)
@@ -20,12 +33,21 @@ Examples:
     ...         # Custom validation logic
     ...         return config
 
-    # Create and use the provider:
+    # Create and use the provider with priority configuration:
     >>> factory = NotificationFactory()
-    >>> provider = await factory.create_provider("custom", {
-    ...     "api_key": "your-api-key",
-    ...     "rate_limit": 30
-    ... })
+    >>> priority_config = {
+    ...     MessagePriority.HIGH: {"rate_limit": 60, "retry_attempts": 5},
+    ...     MessagePriority.LOW: {"rate_limit": 15, "retry_attempts": 1}
+    ... }
+    >>> provider = await factory.create_provider(
+    ...     "custom",
+    ...     {
+    ...         "api_key": "your-api-key",
+    ...         "rate_limit": 30,
+    ...         "retry_attempts": 3
+    ...     },
+    ...     priority_config=priority_config
+    ... )
     >>> await provider.notify("Hello World")
 """
 
@@ -118,18 +140,12 @@ class NotificationFactory:
         ...     def __init__(self, config: Dict[str, Any]):
         ...         super().__init__()
         ...
-        ... # Create a provider instance with validation
-        >>> factory = NotificationFactory()
-        >>> provider = await factory.create_provider(
-        ...     "discord",
-        ...     {"webhook_url": "https://discord.com/webhook"}
-        ... )
-        ...
-        ... # Register configuration for later use
-        >>> await factory.register_config(
-        ...     "telegram",
-        ...     {"bot_token": "123:abc", "chat_id": "123"}
-        ... )
+        ... # Register without explicit validator
+        >>> @NotificationFactory.register("simple")
+        ... class SimpleProvider(NotificationProvider):
+        ...     @classmethod
+        ...     def validate_config(cls, config: Dict[str, Any]):
+        ...         return config
     """
 
     # Cache TTL in seconds (30 minutes)
@@ -159,9 +175,18 @@ class NotificationFactory:
     def _update_priority_stats(self, provider_id: str, priority: MessagePriority) -> None:
         """Update priority-based statistics for a provider.
 
+        Tracks the usage count of each priority level (LOW, NORMAL, HIGH) for the
+        specified provider. This information can be used for monitoring and
+        optimization purposes.
+
         Args:
             provider_id: Provider identifier
             priority: Message priority level
+
+        Example:
+            >>> factory._update_priority_stats("telegram", MessagePriority.HIGH)
+            >>> stats = factory._priority_stats["telegram"]
+            >>> assert stats[MessagePriority.HIGH] > 0
         """
         if provider_id not in self._priority_stats:
             self._priority_stats[provider_id] = {
@@ -397,16 +422,32 @@ class NotificationFactory:
         config: Dict[str, Any],
         priority_config: Optional[Dict[MessagePriority, Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Validate provider configuration.
+        """Validate provider configuration including priority-specific settings.
+
+        This method validates both the base configuration and any priority-specific
+        overrides. Priority configurations are merged with the base configuration
+        before validation to ensure all required fields are present.
 
         Args:
             provider_id: Provider identifier
             validator_class: Validator class
             config: Provider configuration
-            priority_config: Optional priority-specific configuration
+            priority_config: Optional priority-specific configuration overrides
 
         Returns:
             Dict[str, Any]: Validated configuration
+
+        Example:
+            >>> priority_config = {
+            ...     MessagePriority.HIGH: {"rate_limit": 60},
+            ...     MessagePriority.LOW: {"rate_limit": 15}
+            ... }
+            >>> validated_config = factory._validate_config(
+            ...     "telegram",
+            ...     TelegramValidator,
+            ...     {"bot_token": "123:abc"},
+            ...     priority_config
+            ... )
         """
         validator = self._get_cached_validator(provider_id, validator_class)
         if not validator and callable(validator_class):
@@ -437,11 +478,17 @@ class NotificationFactory:
     ) -> T_Provider:
         """Create or retrieve a provider instance with priority configuration.
 
+        This method creates a new provider instance or retrieves an existing one,
+        applying priority-specific configuration overrides if provided. Each priority
+        level (LOW, NORMAL, HIGH) can have its own settings for rate limits, retry
+        attempts, and other provider-specific parameters.
+
         Args:
             provider_id: Provider identifier
             config: Optional provider configuration
             validate: Whether to validate configuration
-            priority_config: Optional priority-specific configuration overrides
+            priority_config: Optional priority-specific configuration overrides.
+                           Can include settings for each MessagePriority level.
 
         Returns:
             T_Provider: Provider instance
@@ -449,6 +496,17 @@ class NotificationFactory:
         Raises:
             ProviderNotFoundError: If provider is not registered
             ProviderConfigError: If configuration is invalid
+
+        Example:
+            >>> priority_config = {
+            ...     MessagePriority.HIGH: {"rate_limit": 60},
+            ...     MessagePriority.LOW: {"rate_limit": 15}
+            ... }
+            >>> provider = await factory.create_provider(
+            ...     "telegram",
+            ...     {"bot_token": "123:abc"},
+            ...     priority_config=priority_config
+            ... )
         """
         provider_id = str(provider_id)
 
