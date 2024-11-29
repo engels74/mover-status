@@ -166,7 +166,7 @@ def main() -> NoReturn:
             settings = Settings.from_yaml(args.config)
 
         # Override settings from command line
-        settings.debug_mode = args.debug
+        settings.logging.debug_mode = args.debug
         settings.dry_run = args.dry_run
 
         # Run the monitor

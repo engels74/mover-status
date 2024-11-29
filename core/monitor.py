@@ -415,7 +415,7 @@ class MoverMonitor:
             while not self._stopping:
                 try:
                     await self._update_monitoring()
-                    await asyncio.sleep(self._settings.polling_interval)
+                    await asyncio.sleep(self._settings.monitoring.polling_interval)
                 except asyncio.CancelledError:
                     raise
                 except Exception as err:
