@@ -16,6 +16,7 @@ Example:
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Dict,
@@ -46,6 +47,12 @@ MAX_HISTORY_SIZE: Final[int] = Notification.MAX_HISTORY_SIZE
 MIN_NOTIFICATION_INTERVAL: Final[float] = API.MIN_NOTIFICATION_INTERVAL  # seconds
 
 
+class MessagePriority(Enum):
+    LOW = 1
+    NORMAL = 2
+    HIGH = 3
+
+
 class NotificationError(Exception):
     """Base exception for notification-related errors."""
 
@@ -53,36 +60,52 @@ class NotificationError(Exception):
 class NotificationState(BaseModel):
     """Tracks notification provider state."""
 
-    last_notification: Optional[datetime] = None
-    last_error: Optional[str] = None
-    error_count: int = 0
-    notification_count: int = 0
-    success_count: int = 0
-    history: List[Dict[str, Any]] = []
+    def __init__(self):
+        self.last_notification: Optional[datetime] = None
+        self.last_error: Optional[str] = None
+        self.error_count: int = 0
+        self.notification_count: int = 0
+        self.success_count: int = 0
+        self.history: List[Dict[str, Any]] = []
+        self._priority_counts: Dict[MessagePriority, int] = {
+            MessagePriority.LOW: 0,
+            MessagePriority.NORMAL: 0,
+            MessagePriority.HIGH: 0
+        }
 
-    def add_notification(self, message: str, success: bool = True) -> None:
+    def add_notification(
+        self,
+        message: str,
+        success: bool = True,
+        priority: MessagePriority = MessagePriority.NORMAL
+    ) -> None:
         """Add notification to history.
 
         Args:
             message: Notification message
             success: Whether notification was successful
+            priority: Message priority level
         """
-        self.history.append({
-            'timestamp': datetime.now(),
-            'message': message,
-            'success': success
-        })
-
-        if len(self.history) > MAX_HISTORY_SIZE:
-            self.history.pop(0)
-
         if success:
             self.success_count += 1
-        else:
-            self.error_count += 1
+            self._priority_counts[priority] += 1
 
         self.notification_count += 1
+        if len(self.history) >= MAX_HISTORY_SIZE:
+            self.history.pop(0)
+
+        self.history.append({
+            "message": message,
+            "success": success,
+            "priority": priority,
+            "timestamp": datetime.now()
+        })
         self.last_notification = datetime.now()
+
+    @property
+    def priority_counts(self) -> Dict[MessagePriority, int]:
+        """Get counts of messages by priority level."""
+        return self._priority_counts.copy()
 
 
 class NotificationProvider(ABC, Generic[TConfig, TValidator]):
@@ -107,6 +130,16 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         self._rate_period = max(1, rate_period)
         self._retry_attempts = max(0, retry_attempts)
         self._retry_delay = max(0.1, retry_delay)
+        self._priority_rate_limits = {
+            MessagePriority.LOW: self._rate_limit // 2,
+            MessagePriority.NORMAL: self._rate_limit,
+            MessagePriority.HIGH: self._rate_limit * 2
+        }
+        self._priority_retry_attempts = {
+            MessagePriority.LOW: max(0, self._retry_attempts - 1),
+            MessagePriority.NORMAL: self._retry_attempts,
+            MessagePriority.HIGH: self._retry_attempts + 1
+        }
 
         self._state = NotificationState()
         self._lock = asyncio.Lock()
@@ -115,6 +148,24 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
     def state(self) -> NotificationState:
         """Get provider state."""
         return self._state
+
+    def _get_priority_from_level(self, level: NotificationLevel) -> MessagePriority:
+        """Convert notification level to message priority.
+
+        Args:
+            level: Notification level
+
+        Returns:
+            MessagePriority: Corresponding message priority
+        """
+        priority_map = {
+            NotificationLevel.DEBUG: MessagePriority.LOW,
+            NotificationLevel.INFO: MessagePriority.NORMAL,
+            NotificationLevel.WARNING: MessagePriority.HIGH,
+            NotificationLevel.ERROR: MessagePriority.HIGH,
+            NotificationLevel.CRITICAL: MessagePriority.HIGH
+        }
+        return priority_map.get(level, MessagePriority.NORMAL)
 
     async def notify(
         self,
@@ -132,6 +183,9 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         Returns:
             bool: True if notification was sent successfully
         """
+        priority = self._get_priority_from_level(level)
+        retry_attempts = self._priority_retry_attempts[priority]
+
         async with self._lock:
             try:
                 # Check rate limit
@@ -139,39 +193,46 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
                 if self._state.last_notification:
                     elapsed = (now - self._state.last_notification).total_seconds()
                     if elapsed < MIN_NOTIFICATION_INTERVAL:
-                        logger.debug(
-                            "Rate limited",
-                            elapsed=f"{elapsed:.2f}s",
-                            min_interval=MIN_NOTIFICATION_INTERVAL
-                        )
-                        return False
+                        # Allow high priority messages to bypass rate limit
+                        if priority != MessagePriority.HIGH:
+                            logger.debug(
+                                "Rate limited",
+                                elapsed=f"{elapsed:.2f}s",
+                                min_interval=MIN_NOTIFICATION_INTERVAL,
+                                priority=priority.value
+                            )
+                            return False
 
-                # Attempt notification with retries
-                for attempt in range(self._retry_attempts + 1):
+                # Attempt notification with priority-based retries
+                for attempt in range(retry_attempts + 1):
                     try:
                         success = await self.send_notification(
                             message,
                             level=level,
+                            priority=priority,
                             **kwargs
                         )
                         if success:
-                            self._state.add_notification(message)
+                            self._state.add_notification(message, priority=priority)
                             return True
 
-                        if attempt < self._retry_attempts:
-                            await asyncio.sleep(self._retry_delay)
+                        if attempt < retry_attempts:
+                            # Adjust retry delay based on priority
+                            delay = self._retry_delay * (2 if priority == MessagePriority.HIGH else 1)
+                            await asyncio.sleep(delay)
                             continue
 
-                        self._state.add_notification(message, success=False)
+                        self._state.add_notification(message, success=False, priority=priority)
                         return False
 
                     except Exception as err:
-                        if attempt < self._retry_attempts:
+                        if attempt < retry_attempts:
                             logger.warning(
                                 "Notification failed, retrying",
                                 error=str(err),
                                 attempt=attempt + 1,
-                                max_attempts=self._retry_attempts
+                                max_attempts=retry_attempts,
+                                priority=priority.value
                             )
                             await asyncio.sleep(self._retry_delay)
                             continue
@@ -180,11 +241,12 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
 
             except Exception as err:
                 self._state.last_error = str(err)
-                self._state.add_notification(message, success=False)
+                self._state.add_notification(message, success=False, priority=priority)
                 logger.error(
                     "Notification failed",
                     error=str(err),
-                    error_type=type(err).__name__
+                    error_type=type(err).__name__,
+                    priority=priority.value
                 )
                 return False
 
@@ -193,6 +255,7 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         self,
         message: str,
         level: NotificationLevel = NotificationLevel.INFO,
+        priority: MessagePriority = MessagePriority.NORMAL,
         **kwargs
     ) -> bool:
         """Send notification to provider.
@@ -200,6 +263,7 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         Args:
             message: Message to send
             level: Notification priority level
+            priority: Message priority level
             **kwargs: Additional provider-specific arguments
 
         Returns:

@@ -87,6 +87,18 @@ class TelegramProvider(NotificationProvider):
         validator = TelegramValidator()
         self._config = validator.validate_config(config)
 
+        # Initialize priority-based rate limits and retries
+        self._priority_rate_limits = {
+            MessagePriority.LOW: self._config["rate_limit"] // 2,  # Lower rate limit for low priority
+            MessagePriority.NORMAL: self._config["rate_limit"],    # Default rate limit
+            MessagePriority.HIGH: self._config["rate_limit"] * 2   # Higher rate limit for high priority
+        }
+        self._priority_retry_attempts = {
+            MessagePriority.LOW: max(1, self._config["retry_attempts"] // 2),  # Fewer retries for low priority
+            MessagePriority.NORMAL: self._config["retry_attempts"],            # Default retries
+            MessagePriority.HIGH: self._config["retry_attempts"] * 2          # More retries for high priority
+        }
+
         super().__init__(
             rate_limit=self._config["rate_limit"],
             rate_period=self._config["rate_period"],
@@ -267,6 +279,22 @@ class TelegramProvider(NotificationProvider):
                 last_error=str(self._state.last_error)
             )
 
+    def _calculate_priority_delay(self, base_delay: float) -> float:
+        """Calculate delay based on message priority.
+
+        Args:
+            base_delay: Base delay in seconds
+
+        Returns:
+            float: Priority-adjusted delay
+        """
+        priority_multiplier = 1.0
+        if self._message_priority == MessagePriority.HIGH:
+            priority_multiplier = 0.5  # Shorter delay for high priority
+        elif self._message_priority == MessagePriority.LOW:
+            priority_multiplier = 2.0  # Longer delay for low priority
+        return base_delay * priority_multiplier
+
     async def _send_api_request(
         self,
         method: str,
@@ -296,7 +324,7 @@ class TelegramProvider(NotificationProvider):
             )
 
         url = self._build_api_url(method)
-        max_retries = retries if retries is not None else self._retry_attempts
+        max_retries = retries if retries is not None else self._priority_retry_attempts[self._message_priority]
         last_error = None
 
         for attempt in range(max_retries + 1):
@@ -307,8 +335,8 @@ class TelegramProvider(NotificationProvider):
                     # Handle rate limiting
                     if retry_after := await self._handle_rate_limit(response, response_data):
                         if attempt < max_retries:
-                            # Use exponential backoff
-                            delay = retry_after * (BACKOFF_BASE ** attempt)
+                            base_delay = retry_after * (BACKOFF_BASE ** attempt)
+                            delay = self._calculate_priority_delay(base_delay)
                             await asyncio.sleep(delay)
                             continue
                         raise TelegramError(
@@ -324,8 +352,8 @@ class TelegramProvider(NotificationProvider):
                 last_error = self._handle_request_error(err, method)
 
             if attempt < max_retries:
-                # Use exponential backoff for retries
-                delay = self._retry_delay * (BACKOFF_BASE ** attempt)
+                base_delay = self._retry_delay * (BACKOFF_BASE ** attempt)
+                delay = self._calculate_priority_delay(base_delay)
                 await asyncio.sleep(delay)
                 continue
 
@@ -362,7 +390,7 @@ class TelegramProvider(NotificationProvider):
             "parse_mode": self.parse_mode,
             "disable_notification": (
                 self.disable_notifications or
-                self._message_priority == MessagePriority.SILENT
+                self._message_priority == MessagePriority.LOW
             ),
             "protect_content": self.protect_content,
             "message_type": message_type,

@@ -47,6 +47,7 @@ from typing import (
 
 from structlog import get_logger
 
+from config.constants import MessagePriority
 from config.constants import NotificationProvider as ProviderType
 from notifications.base import NotificationError, NotificationProvider
 from utils.validators import BaseProviderValidator
@@ -74,6 +75,15 @@ class ValidatorCacheEntry:
     last_used: float
     validation_count: int = 0
     total_validation_time: float = 0.0
+    priority_validation_counts: Dict[MessagePriority, int] = None
+
+    def __post_init__(self):
+        if self.priority_validation_counts is None:
+            self.priority_validation_counts = {
+                MessagePriority.LOW: 0,
+                MessagePriority.NORMAL: 0,
+                MessagePriority.HIGH: 0
+            }
 
 class ProviderError(NotificationError):
     """Base exception for provider-related errors."""
@@ -129,6 +139,13 @@ class NotificationFactory:
     SLOW_VALIDATION_THRESHOLD = 1.0
     VERY_SLOW_VALIDATION_THRESHOLD = 3.0
 
+    # Priority-based rate limits
+    PRIORITY_RATE_LIMITS = {
+        MessagePriority.LOW: 0.5,     # 50% of base rate
+        MessagePriority.NORMAL: 1.0,  # 100% of base rate
+        MessagePriority.HIGH: 2.0     # 200% of base rate
+    }
+
     def __init__(self):
         """Initialize notification factory."""
         self._providers: Dict[str, Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]] = {}
@@ -137,6 +154,22 @@ class NotificationFactory:
         self._registered_configs: Dict[str, Dict[str, Any]] = {}
         self._active_tasks: Set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
+        self._priority_stats: Dict[str, Dict[MessagePriority, int]] = {}
+
+    def _update_priority_stats(self, provider_id: str, priority: MessagePriority) -> None:
+        """Update priority-based statistics for a provider.
+
+        Args:
+            provider_id: Provider identifier
+            priority: Message priority level
+        """
+        if provider_id not in self._priority_stats:
+            self._priority_stats[provider_id] = {
+                MessagePriority.LOW: 0,
+                MessagePriority.NORMAL: 0,
+                MessagePriority.HIGH: 0
+            }
+        self._priority_stats[provider_id][priority] += 1
 
     @contextmanager
     def _validation_context(self, provider_id: str, operation: str) -> 'ValidationContext':
@@ -318,21 +351,97 @@ class NotificationFactory:
 
         return decorator
 
+    def _validate_provider_exists(self, provider_id: str) -> Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]:
+        """Validate that a provider exists and return its class and validator.
+
+        Args:
+            provider_id: Provider identifier
+
+        Returns:
+            Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]: Provider and validator classes
+
+        Raises:
+            ProviderNotFoundError: If provider is not registered
+        """
+        provider_tuple = self._providers.get(provider_id)
+        if not provider_tuple:
+            logger.warning(
+                "Attempted to create unregistered provider",
+                provider_id=provider_id,
+            )
+            raise ProviderNotFoundError(f"Provider {provider_id} not registered")
+        return provider_tuple
+
+    def _get_config(self, provider_id: str, config: Optional[T_Config]) -> Dict[str, Any]:
+        """Get configuration for a provider.
+
+        Args:
+            provider_id: Provider identifier
+            config: Optional provider configuration
+
+        Returns:
+            Dict[str, Any]: Provider configuration
+
+        Raises:
+            ProviderConfigError: If no configuration is available
+        """
+        provider_config = config or self._registered_configs.get(provider_id, {})
+        if not provider_config:
+            raise ProviderConfigError(f"No configuration available for provider: {provider_id}")
+        return provider_config
+
+    def _validate_config(
+        self,
+        provider_id: str,
+        validator_class: Type[BaseProviderValidator],
+        config: Dict[str, Any],
+        priority_config: Optional[Dict[MessagePriority, Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """Validate provider configuration.
+
+        Args:
+            provider_id: Provider identifier
+            validator_class: Validator class
+            config: Provider configuration
+            priority_config: Optional priority-specific configuration
+
+        Returns:
+            Dict[str, Any]: Validated configuration
+        """
+        validator = self._get_cached_validator(provider_id, validator_class)
+        if not validator and callable(validator_class):
+            validator = validator_class()
+            self._cache_validator(provider_id, validator)
+
+        with self._validation_context(provider_id, "create_provider"):
+            if validator and hasattr(validator, 'validate_config'):
+                config = validator.validate_config(config)
+            else:
+                config = validator_class.validate_config(config)
+
+            if priority_config:
+                for _priority, override in priority_config.items():
+                    if validator and hasattr(validator, 'validate_priority_config'):
+                        validator.validate_priority_config(override, _priority)
+                    else:
+                        validator_class.validate_priority_config(override, _priority)
+
+        return config
+
     async def create_provider(
         self,
         provider_id: Union[str, ProviderType],
         config: Optional[T_Config] = None,
-        validate: bool = True
+        validate: bool = True,
+        priority_config: Optional[Dict[MessagePriority, Dict[str, Any]]] = None
     ) -> T_Provider:
-        """Create or retrieve a provider instance.
-        This method creates a new provider instance or returns an existing one.
-        It handles validation through the provider's validator class and supports
-        caching of validator instances for better performance.
+        """Create or retrieve a provider instance with priority configuration.
 
         Args:
             provider_id: Provider identifier
             config: Optional provider configuration
             validate: Whether to validate configuration
+            priority_config: Optional priority-specific configuration overrides
 
         Returns:
             T_Provider: Provider instance
@@ -340,80 +449,45 @@ class NotificationFactory:
         Raises:
             ProviderNotFoundError: If provider is not registered
             ProviderConfigError: If configuration is invalid
-
-        Examples:
-            # Create with explicit config
-            >>> discord = await factory.create_provider(
-            ...     "discord",
-            ...     {"webhook_url": "https://discord.com/webhook"}
-            ... )
-            ...
-            # Create from registered config
-            >>> telegram = await factory.create_provider("telegram")
         """
         provider_id = str(provider_id)
 
         async with self._lock:
             # Return existing instance if available
             if provider_id in self._active_providers:
-                logger.debug(
-                    "Returning existing provider instance",
-                    provider_id=provider_id,
-                )
+                logger.debug("Returning existing provider instance", provider_id=provider_id)
                 return self._active_providers[provider_id]
 
-            # Verify provider is registered
-            provider_tuple = self._providers.get(provider_id)
-            if not provider_tuple:
-                logger.warning(
-                    "Attempted to create unregistered provider",
-                    provider_id=provider_id,
+            # Get provider class and validator
+            provider_class, validator_class = self._validate_provider_exists(provider_id)
+
+            # Get and validate configuration
+            provider_config = self._get_config(provider_id, config)
+            if validate:
+                provider_config = self._validate_config(
+                    provider_id,
+                    validator_class,
+                    provider_config,
+                    priority_config
                 )
-                raise ProviderNotFoundError(f"Provider {provider_id} not registered")
 
-            provider_class, validator_class = provider_tuple
-
-            # Use provided config or fallback to registered config
-            provider_config = config or self._registered_configs.get(provider_id, {})
-            logger.debug(
-                "Creating provider instance",
-                provider_id=provider_id,
-                provider_class=provider_class.__name__,
-                has_config=bool(provider_config),
-            )
+            # Apply priority-specific configuration overrides
+            if priority_config:
+                for _priority, override in priority_config.items():
+                    provider_config = self._merge_configs(provider_config, override)
 
             try:
-                if validate:
-                    # Try to get cached validator
-                    validator = self._get_cached_validator(provider_id, validator_class)
-
-                    if not validator and callable(validator_class):
-                        # Create new validator instance
-                        validator = validator_class()
-                        self._cache_validator(provider_id, validator)
-
-                    # Validate configuration using validation context
-                    with self._validation_context(provider_id, "create_provider"):
-                        if validator and hasattr(validator, 'validate_config'):
-                            provider_config = validator.validate_config(provider_config)
-                        else:
-                            # Fallback to class method if no validator instance
-                            provider_config = validator_class.validate_config(provider_config)
-
                 # Initialize provider
                 provider = provider_class(provider_config)
                 if hasattr(provider, 'connect'):
-                    logger.debug(
-                        "Connecting provider",
-                        provider_id=provider_id,
-                    )
+                    logger.debug("Connecting provider", provider_id=provider_id)
                     await provider.connect()
 
                 self._active_providers[provider_id] = provider
                 logger.info(
                     "Created provider instance",
                     provider_id=provider_id,
-                    provider_class=provider_class.__name__,
+                    provider_class=provider_class.__name__
                 )
                 return provider
 
@@ -421,7 +495,7 @@ class NotificationFactory:
                 logger.error(
                     "Provider creation failed with NotificationError",
                     provider_id=provider_id,
-                    error_type=type(NotificationError).__name__,
+                    error_type=type(NotificationError).__name__
                 )
                 raise
             except Exception as err:
@@ -429,11 +503,27 @@ class NotificationFactory:
                     "Provider creation failed with unexpected error",
                     provider_id=provider_id,
                     error_type=type(err).__name__,
-                    error=str(err),
+                    error=str(err)
                 )
-                raise ProviderConfigError(
-                    f"Failed to create provider {provider_id}: {err}"
-                ) from err
+                raise ProviderConfigError(f"Failed to create provider {provider_id}: {err}") from err
+
+    def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge two configuration dictionaries.
+
+        Args:
+            base: Base configuration
+            override: Configuration to override with
+
+        Returns:
+            Dict[str, Any]: Merged configuration
+        """
+        result = base.copy()
+        for key, value in override.items():
+            if isinstance(value, dict) and key in result and isinstance(result[key], dict):
+                result[key] = self._merge_configs(result[key], value)
+            else:
+                result[key] = value
+        return result
 
     async def register_config(
         self,

@@ -23,9 +23,9 @@ from shared.providers.telegram import (
 
 class MessagePriority(IntEnum):
     """Message priority levels affecting notification behavior."""
-    SILENT = 0     # No notification
-    NORMAL = 1     # Default notification
-    URGENT = 2     # Priority notification (bypasses mute)
+    LOW = 0      # Low priority, can be delayed/dropped
+    NORMAL = 1   # Default notification priority
+    HIGH = 2     # High priority, immediate delivery
 
 
 class NotificationState(TypedDict, total=False):
