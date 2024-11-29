@@ -18,37 +18,42 @@ Example:
     ... )
 """
 
-from typing import Any, Dict, Final, Optional, Set
+from __future__ import annotations
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from typing import Any, Dict, Final, Optional
+
+from pydantic import BaseModel, Field, HttpUrl, validator
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import DiscordSchemaError, WebhookConfigSchema
 from shared.providers.discord import (
+    ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
     ApiLimits,
     DiscordColor,
-    validate_image_url,
     validate_thread_name,
-    validate_url_domain,
-    validate_url_length,
-    validate_webhook_path,
+    validate_url,
 )
 
+"""Discord webhook settings and configuration."""
 
 class DiscordSettingsError(Exception):
     """Base exception for Discord settings validation errors."""
+
     def __init__(self, message: str, setting: Optional[str] = None):
-        self.setting = setting
+        """Initialize Discord settings error.
+
+        Args:
+            message: Error message
+            setting: Setting that caused the error
+        """
         super().__init__(message)
+        self.setting = setting
 
 
 # Immutable sets of allowed domains
-AVATAR_DOMAINS: Final[Set[str]] = frozenset({
-    "cdn.discordapp.com",
-    "i.imgur.com",
-    "media.discordapp.net"
-})
+WEBHOOK_DOMAINS: Final = WEBHOOK_DOMAINS
+ASSET_DOMAINS: Final = ASSET_DOMAINS
 
 
 class ForumSettings(BaseModel):
@@ -77,7 +82,7 @@ class ForumSettings(BaseModel):
         description="Thread auto-archive duration in minutes"
     )
 
-    @field_validator("default_thread_name")
+    @validator("default_thread_name")
     @classmethod
     def validate_thread_name(cls, v: Optional[str]) -> Optional[str]:
         """Validate thread name format if provided.
@@ -97,24 +102,49 @@ class ForumSettings(BaseModel):
             raise DiscordSettingsError(str(e), setting="forum.default_thread_name") from e
 
 
+class WebhookSettings(BaseModel):
+    """Discord webhook configuration settings."""
+    url: HttpUrl = Field(
+        ...,
+        title="Webhook URL",
+        description="Discord webhook URL"
+    )
+    username: Optional[str] = Field(
+        None,
+        title="Username",
+        description="Override the default username of the webhook"
+    )
+    avatar_url: Optional[HttpUrl] = Field(
+        None,
+        title="Avatar URL",
+        description="Override the default avatar of the webhook"
+    )
+    thread_name: Optional[str] = Field(
+        None,
+        title="Thread Name",
+        description="Name of thread to send messages to"
+    )
+
+    @validator("url")
+    def validate_webhook_url(cls, v: str) -> str:
+        """Validate webhook URL domain."""
+        if not validate_url(str(v), WEBHOOK_DOMAINS):
+            raise ValueError("Invalid webhook URL domain")
+        return str(v)
+
+    @validator("avatar_url")
+    def validate_avatar_url(cls, v: Optional[str]) -> Optional[str]:
+        """Validate avatar URL domain."""
+        if v is not None and not validate_url(str(v), ASSET_DOMAINS):
+            raise ValueError("Invalid avatar URL domain")
+        return str(v) if v else None
+
+
 class DiscordSettings(BaseProviderSettings):
     """Discord webhook configuration settings."""
-    webhook_url: Optional[HttpUrl] = Field(
-        default=None,
-        description="Discord webhook URL for notifications",
-        examples=["https://discord.com/api/webhooks/123/abc"]
-    )
-
-    username: str = Field(
-        default="Mover Bot",
-        min_length=1,
-        max_length=ApiLimits.USERNAME_LENGTH,
-        description="Display name for webhook messages"
-    )
-
-    avatar_url: Optional[HttpUrl] = Field(
-        default=None,
-        description="URL for webhook avatar image"
+    webhook: WebhookSettings = Field(
+        default_factory=WebhookSettings,
+        description="Discord webhook configuration"
     )
 
     embed_color: Optional[int] = Field(
@@ -128,59 +158,6 @@ class DiscordSettings(BaseProviderSettings):
         default=None,
         description="Optional forum channel settings"
     )
-
-    @field_validator("webhook_url")
-    @classmethod
-    def validate_webhook_url(cls, v: Optional[HttpUrl], info: Any) -> Optional[HttpUrl]:
-        """Validate Discord webhook URL format and presence.
-
-        Args:
-            v: Webhook URL to validate
-            info: Validation context information
-
-        Returns:
-            Optional[HttpUrl]: Validated webhook URL
-
-        Raises:
-            DiscordSettingsError: If URL is invalid or missing when enabled
-        """
-        enabled = info.data.get("enabled", False)
-
-        if enabled and not v:
-            raise DiscordSettingsError(
-                "Webhook URL must be provided when Discord is enabled",
-                setting="webhook_url"
-            )
-
-        if v:
-            try:
-                url_str = str(v)
-                validate_url_length(url_str, "webhook_url")
-                validate_url_domain(url_str, "webhook_url", WEBHOOK_DOMAINS)
-                validate_webhook_path(url_str)
-            except ValueError as e:
-                raise DiscordSettingsError(str(e), setting="webhook_url") from e
-
-        return v
-
-    @field_validator("avatar_url")
-    @classmethod
-    def validate_avatar_url(cls, v: Optional[HttpUrl]) -> Optional[HttpUrl]:
-        """Validate avatar URL format if provided.
-
-        Args:
-            v: Avatar URL to validate
-
-        Returns:
-            Optional[HttpUrl]: Validated avatar URL
-
-        Raises:
-            DiscordSettingsError: If URL format is invalid
-        """
-        try:
-            return validate_image_url(v, "avatar_url")
-        except ValueError as e:
-            raise DiscordSettingsError(str(e), setting="avatar_url") from e
 
     def to_provider_config(self) -> Dict[str, Any]:
         """Convert settings to Discord provider configuration.
@@ -197,11 +174,11 @@ class DiscordSettings(BaseProviderSettings):
 
             # Create webhook config using schema
             webhook_config = None
-            if self.webhook_url:
+            if self.webhook.url:
                 webhook_config = WebhookConfigSchema(
-                    webhook_url=str(self.webhook_url),
-                    username=self.username,
-                    avatar_url=self.avatar_url,
+                    webhook_url=str(self.webhook.url),
+                    username=self.webhook.username,
+                    avatar_url=self.webhook.avatar_url,
                     forum=self.forum.model_dump() if self.forum else None
                 ).to_webhook_config()
 
@@ -230,15 +207,19 @@ class DiscordSettings(BaseProviderSettings):
             "examples": [
                 {
                     "enabled": True,
-                    "webhook_url": "https://discord.com/api/webhooks/123/abc",
-                    "username": "Mover Bot",
+                    "webhook": {
+                        "url": "https://discord.com/api/webhooks/123/abc",
+                        "username": "Mover Bot"
+                    },
                     "embed_color": DiscordColor.INFO,
                 },
                 {
                     "enabled": True,
-                    "webhook_url": "https://discord.com/api/webhooks/123/abc",
-                    "username": "Status Bot",
-                    "avatar_url": "https://cdn.discordapp.com/avatars/123/abc.png",
+                    "webhook": {
+                        "url": "https://discord.com/api/webhooks/123/abc",
+                        "username": "Status Bot",
+                        "avatar_url": "https://cdn.discordapp.com/avatars/123/abc.png",
+                    },
                     "forum": {
                         "enabled": True,
                         "auto_thread": True,

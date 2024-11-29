@@ -1,24 +1,9 @@
-# notifications/providers/discord/provider.py
-
-"""
-Discord webhook notification provider implementation.
-Handles sending notifications via Discord webhooks with proper rate limiting and error handling.
-
-Example:
-    >>> from notifications.providers.discord import DiscordProvider, DiscordConfig
-    >>> config = DiscordConfig(
-    ...     webhook_url="https://discord.com/api/webhooks/...",
-    ...     username="Mover Bot"
-    ... )
-    >>> provider = DiscordProvider(config.to_provider_config())
-    >>> async with provider:
-    ...     await provider.notify_progress(75.5, "1.2 GB", "2 hours", "15:30")
-"""
+"""Discord webhook notification provider."""
 
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, Dict, Final, Optional, Union
+from typing import Any, Dict, Final, Optional, TypedDict, Union
 
 import aiohttp
 from pydantic import HttpUrl
@@ -37,29 +22,40 @@ from notifications.providers.discord.templates import (
     create_warning_embed,
     create_webhook_data,
 )
-from notifications.providers.discord.types import (
-    NotificationState,
-    WebhookPayload,
-)
+from notifications.providers.discord.types import NotificationState
 from notifications.providers.discord.validators import DiscordValidator
 from shared.providers.discord import (
+    ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
+    AssetDomains,
     DiscordColor,
     DiscordWebhookError,
     Embed,
+    WebhookDomains,
     validate_url,
 )
 
 logger = get_logger(__name__)
 
 # Default timeout settings
-DEFAULT_TIMEOUT: Final[int] = 30
-MAX_TIMEOUT: Final[int] = 300  # 5 minutes
+DEFAULT_TIMEOUT = 10.0  # seconds
+RETRY_LIMIT: Final[int] = 3
+BACKOFF_BASE: Final[float] = 2.0
+
+class DiscordConfig(TypedDict, total=False):
+    """Discord provider configuration type."""
+    webhook_url: str
+    username: Optional[str]
+    avatar_url: Optional[str]
+    thread_name: Optional[str]
 
 class DiscordProvider(NotificationProvider):
     """Discord webhook notification provider implementation."""
 
-    def __init__(self, config: Dict[str, Any]):
+    ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
+    ALLOWED_ASSET_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
+
+    def __init__(self, config: DiscordConfig):
         """Initialize Discord provider.
 
         Args:
@@ -108,7 +104,7 @@ class DiscordProvider(NotificationProvider):
 
         # Request timeout configuration
         timeout = self._config.get("timeout", DEFAULT_TIMEOUT)
-        if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > MAX_TIMEOUT:
+        if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > 300:
             logger.warning(
                 "Invalid timeout value, using default",
                 timeout=timeout,
@@ -170,7 +166,7 @@ class DiscordProvider(NotificationProvider):
     async def _handle_send_webhook_response(
         self,
         response: aiohttp.ClientResponse,
-        data: WebhookPayload
+        data: Dict[str, Any]
     ) -> None:
         """Handle webhook response and update state.
 
@@ -211,7 +207,7 @@ class DiscordProvider(NotificationProvider):
 
     async def send_webhook(
         self,
-        data: WebhookPayload,
+        data: Dict[str, Any],
         max_retries: int = 3
     ) -> bool:
         """Send webhook request with retries.

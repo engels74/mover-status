@@ -1,7 +1,7 @@
 # config/providers/discord/types.py
 
 """
-Type definitions specific to Discord webhook configuration.
+Discord webhook types and constants.
 Contains types used for sending notifications, importing shared types as needed.
 
 Example:
@@ -9,13 +9,18 @@ Example:
     >>> config = WebhookConfig(url="https://discord.com/api/webhooks/...", username="Bot")
 """
 
-from typing import Final, Literal, Optional, Set, TypedDict
+from typing import Final, Literal, Optional, TypedDict
 
 from config.constants import JsonDict
 from shared.providers.discord import (
+    ASSET_DOMAINS,
+    WEBHOOK_DOMAINS,
     ApiLimits,
+    AssetDomains,
     DiscordColor,
+    DomainSet,
     Embed,
+    WebhookDomains,
     WebhookPayload,
 )
 
@@ -23,9 +28,8 @@ from shared.providers.discord import (
 class ForumConfig(TypedDict, total=False):
     """Configuration for Discord forum channel integration."""
     enabled: bool
-    auto_thread: bool
-    default_thread_name: Optional[str]
-    archive_duration: Optional[int]  # Thread auto-archive duration in minutes
+    channel_id: str
+    thread_title: str
 
 
 class WebhookConfig(TypedDict, total=False):
@@ -61,18 +65,16 @@ class RateLimitInfo(TypedDict):
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 ContentType = Literal["application/json"]
 
-# Allowed domains for webhooks and assets
-ALLOWED_DOMAINS: Final[Set[str]] = frozenset({
-    "discord.com",
-    "ptb.discord.com",
-    "canary.discord.com"
-})
-
-ALLOWED_ASSET_DOMAINS: Final[Set[str]] = frozenset({
-    "cdn.discordapp.com",
-    "media.discordapp.net",
-    "i.imgur.com"
-})
+# Webhook API constraints
+WEBHOOK_CONSTRAINTS: Final[JsonDict] = {
+    "max_retries": 3,
+    "retry_delay": 5,
+    "max_embeds": ApiLimits.EMBEDS_PER_MESSAGE,
+    "max_username_length": ApiLimits.USERNAME_LENGTH,
+    "webhook_timeout": 30,
+    "allowed_domains": WEBHOOK_DOMAINS,
+    "allowed_asset_domains": ASSET_DOMAINS,
+}
 
 # Default webhook configuration
 DEFAULT_WEBHOOK_CONFIG: Final[WebhookConfig] = {
@@ -83,19 +85,8 @@ DEFAULT_WEBHOOK_CONFIG: Final[WebhookConfig] = {
 # Forum configuration defaults
 DEFAULT_FORUM_CONFIG: Final[ForumConfig] = {
     "enabled": False,
-    "auto_thread": False,
-    "archive_duration": 1440  # 24 hours in minutes
-}
-
-# Webhook API constraints
-WEBHOOK_CONSTRAINTS: Final[JsonDict] = {
-    "max_retries": 3,
-    "retry_delay": 5,
-    "max_embeds": ApiLimits.EMBEDS_PER_MESSAGE,
-    "max_username_length": ApiLimits.USERNAME_LENGTH,
-    "webhook_timeout": 30,
-    "allowed_domains": ALLOWED_DOMAINS,
-    "allowed_asset_domains": ALLOWED_ASSET_DOMAINS,
+    "channel_id": "",
+    "thread_title": ""
 }
 
 
@@ -128,12 +119,13 @@ __all__ = [
     'DEFAULT_WEBHOOK_CONFIG',
     'DEFAULT_FORUM_CONFIG',
     'WEBHOOK_CONSTRAINTS',
-    'ALLOWED_DOMAINS',
-    'ALLOWED_ASSET_DOMAINS',
 
     # Re-exports from shared types
     'ApiLimits',
     'DiscordColor',
     'Embed',
     'WebhookPayload',
+    'DomainSet',
+    'WebhookDomains',
+    'AssetDomains',
 ]

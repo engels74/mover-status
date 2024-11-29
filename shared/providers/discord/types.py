@@ -19,9 +19,12 @@ from urllib.parse import urlparse
 class DiscordColor(IntEnum):
     """Discord embed color codes."""
     SUCCESS = 0x2ECC71      # Green
+    INFO = 0x3498DB         # Blue
     WARNING = 0xF1C40F      # Yellow
     ERROR = 0xE74C3C        # Red
-    INFO = 0x3498DB         # Blue
+    PROGRESS = 0x9B59B6     # Purple
+    SYSTEM = 0x95A5A6       # Gray
+    DEBUG = 0x34495E        # Dark Blue
     PROGRESS_LOW = 0xFF6B6B  # Light Red (0-33%)
     PROGRESS_MID = 0xFFA07A  # Light Orange (34-66%)
     PROGRESS_HIGH = 0x98FB98  # Light Green (67-100%)
@@ -132,6 +135,24 @@ class WebhookPayload(TypedDict, total=False):
     flags: Optional[int]
     thread_name: Optional[str]
 
+# Type aliases for domain sets
+DomainSet = Final[frozenset[str]]
+WebhookDomains = DomainSet
+AssetDomains = DomainSet
+
+# Allowed domains for webhooks and assets
+WEBHOOK_DOMAINS: WebhookDomains = frozenset({
+    "discord.com",
+    "ptb.discord.com",
+    "canary.discord.com"
+})
+
+ASSET_DOMAINS: AssetDomains = frozenset({
+    "cdn.discordapp.com",
+    "media.discordapp.net",
+    "i.imgur.com"
+})
+
 
 def get_progress_color(percent: float) -> int:
     """Get appropriate color based on progress percentage.
@@ -155,7 +176,7 @@ def get_progress_color(percent: float) -> int:
     return DiscordColor.PROGRESS_HIGH
 
 
-def validate_url(url: str, allowed_domains: set[str]) -> bool:
+def validate_url(url: str, allowed_domains: DomainSet) -> bool:
     """Validate URL against allowed domains.
 
     Args:

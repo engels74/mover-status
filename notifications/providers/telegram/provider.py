@@ -19,18 +19,15 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, Final, Optional, Set, Union
+from typing import Any, Dict, Final, List, Optional, Set, TypedDict, Union
 from urllib.parse import urljoin
 
 import aiohttp
 from structlog import get_logger
 
 from config.constants import MessagePriority, MessageType, NotificationLevel
-from notifications.base import (
-    NotificationError,
-    NotificationProvider,
-    NotificationState,
-)
+from notifications.base import NotificationError, NotificationState
+from notifications.providers.base import BaseNotificationProvider
 from notifications.providers.telegram.templates import (
     create_batch_message,
     create_completion_message,
@@ -44,6 +41,11 @@ from notifications.providers.telegram.templates import (
 from notifications.providers.telegram.types import (
     SendMessageRequest,
     TelegramApiError,
+)
+from shared.providers.telegram import (
+    ALLOWED_DOMAINS,
+    TelegramDomains,
+    validate_url,
 )
 
 logger = get_logger(__name__)
@@ -74,8 +76,22 @@ class TelegramError(NotificationError):
         self.retry_after = retry_after
         self.context = context or {}
 
-class TelegramProvider(NotificationProvider):
-    """Telegram bot notification provider implementation."""
+class TelegramConfig(TypedDict, total=False):
+    """Telegram provider configuration type."""
+    bot_token: str
+    chat_id: Union[int, str]
+    thread_id: Optional[int]
+
+class InlineKeyboardButton(TypedDict, total=False):
+    """Telegram inline keyboard button type."""
+    text: str
+    url: Optional[str]
+    callback_data: Optional[str]
+
+class TelegramProvider(BaseNotificationProvider):
+    """Telegram bot notification provider."""
+
+    ALLOWED_DOMAINS: Final[TelegramDomains] = ALLOWED_DOMAINS
 
     def __init__(self, config: Dict[str, Any]) -> None:
         """Initialize the Telegram notification provider.
@@ -492,6 +508,7 @@ class TelegramProvider(NotificationProvider):
                 actions=kwargs.get("actions", []),
                 expires_in=kwargs.get("expires_in")
             )
+            keyboard = self.prepare_inline_keyboard(keyboard)
             return {
                 "text": formatted_message,
                 "reply_markup": keyboard if keyboard else None
@@ -511,6 +528,50 @@ class TelegramProvider(NotificationProvider):
             "parse_mode": self.parse_mode,
             "disable_notification": level == NotificationLevel.DEBUG
         }
+
+    def prepare_inline_keyboard(self, buttons: List[InlineKeyboardButton]) -> Dict[str, List[List[Dict[str, str]]]]:
+        """Prepare inline keyboard markup.
+
+        Args:
+            buttons: List of button configurations
+
+        Returns:
+            Dict: Prepared inline keyboard markup
+
+        Raises:
+            ValueError: If button URL is invalid
+        """
+        keyboard = []
+        row = []
+
+        for button in buttons:
+            if "url" in button and not self.validate_button_url(button["url"]):
+                raise ValueError(f"Invalid button URL domain: {button['url']}")
+            row.append(button)
+            if len(row) == 2:  # Max 2 buttons per row
+                keyboard.append(row)
+                row = []
+
+        if row:  # Add remaining buttons
+            keyboard.append(row)
+
+        return {"inline_keyboard": keyboard}
+
+    def validate_button_url(self, url: Optional[str]) -> bool:
+        """Validate button URL domain.
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            bool: True if URL is valid or None
+        """
+        if not url:
+            return True
+        try:
+            return validate_url(url, ALLOWED_DOMAINS)
+        except Exception:
+            return False
 
     def _get_level_priority(self, level: NotificationLevel) -> MessagePriority:
         """Get message priority based on notification level.
