@@ -186,7 +186,7 @@
 **Required Follow-up Tasks:**
 1. ~~Update all files that directly import constants to use new class prefix~~ ✅
 2. ~~Update all files that access settings to use new nested structure~~ ✅
-3. Update notification providers to handle new message types
+3. ~~Update notification providers to handle new message types~~ ✅
 4. Update webhook provider to handle non-optional embeds
 5. Update templates.py to handle JsonDict nesting limits in webhook payloads
 6. ~~Ensure templates.py error messages align with new centralized error classes~~ ✅

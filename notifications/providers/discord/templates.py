@@ -675,7 +675,8 @@ def create_webhook_payload(
     embeds: List[Embed],
     username: str = "Mover Bot",
     avatar_url: Optional[str] = None,
-    forum_config: Optional[ForumConfig] = None
+    forum_config: Optional[ForumConfig] = None,
+    require_embeds: bool = True
 ) -> WebhookPayload:
     """Create complete webhook payload with optional forum support.
 
@@ -684,12 +685,14 @@ def create_webhook_payload(
         username: Bot username to display
         avatar_url: Optional avatar URL
         forum_config: Optional forum configuration for thread creation
+        require_embeds: If True, at least one embed is required
 
     Returns:
         WebhookPayload: Complete webhook payload
 
     Raises:
         ValueError: If payload exceeds Discord limits or nesting depth
+        ValueError: If embeds are required but not provided
     """
     # Validate username length
     if len(username) > ApiLimits.USERNAME_LENGTH:
@@ -698,6 +701,10 @@ def create_webhook_payload(
             max_length=ApiLimits.USERNAME_LENGTH
         ))
 
+    # Validate embeds
+    if not embeds and require_embeds:
+        raise ValueError("At least one embed is required when require_embeds is True")
+
     # Create base payload
     payload: JsonDict = {"username": username, "embeds": []}
 
@@ -705,8 +712,12 @@ def create_webhook_payload(
     if avatar_url:
         payload["avatar_url"] = avatar_url
 
-    # Convert embeds to dict format
-    payload["embeds"] = [_create_embed_dict(embed) for embed in embeds]
+    # Convert and validate embeds
+    payload["embeds"] = []
+    for embed in embeds:
+        # Validate embed before adding
+        validate_embed_lengths(embed)
+        payload["embeds"].append(_create_embed_dict(embed))
 
     # Add forum configuration if provided
     if forum_config:

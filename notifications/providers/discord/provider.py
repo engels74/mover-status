@@ -234,6 +234,7 @@ class DiscordProvider(NotificationProvider):
         level: NotificationLevel = NotificationLevel.INFO,
         priority: MessagePriority = MessagePriority.NORMAL,
         message_type: MessageType = MessageType.CUSTOM,
+        require_embeds: bool = True,
         **kwargs
     ) -> bool:
         """Send notification via Discord webhook.
@@ -243,6 +244,7 @@ class DiscordProvider(NotificationProvider):
             level: Notification priority level
             priority: Message priority level
             message_type: Type of message
+            require_embeds: If True, at least one embed is required
             **kwargs: Additional message-specific arguments
 
         Returns:
@@ -260,7 +262,8 @@ class DiscordProvider(NotificationProvider):
                 embeds=[embed],
                 username=self.username,
                 avatar_url=self.avatar_url,
-                forum_config=kwargs.get("forum_config")
+                forum_config=kwargs.get("forum_config"),
+                require_embeds=require_embeds
             )
 
             # Send webhook request
@@ -400,22 +403,30 @@ class DiscordProvider(NotificationProvider):
     async def send_webhook(
         self,
         data: WebhookPayload,
-        retries: Optional[int] = None
+        retries: Optional[int] = None,
+        require_embeds: bool = True
     ) -> NotificationResponse:
         """Send webhook request to Discord.
 
         Args:
             data: Webhook payload data
             retries: Optional override for retry attempts
+            require_embeds: If True, at least one embed is required
 
         Returns:
             NotificationResponse: Discord response data
 
         Raises:
-            DiscordWebhookError: If webhook request fails
+            DiscordWebhookError: If webhook request fails or required embeds are missing
         """
         if not self.session:
             await self.connect()
+
+        # Validate webhook data
+        if require_embeds and (not data.get("embeds") or len(data["embeds"]) == 0):
+            raise DiscordWebhookError(
+                "At least one embed is required for this webhook message"
+            )
 
         max_retries = retries if retries is not None else self._retry_attempts
         last_error = None
