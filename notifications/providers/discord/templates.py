@@ -14,8 +14,8 @@ Example:
     ... )
 """
 
-from datetime import datetime
-from typing import Dict, List, Optional, Union
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Union
 
 from config.constants import ErrorMessages, JsonDict, JsonValue
 from shared.providers.discord import (
@@ -247,6 +247,220 @@ def create_error_embed(
         if fields:
             embed["fields"] = fields
 
+    validate_embed_lengths(embed)
+    return embed
+
+
+def create_warning_embed(
+    warning_message: str,
+    warning_details: Optional[Dict[str, str]] = None,
+    suggestion: Optional[str] = None
+) -> Embed:
+    """Create embed for warning notification.
+
+    Args:
+        warning_message: Warning description
+        warning_details: Optional warning context details
+        suggestion: Optional suggestion for resolution
+
+    Returns:
+        Embed: Formatted warning embed
+
+    Raises:
+        ValueError: If warning_message is empty
+    """
+    if not warning_message:
+        raise ValueError("Warning message cannot be empty")
+
+    # Create embed with warning color
+    embed = Embed(
+        title="Warning",
+        description=warning_message,
+        color=DiscordColor.WARNING,
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+    # Add warning details if provided
+    if warning_details:
+        details_text = "\n".join(f"**{k}:** {v}" for k, v in warning_details.items())
+        embed.fields.append(
+            EmbedField(name="Details", value=details_text, inline=False)
+        )
+
+    # Add suggestion if provided
+    if suggestion:
+        embed.fields.append(
+            EmbedField(name="Suggestion", value=suggestion, inline=False)
+        )
+
+    embed.footer = create_footer()
+    validate_embed_lengths(embed)
+    return embed
+
+
+def create_system_embed(
+    status: str,
+    metrics: Optional[Dict[str, Union[str, int, float]]] = None,
+    issues: Optional[List[str]] = None
+) -> Embed:
+    """Create embed for system status update.
+
+    Args:
+        status: Current system status
+        metrics: Optional system metrics
+        issues: Optional list of current issues
+
+    Returns:
+        Embed: Formatted system status embed
+    """
+    embed = Embed(
+        title="System Status",
+        description=status,
+        color=DiscordColor.INFO,
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+    if metrics:
+        metrics_text = "\n".join(f"**{k}:** {v}" for k, v in metrics.items())
+        embed.fields.append(
+            EmbedField(name="Metrics", value=metrics_text, inline=False)
+        )
+
+    if issues and len(issues) > 0:
+        issues_text = "\n".join(f"• {issue}" for issue in issues)
+        embed.fields.append(
+            EmbedField(name="Current Issues", value=issues_text, inline=False)
+        )
+
+    embed.footer = create_footer()
+    validate_embed_lengths(embed)
+    return embed
+
+
+def create_batch_embed(
+    operation: str,
+    items: List[Dict[str, Any]],
+    summary: Optional[str] = None
+) -> Embed:
+    """Create embed for batch operation updates.
+
+    Args:
+        operation: Type of batch operation
+        items: List of items being processed
+        summary: Optional operation summary
+
+    Returns:
+        Embed: Formatted batch operation embed
+    """
+    embed = Embed(
+        title=f"Batch {operation}",
+        description=summary or f"Processing {len(items)} items",
+        color=DiscordColor.INFO,
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+    # Add items summary
+    items_text = "\n".join(
+        f"• {item.get('name', 'Unknown')}: {item.get('status', 'Pending')}"
+        for item in items[:10]  # Limit to first 10 items
+    )
+    if len(items) > 10:
+        items_text += f"\n... and {len(items) - 10} more items"
+
+    embed.fields.append(
+        EmbedField(name="Items", value=items_text, inline=False)
+    )
+
+    embed.footer = create_footer()
+    validate_embed_lengths(embed)
+    return embed
+
+
+def create_interactive_embed(
+    title: str,
+    description: str,
+    actions: List[Dict[str, str]],
+    expires_in: Optional[int] = None
+) -> Embed:
+    """Create embed for interactive messages.
+
+    Args:
+        title: Message title
+        description: Message description
+        actions: List of available actions
+        expires_in: Optional expiration time in seconds
+
+    Returns:
+        Embed: Formatted interactive embed
+    """
+    embed = Embed(
+        title=title,
+        description=description,
+        color=DiscordColor.BLURPLE,
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+    # Add available actions
+    actions_text = "\n".join(
+        f"• **{action['label']}**: {action.get('description', 'No description')}"
+        for action in actions
+    )
+    embed.fields.append(
+        EmbedField(name="Available Actions", value=actions_text, inline=False)
+    )
+
+    if expires_in:
+        expiry_time = datetime.utcnow() + timedelta(seconds=expires_in)
+        embed.fields.append(
+            EmbedField(
+                name="Expires",
+                value=f"<t:{int(expiry_time.timestamp())}:R>",
+                inline=False
+            )
+        )
+
+    embed.footer = create_footer()
+    validate_embed_lengths(embed)
+    return embed
+
+
+def create_debug_embed(
+    message: str,
+    context: Optional[Dict[str, Any]] = None,
+    stack_trace: Optional[str] = None
+) -> Embed:
+    """Create embed for debug messages.
+
+    Args:
+        message: Debug message
+        context: Optional debug context
+        stack_trace: Optional stack trace
+
+    Returns:
+        Embed: Formatted debug embed
+    """
+    embed = Embed(
+        title="Debug Information",
+        description=message,
+        color=DiscordColor.GREYPLE,
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+    if context:
+        context_text = "\n".join(f"**{k}:** {v}" for k, v in context.items())
+        embed.fields.append(
+            EmbedField(name="Context", value=context_text, inline=False)
+        )
+
+    if stack_trace:
+        # Truncate stack trace if too long
+        if len(stack_trace) > 1000:
+            stack_trace = stack_trace[:997] + "..."
+        embed.fields.append(
+            EmbedField(name="Stack Trace", value=f"```\n{stack_trace}\n```", inline=False)
+        )
+
+    embed.footer = create_footer()
     validate_embed_lengths(embed)
     return embed
 

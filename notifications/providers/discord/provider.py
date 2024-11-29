@@ -23,21 +23,26 @@ import aiohttp
 from pydantic import HttpUrl
 from structlog import get_logger
 
+from config.constants import MessagePriority, MessageType, NotificationLevel
 from notifications.base import NotificationError, NotificationProvider
 from notifications.providers.discord.templates import (
+    create_batch_embed,
     create_completion_embed,
+    create_debug_embed,
     create_error_embed,
+    create_interactive_embed,
     create_progress_embed,
+    create_system_embed,
+    create_warning_embed,
     create_webhook_data,
 )
 from notifications.providers.discord.types import (
-    DiscordColor,
     NotificationResponse,
     RateLimitInfo,
     WebhookPayload,
 )
 from notifications.providers.discord.validators import DiscordValidator
-from shared.providers.discord import WEBHOOK_DOMAINS, validate_url
+from shared.providers.discord import WEBHOOK_DOMAINS, DiscordColor, Embed, validate_url
 
 logger = get_logger(__name__)
 
@@ -223,6 +228,175 @@ class DiscordProvider(NotificationProvider):
         max_backoff = min(self._retry_delay * (2 ** attempt), 30)  # Cap at 30 seconds
         return random.uniform(0, max_backoff)
 
+    async def send_notification(
+        self,
+        message: str,
+        level: NotificationLevel = NotificationLevel.INFO,
+        priority: MessagePriority = MessagePriority.NORMAL,
+        message_type: MessageType = MessageType.CUSTOM,
+        **kwargs
+    ) -> bool:
+        """Send notification via Discord webhook.
+
+        Args:
+            message: Message to send
+            level: Notification priority level
+            priority: Message priority level
+            message_type: Type of message
+            **kwargs: Additional message-specific arguments
+
+        Returns:
+            bool: True if notification was sent successfully
+
+        Raises:
+            DiscordWebhookError: If webhook request fails
+        """
+        try:
+            # Create appropriate embed based on message type
+            embed = self._create_typed_embed(message, message_type, level, **kwargs)
+
+            # Create webhook payload
+            payload = create_webhook_data(
+                embeds=[embed],
+                username=self.username,
+                avatar_url=self.avatar_url,
+                forum_config=kwargs.get("forum_config")
+            )
+
+            # Send webhook request
+            async with self._get_session() as session:
+                async with session.post(
+                    self.webhook_url,
+                    json=payload,
+                    timeout=self.timeout
+                ) as response:
+                    if response.status == 429:  # Rate limited
+                        retry_after = float(response.headers.get("Retry-After", self._retry_delay))
+                        logger.warning(
+                            "Rate limited by Discord",
+                            retry_after=retry_after,
+                            message_type=message_type.value
+                        )
+                        await asyncio.sleep(retry_after)
+                        return False
+
+                    if not response.ok:
+                        error_data = await response.json()
+                        raise DiscordWebhookError(
+                            f"Webhook request failed: {error_data.get('message', 'Unknown error')}",
+                            response_code=response.status,
+                            error_data=error_data
+                        )
+
+                    return True
+
+        except Exception as err:
+            raise DiscordWebhookError(
+                f"Failed to send notification: {err}",
+                context={"message_type": message_type.value}
+            ) from err
+
+    def _create_typed_embed(
+        self,
+        message: str,
+        message_type: MessageType,
+        level: NotificationLevel,
+        **kwargs
+    ) -> Embed:
+        """Create appropriate embed based on message type.
+
+        Args:
+            message: Message content
+            message_type: Type of message
+            level: Notification level
+            **kwargs: Additional message-specific arguments
+
+        Returns:
+            Embed: Formatted Discord embed
+        """
+        if message_type == MessageType.PROGRESS:
+            return create_progress_embed(
+                percent=kwargs.get("percent", 0),
+                remaining=kwargs.get("remaining", "Unknown"),
+                elapsed=kwargs.get("elapsed", "Unknown"),
+                etc=kwargs.get("etc", "Unknown"),
+                description=message
+            )
+
+        elif message_type == MessageType.COMPLETION:
+            return create_completion_embed(
+                description=message,
+                stats=kwargs.get("stats")
+            )
+
+        elif message_type == MessageType.ERROR:
+            return create_error_embed(
+                error_message=message,
+                error_code=kwargs.get("error_code"),
+                error_details=kwargs.get("error_details")
+            )
+
+        elif message_type == MessageType.WARNING:
+            return create_warning_embed(
+                warning_message=message,
+                warning_details=kwargs.get("warning_details"),
+                suggestion=kwargs.get("suggestion")
+            )
+
+        elif message_type == MessageType.SYSTEM:
+            return create_system_embed(
+                status=message,
+                metrics=kwargs.get("metrics"),
+                issues=kwargs.get("issues")
+            )
+
+        elif message_type == MessageType.BATCH:
+            return create_batch_embed(
+                operation=kwargs.get("operation", "Operation"),
+                items=kwargs.get("items", []),
+                summary=message
+            )
+
+        elif message_type == MessageType.INTERACTIVE:
+            return create_interactive_embed(
+                title=kwargs.get("title", "Interactive Message"),
+                description=message,
+                actions=kwargs.get("actions", []),
+                expires_in=kwargs.get("expires_in")
+            )
+
+        elif message_type == MessageType.DEBUG:
+            return create_debug_embed(
+                message=message,
+                context=kwargs.get("context"),
+                stack_trace=kwargs.get("stack_trace")
+            )
+
+        # Default to custom message type
+        return Embed(
+            title=kwargs.get("title", "Notification"),
+            description=message,
+            color=self._get_level_color(level),
+            timestamp=datetime.utcnow().isoformat()
+        )
+
+    def _get_level_color(self, level: NotificationLevel) -> int:
+        """Get Discord color based on notification level.
+
+        Args:
+            level: Notification level
+
+        Returns:
+            int: Discord color code
+        """
+        return {
+            NotificationLevel.DEBUG: DiscordColor.GREYPLE,
+            NotificationLevel.INFO: DiscordColor.INFO,
+            NotificationLevel.WARNING: DiscordColor.WARNING,
+            NotificationLevel.ERROR: DiscordColor.ERROR,
+            NotificationLevel.CRITICAL: DiscordColor.DARK_RED
+        }.get(level, DiscordColor.DEFAULT)
+
     async def send_webhook(
         self,
         data: WebhookPayload,
@@ -300,34 +474,6 @@ class DiscordProvider(NotificationProvider):
                 continue
 
         raise last_error or DiscordWebhookError("Maximum retries exceeded")
-
-    async def send_notification(self, message: str) -> bool:
-        """Send notification via Discord webhook.
-
-        Args:
-            message: Message to send
-
-        Returns:
-            bool: True if notification was sent successfully
-        """
-        webhook_data = create_webhook_data(
-            embeds=[{
-                "description": message,
-                "color": self.embed_color,
-                "timestamp": datetime.utcnow().isoformat()
-            }],
-            username=self.username,
-            avatar_url=self.avatar_url,
-            thread_name=self.thread_name
-        )
-
-        try:
-            await self.send_webhook(webhook_data)
-            return True
-        except DiscordWebhookError:
-            raise
-        except Exception as err:
-            raise DiscordWebhookError(f"Failed to send notification: {err}") from err
 
     async def notify_progress(
         self,

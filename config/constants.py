@@ -53,6 +53,18 @@ class MessagePriority(StrEnum):
     NORMAL = "normal"
     HIGH = "high"
 
+class MessageType(StrEnum):
+    """Message type classifications."""
+    PROGRESS = "progress"      # Progress updates for ongoing operations
+    COMPLETION = "completion"  # Operation completion notifications
+    ERROR = "error"           # Error notifications
+    WARNING = "warning"       # Warning messages (non-critical issues)
+    SYSTEM = "system"         # System status and health updates
+    DEBUG = "debug"           # Debug messages for development
+    BATCH = "batch"          # Batch operation updates
+    INTERACTIVE = "interactive"  # Messages with interactive elements
+    CUSTOM = "custom"         # Custom/generic messages
+
 class Version:
     """Version information."""
     CURRENT = "0.1.0"
@@ -128,6 +140,7 @@ __all__ = [
     'NotificationProvider',
     'LogLevel',
     'MessagePriority',
+    'MessageType',
     'Version',
     'Paths',
     'Monitoring',

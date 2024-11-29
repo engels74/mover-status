@@ -25,23 +25,26 @@ from urllib.parse import urljoin
 import aiohttp
 from structlog import get_logger
 
-from config.constants import MessagePriority
+from config.constants import MessagePriority, MessageType, NotificationLevel
 from notifications.base import (
     NotificationError,
     NotificationProvider,
     NotificationState,
 )
 from notifications.providers.telegram.templates import (
+    create_batch_message,
     create_completion_message,
+    create_debug_message,
     create_error_message,
+    create_interactive_message,
     create_progress_message,
+    create_system_message,
+    create_warning_message,
 )
 from notifications.providers.telegram.types import (
     SendMessageRequest,
     TelegramApiError,
-    validate_message_length,
 )
-from shared.types.telegram import TelegramMessageType
 
 logger = get_logger(__name__)
 
@@ -360,62 +363,22 @@ class TelegramProvider(NotificationProvider):
             ))
             raise self._state.last_error
 
-    def _prepare_message_request(
+    async def send_notification(
         self,
-        text: str,
-        message_thread_id: Optional[int] = None,
-        message_type: TelegramMessageType = TelegramMessageType.TEXT
-    ) -> SendMessageRequest:
-        """Prepare message request data.
-
-        Args:
-            text: Message text
-            message_thread_id: Optional thread ID
-            message_type: Type of message to send
-
-        Returns:
-            SendMessageRequest: Prepared request data
-        """
-        # Validate message length using validator
-        self._validate_message_length(text)
-
-        # Prepare base request
-        request: SendMessageRequest = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": self.parse_mode,
-            "disable_notification": (
-                self.disable_notifications or
-                self._message_priority == MessagePriority.LOW
-            ),
-            "protect_content": self.protect_content,
-            "message_type": message_type,
-        }
-
-        # Add thread ID if provided or configured
-        thread_id = message_thread_id or self.message_thread_id
-        if thread_id:
-            request["message_thread_id"] = thread_id
-
-        return request
-
-    def _validate_message_length(self, text: str) -> None:
-        """Validate message length.
-
-        Args:
-            text: Message text to validate.
-
-        Raises:
-            TelegramError: If message length exceeds maximum allowed length.
-        """
-        # Validate message length using validator
-        validate_message_length(text, self.max_message_length)
-
-    async def send_notification(self, message: str) -> bool:
+        message: str,
+        level: NotificationLevel = NotificationLevel.INFO,
+        priority: MessagePriority = MessagePriority.NORMAL,
+        message_type: MessageType = MessageType.CUSTOM,
+        **kwargs
+    ) -> bool:
         """Send notification via Telegram Bot API.
 
         Args:
             message: Message to send
+            level: Notification priority level
+            priority: Message priority level
+            message_type: Type of message
+            **kwargs: Additional message-specific arguments
 
         Returns:
             bool: True if notification was sent successfully
@@ -424,17 +387,140 @@ class TelegramProvider(NotificationProvider):
             TelegramError: If API request fails
         """
         try:
-            request = self._prepare_message_request(message)
+            # Create message based on type
+            message_data = self._create_typed_message(message, message_type, level, **kwargs)
+
+            # Prepare API request
+            request = {
+                "chat_id": self.chat_id,
+                "parse_mode": self.parse_mode,
+                "disable_notification": self.disable_notifications,
+                "protect_content": self.protect_content,
+                "message_thread_id": self.message_thread_id,
+                **message_data
+            }
+
+            # Send API request
             response = await self._send_api_request("sendMessage", request)
             self._last_message_id = response.get("result", {}).get("message_id")
             return True
-        except TelegramError:
-            raise
+
         except Exception as err:
             raise TelegramError(
                 f"Failed to send notification: {err}",
-                context={"message_length": len(message)}
+                context={"message_type": message_type.value}
             ) from err
+
+    def _create_typed_message(
+        self,
+        message: str,
+        message_type: MessageType,
+        level: NotificationLevel,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Create appropriate message based on type.
+
+        Args:
+            message: Message content
+            message_type: Type of message
+            level: Notification level
+            **kwargs: Additional message-specific arguments
+
+        Returns:
+            Dict[str, Any]: Formatted message data for Telegram API
+        """
+        if message_type == MessageType.PROGRESS:
+            formatted_message = create_progress_message(
+                percent=kwargs.get("percent", 0),
+                remaining=kwargs.get("remaining", "Unknown"),
+                elapsed=kwargs.get("elapsed", "Unknown"),
+                etc=kwargs.get("etc", "Unknown"),
+                description=message
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.COMPLETION:
+            formatted_message = create_completion_message(
+                description=message,
+                stats=kwargs.get("stats")
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.ERROR:
+            formatted_message = create_error_message(
+                error_message=message,
+                error_code=kwargs.get("error_code"),
+                error_details=kwargs.get("error_details")
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.WARNING:
+            formatted_message = create_warning_message(
+                warning_message=message,
+                warning_details=kwargs.get("warning_details"),
+                suggestion=kwargs.get("suggestion")
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.SYSTEM:
+            formatted_message = create_system_message(
+                status=message,
+                metrics=kwargs.get("metrics"),
+                issues=kwargs.get("issues")
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.BATCH:
+            formatted_message = create_batch_message(
+                operation=kwargs.get("operation", "Operation"),
+                items=kwargs.get("items", []),
+                summary=message
+            )
+            return {"text": formatted_message}
+
+        elif message_type == MessageType.INTERACTIVE:
+            formatted_message, keyboard = create_interactive_message(
+                title=kwargs.get("title", "Interactive Message"),
+                description=message,
+                actions=kwargs.get("actions", []),
+                expires_in=kwargs.get("expires_in")
+            )
+            return {
+                "text": formatted_message,
+                "reply_markup": keyboard if keyboard else None
+            }
+
+        elif message_type == MessageType.DEBUG:
+            formatted_message = create_debug_message(
+                message=message,
+                context=kwargs.get("context"),
+                stack_trace=kwargs.get("stack_trace")
+            )
+            return {"text": formatted_message}
+
+        # Default to custom message type
+        return {
+            "text": message,
+            "parse_mode": self.parse_mode,
+            "disable_notification": level == NotificationLevel.DEBUG
+        }
+
+    def _get_level_priority(self, level: NotificationLevel) -> MessagePriority:
+        """Get message priority based on notification level.
+
+        Args:
+            level: Notification level
+
+        Returns:
+            MessagePriority: Corresponding priority level
+        """
+        return {
+            NotificationLevel.DEBUG: MessagePriority.LOW,
+            NotificationLevel.INFO: MessagePriority.NORMAL,
+            NotificationLevel.WARNING: MessagePriority.NORMAL,
+            NotificationLevel.ERROR: MessagePriority.HIGH,
+            NotificationLevel.CRITICAL: MessagePriority.HIGH
+        }.get(level, MessagePriority.NORMAL)
 
     async def notify_progress(
         self,
@@ -477,7 +563,7 @@ class TelegramProvider(NotificationProvider):
                 except TelegramError as err:
                     if err.code != 400:  # Only retry with new message if not a bad request
                         raise
-            return await self.send_notification(message_data["text"])
+            return await self.send_notification(message_data["text"], message_type=MessageType.PROGRESS)
         except Exception as err:
             raise TelegramError(
                 f"Failed to send progress update: {err}",
@@ -511,7 +597,7 @@ class TelegramProvider(NotificationProvider):
                 stats=stats
             )
             self._message_priority = MessagePriority.HIGH
-            return await self.send_notification(message_data["text"])
+            return await self.send_notification(message_data["text"], message_type=MessageType.COMPLETION)
         except Exception as err:
             raise TelegramError(
                 f"Failed to send completion notification: {err}",
@@ -548,7 +634,7 @@ class TelegramProvider(NotificationProvider):
                 priority=MessagePriority.HIGH
             )
             self._message_priority = MessagePriority.HIGH
-            return await self.send_notification(message_data["text"])
+            return await self.send_notification(message_data["text"], message_type=MessageType.ERROR)
         except Exception as err:
             raise TelegramError(
                 f"Failed to send error notification: {err}",

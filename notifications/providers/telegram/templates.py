@@ -15,17 +15,20 @@ Example:
 """
 
 import re
-from typing import Dict, List, Optional, Union
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from structlog import get_logger
 
 from config.constants import MessagePriority
 from notifications.providers.telegram.types import (
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     MessageEntity,
     ParseMode,
     validate_message_length,
 )
+from shared.utils.time import format_timestamp
 
 logger = get_logger(__name__)
 
@@ -305,49 +308,173 @@ def create_status_message(
 
 def create_warning_message(
     warning_message: str,
-    parse_mode: ParseMode = ParseMode.HTML,
-    keyboard: Optional[InlineKeyboardMarkup] = None,
-    priority: MessagePriority = MessagePriority.HIGH
-) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
-    """Create warning notification message.
+    warning_details: Optional[Dict[str, str]] = None,
+    suggestion: Optional[str] = None
+) -> str:
+    """Create formatted warning message.
 
     Args:
         warning_message: Warning description
-        parse_mode: Message parsing mode
-        keyboard: Optional inline keyboard
-        priority: Message priority level (LOW, NORMAL, HIGH)
+        warning_details: Optional warning context details
+        suggestion: Optional suggestion for resolution
 
     Returns:
-        Dict: Formatted message data
+        str: Formatted warning message
 
     Raises:
-        ValueError: If warning_message is empty or message exceeds length limits
+        ValueError: If warning_message is empty
     """
     if not warning_message:
         raise ValueError("Warning message cannot be empty")
 
-    # Escape special characters based on parse mode
-    escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
-    warning_text = escape_func(warning_message)
+    message_parts = ["⚠️ *Warning*\n", warning_message]
 
-    # Format the message using template
-    message = DEFAULT_TEMPLATES["warning"].format(warning_message=warning_text)
+    if warning_details:
+        details = "\n\n*Details:*\n" + "\n".join(
+            f"• {k}: {v}" for k, v in warning_details.items()
+        )
+        message_parts.append(details)
 
-    # Validate message length
-    message = validate_message_length(message)
+    if suggestion:
+        message_parts.append(f"\n\n💡 *Suggestion:*\n{suggestion}")
 
-    # Prepare response data
-    response_data = {
-        "text": message,
-        "parse_mode": parse_mode,
-        "disable_notification": priority == MessagePriority.LOW
-    }
+    return "\n".join(message_parts)
 
-    # Add keyboard if provided
-    if keyboard:
-        response_data["reply_markup"] = keyboard
 
-    return response_data
+def create_system_message(
+    status: str,
+    metrics: Optional[Dict[str, Union[str, int, float]]] = None,
+    issues: Optional[List[str]] = None
+) -> str:
+    """Create formatted system status message.
+
+    Args:
+        status: Current system status
+        metrics: Optional system metrics
+        issues: Optional list of current issues
+
+    Returns:
+        str: Formatted system status message
+    """
+    message_parts = ["🖥️ *System Status*\n", status]
+
+    if metrics:
+        metrics_text = "\n\n📊 *Metrics:*\n" + "\n".join(
+            f"• {k}: {v}" for k, v in metrics.items()
+        )
+        message_parts.append(metrics_text)
+
+    if issues and len(issues) > 0:
+        issues_text = "\n\n❗ *Current Issues:*\n" + "\n".join(
+            f"• {issue}" for issue in issues
+        )
+        message_parts.append(issues_text)
+
+    return "\n".join(message_parts)
+
+
+def create_batch_message(
+    operation: str,
+    items: List[Dict[str, Any]],
+    summary: Optional[str] = None
+) -> str:
+    """Create formatted batch operation message.
+
+    Args:
+        operation: Type of batch operation
+        items: List of items being processed
+        summary: Optional operation summary
+
+    Returns:
+        str: Formatted batch operation message
+    """
+    message_parts = [f"📦 *Batch {operation}*"]
+
+    if summary:
+        message_parts.append(summary)
+    else:
+        message_parts.append(f"Processing {len(items)} items")
+
+    # Add items summary (limit to first 10)
+    items_text = "\n\n*Items:*\n" + "\n".join(
+        f"• {item.get('name', 'Unknown')}: {item.get('status', 'Pending')}"
+        for item in items[:10]
+    )
+    if len(items) > 10:
+        items_text += f"\n... and {len(items) - 10} more items"
+
+    message_parts.append(items_text)
+    return "\n".join(message_parts)
+
+
+def create_interactive_message(
+    title: str,
+    description: str,
+    actions: List[Dict[str, str]],
+    expires_in: Optional[int] = None
+) -> Tuple[str, Optional[InlineKeyboardMarkup]]:
+    """Create formatted interactive message with keyboard.
+
+    Args:
+        title: Message title
+        description: Message description
+        actions: List of available actions
+        expires_in: Optional expiration time in seconds
+
+    Returns:
+        Tuple[str, Optional[InlineKeyboardMarkup]]: Message text and keyboard markup
+    """
+    message_parts = [f"🔄 *{title}*\n", description]
+
+    # Add expiry time if provided
+    if expires_in:
+        expiry_time = datetime.utcnow() + timedelta(seconds=expires_in)
+        message_parts.append(f"\n\n⏰ Expires: {format_timestamp(expiry_time)}")
+
+    # Create inline keyboard for actions
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=action['label'],
+                callback_data=action.get('callback_data', action['label'])
+            )]
+            for action in actions
+        ]
+    )
+
+    return "\n".join(message_parts), keyboard
+
+
+def create_debug_message(
+    message: str,
+    context: Optional[Dict[str, Any]] = None,
+    stack_trace: Optional[str] = None
+) -> str:
+    """Create formatted debug message.
+
+    Args:
+        message: Debug message
+        context: Optional debug context
+        stack_trace: Optional stack trace
+
+    Returns:
+        str: Formatted debug message
+    """
+    message_parts = ["🔍 *Debug Information*\n", message]
+
+    if context:
+        context_text = "\n\n*Context:*\n" + "\n".join(
+            f"• {k}: {v}" for k, v in context.items()
+        )
+        message_parts.append(context_text)
+
+    if stack_trace:
+        # Truncate stack trace if too long
+        if len(stack_trace) > 1000:
+            stack_trace = stack_trace[:997] + "..."
+        message_parts.append(f"\n\n*Stack Trace:*\n```\n{stack_trace}\n```")
+
+    return "\n".join(message_parts)
 
 
 def extract_html_entities(text: str) -> tuple[str, List[MessageEntity]]:
