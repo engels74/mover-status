@@ -624,51 +624,31 @@ def validate_embed_lengths(embed: Embed) -> None:
         ))
 
 
-def _create_embed_dict(embed: Embed) -> JsonDict:
-    """Convert Embed object to JsonDict format.
+def validate_nesting_depth(data: Any, current_depth: int = 0, max_depth: int = 2) -> bool:
+    """Validate nesting depth of data structure.
 
     Args:
-        embed: Discord embed to convert
+        data: Data structure to validate
+        current_depth: Current nesting depth
+        max_depth: Maximum allowed nesting depth
 
     Returns:
-        JsonDict: Formatted embed dictionary
+        bool: True if nesting depth is valid
+
+    Raises:
+        ValueError: If nesting depth exceeds maximum
     """
-    embed_dict: JsonDict = {}
+    if current_depth > max_depth:
+        raise ValueError(f"Maximum nesting depth of {max_depth} exceeded")
 
-    # Add basic fields
-    if embed.title:
-        embed_dict["title"] = embed.title
-    if embed.description:
-        embed_dict["description"] = embed.description
-    if embed.color:
-        embed_dict["color"] = embed.color
+    if isinstance(data, dict):
+        for value in data.values():
+            validate_nesting_depth(value, current_depth + 1, max_depth)
+    elif isinstance(data, list):
+        for item in data:
+            validate_nesting_depth(item, current_depth + 1, max_depth)
 
-    # Add nested structures
-    if embed.author:
-        author_dict: Dict[str, JsonValue] = {"name": embed.author.name}
-        if embed.author.url:
-            author_dict["url"] = embed.author.url
-        if embed.author.icon_url:
-            author_dict["icon_url"] = embed.author.icon_url
-        embed_dict["author"] = author_dict
-
-    if embed.footer:
-        footer_dict: Dict[str, JsonValue] = {"text": embed.footer.text}
-        if embed.footer.icon_url:
-            footer_dict["icon_url"] = embed.footer.icon_url
-        embed_dict["footer"] = footer_dict
-
-    if embed.fields:
-        embed_dict["fields"] = [
-            {
-                "name": field.name,
-                "value": field.value,
-                **({"inline": field.inline} if field.inline is not None else {})
-            }
-            for field in embed.fields
-        ]
-
-    return embed_dict
+    return True
 
 
 def create_webhook_payload(
@@ -717,10 +697,66 @@ def create_webhook_payload(
     for embed in embeds:
         # Validate embed before adding
         validate_embed_lengths(embed)
-        payload["embeds"].append(_create_embed_dict(embed))
+        embed_dict = _create_embed_dict(embed)
+        # Validate nesting depth of embed
+        validate_nesting_depth(embed_dict)
+        payload["embeds"].append(embed_dict)
 
     # Add forum configuration if provided
     if forum_config:
-        payload["thread_name"] = forum_config.thread_name
+        if not isinstance(forum_config, dict):
+            raise ValueError("Forum configuration must be a dictionary")
+        validate_nesting_depth(forum_config)
+        payload["thread_name"] = forum_config.get("thread_name")
+
+    # Validate final payload nesting depth
+    validate_nesting_depth(payload)
 
     return payload
+
+
+def _create_embed_dict(embed: Embed) -> JsonDict:
+    """Convert Embed object to JsonDict format.
+
+    Args:
+        embed: Discord embed to convert
+
+    Returns:
+        JsonDict: Formatted embed dictionary
+    """
+    embed_dict: JsonDict = {}
+
+    # Add basic fields
+    if embed.title:
+        embed_dict["title"] = embed.title
+    if embed.description:
+        embed_dict["description"] = embed.description
+    if embed.color:
+        embed_dict["color"] = embed.color
+
+    # Add nested structures
+    if embed.author:
+        author_dict: Dict[str, JsonValue] = {"name": embed.author.name}
+        if embed.author.url:
+            author_dict["url"] = embed.author.url
+        if embed.author.icon_url:
+            author_dict["icon_url"] = embed.author.icon_url
+        embed_dict["author"] = author_dict
+
+    if embed.footer:
+        footer_dict: Dict[str, JsonValue] = {"text": embed.footer.text}
+        if embed.footer.icon_url:
+            footer_dict["icon_url"] = embed.footer.icon_url
+        embed_dict["footer"] = footer_dict
+
+    if embed.fields:
+        embed_dict["fields"] = [
+            {
+                "name": field.name,
+                "value": field.value,
+                **({"inline": field.inline} if field.inline is not None else {})
+            }
+            for field in embed.fields
+        ]
+
+    return embed_dict
