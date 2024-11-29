@@ -397,7 +397,9 @@ class DiscordProvider(NotificationProvider):
             NotificationLevel.INFO: DiscordColor.INFO,
             NotificationLevel.WARNING: DiscordColor.WARNING,
             NotificationLevel.ERROR: DiscordColor.ERROR,
-            NotificationLevel.CRITICAL: DiscordColor.DARK_RED
+            NotificationLevel.CRITICAL: DiscordColor.DARK_RED,
+            NotificationLevel.INFO_SUCCESS: DiscordColor.SUCCESS,
+            NotificationLevel.INFO_FAILURE: DiscordColor.ERROR
         }.get(level, DiscordColor.DEFAULT)
 
     async def send_webhook(

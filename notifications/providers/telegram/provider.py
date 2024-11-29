@@ -519,7 +519,13 @@ class TelegramProvider(NotificationProvider):
             NotificationLevel.INFO: MessagePriority.NORMAL,
             NotificationLevel.WARNING: MessagePriority.NORMAL,
             NotificationLevel.ERROR: MessagePriority.HIGH,
-            NotificationLevel.CRITICAL: MessagePriority.HIGH
+            NotificationLevel.CRITICAL: MessagePriority.HIGH,
+            NotificationLevel.INFO_SUCCESS: MessagePriority.NORMAL,
+            NotificationLevel.INFO_FAILURE: MessagePriority.NORMAL,
+            NotificationLevel.INFO_PROGRESS: MessagePriority.NORMAL,
+            NotificationLevel.INFO_COMPLETE: MessagePriority.NORMAL,
+            NotificationLevel.INFO_BATCH: MessagePriority.NORMAL,
+            NotificationLevel.INFO_INTERACTIVE: MessagePriority.NORMAL,
         }.get(level, MessagePriority.NORMAL)
 
     async def notify_progress(

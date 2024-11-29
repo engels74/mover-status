@@ -47,6 +47,16 @@ class LogLevel(StrEnum):
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
 
+class NotificationLevel(StrEnum):
+    """Notification severity levels."""
+    DEBUG = "debug"         # Detailed information for debugging purposes
+    INFO = "info"          # General informational messages
+    WARNING = "warning"    # Warning messages that require attention
+    ERROR = "error"        # Error messages indicating failures
+    CRITICAL = "critical"  # Critical errors requiring immediate attention
+    INFO_SUCCESS = "info_success"  # Success information messages
+    INFO_FAILURE = "info_failure"  # Failure information messages
+
 class MessagePriority(StrEnum):
     """Message priority levels."""
     LOW = "low"
@@ -139,6 +149,7 @@ __all__ = [
     'TimeConstants',
     'NotificationProvider',
     'LogLevel',
+    'NotificationLevel',
     'MessagePriority',
     'MessageType',
     'Version',

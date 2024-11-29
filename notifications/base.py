@@ -193,7 +193,13 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
             NotificationLevel.INFO: MessagePriority.NORMAL,
             NotificationLevel.WARNING: MessagePriority.HIGH,
             NotificationLevel.ERROR: MessagePriority.HIGH,
-            NotificationLevel.CRITICAL: MessagePriority.HIGH
+            NotificationLevel.CRITICAL: MessagePriority.HIGH,
+            NotificationLevel.INFO_SUCCESS: MessagePriority.NORMAL,
+            NotificationLevel.INFO_FAILURE: MessagePriority.NORMAL,
+            NotificationLevel.INFO_PROGRESS: MessagePriority.NORMAL,
+            NotificationLevel.INFO_COMPLETE: MessagePriority.NORMAL,
+            NotificationLevel.INFO_BATCH: MessagePriority.NORMAL,
+            NotificationLevel.INFO_INTERACTIVE: MessagePriority.NORMAL,
         }
         return priority_map.get(level, MessagePriority.NORMAL)
 
