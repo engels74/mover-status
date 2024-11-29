@@ -191,8 +191,8 @@
 5. ~~Update templates.py to handle JsonDict nesting limits in webhook payloads~~ ✅
 6. ~~Ensure templates.py error messages align with new centralized error classes~~ ✅
 7. ~~Update type hints using the new enum types~~ ✅
-8. Update provider implementations for thread safety
-9. Update Discord provider to handle new error types
+8. ~~Update provider implementations for thread safety~~ ✅
+9. ~~Update Discord provider to handle new error types~~ ✅
 10. Update type hints in dependent files to use new domain sets
 11. ~~Consolidate Discord validation into shared types module~~ ✅
 12. ~~Remove redundant validation files~~ ✅

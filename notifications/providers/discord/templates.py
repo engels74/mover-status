@@ -28,6 +28,7 @@ from shared.providers.discord import (
     ForumConfig,
     WebhookPayload,
     get_progress_color,
+    DiscordWebhookError
 )
 from utils.formatters import format_timestamp
 from utils.version import version_checker
@@ -465,6 +466,36 @@ def create_debug_embed(
     return embed
 
 
+def validate_embed_lengths(embed: Embed) -> None:
+    """Validate embed field lengths against Discord limits.
+
+    Args:
+        embed: Discord embed to validate
+
+    Raises:
+        DiscordWebhookError: If any component exceeds Discord limits
+    """
+    try:
+        total_length = 0
+        total_length += validate_title(embed.get("title"))
+        total_length += validate_description(embed.get("description"))
+        total_length += validate_fields(embed.get("fields"))
+        total_length += validate_footer(embed.get("footer"))
+        total_length += validate_author(embed.get("author"))
+
+        if total_length > ApiLimits.TOTAL_LENGTH:
+            raise DiscordWebhookError(
+                "Total embed length exceeds Discord limit",
+                context={
+                    "total_length": total_length,
+                    "max_length": ApiLimits.TOTAL_LENGTH
+                }
+            )
+
+    except ValueError as err:
+        raise DiscordWebhookError(str(err), context={"embed": embed}) from err
+
+
 def validate_title(title: Optional[str]) -> int:
     """Validate embed title length.
 
@@ -475,17 +506,20 @@ def validate_title(title: Optional[str]) -> int:
         int: Length of title
 
     Raises:
-        ValueError: If title exceeds length limit
+        DiscordWebhookError: If title exceeds length limit
     """
     if not title:
         return 0
 
     length = len(title)
     if length > ApiLimits.TITLE_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="title",
-            max_length=ApiLimits.TITLE_LENGTH
-        ))
+        raise DiscordWebhookError(
+            "Embed title exceeds Discord limit",
+            context={
+                "title_length": length,
+                "max_length": ApiLimits.TITLE_LENGTH
+            }
+        )
     return length
 
 
@@ -499,17 +533,20 @@ def validate_description(description: Optional[str]) -> int:
         int: Length of description
 
     Raises:
-        ValueError: If description exceeds length limit
+        DiscordWebhookError: If description exceeds length limit
     """
     if not description:
         return 0
 
     length = len(description)
     if length > ApiLimits.DESCRIPTION_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="description",
-            max_length=ApiLimits.DESCRIPTION_LENGTH
-        ))
+        raise DiscordWebhookError(
+            "Embed description exceeds Discord limit",
+            context={
+                "description_length": length,
+                "max_length": ApiLimits.DESCRIPTION_LENGTH
+            }
+        )
     return length
 
 
@@ -517,40 +554,52 @@ def validate_fields(fields: Optional[List[EmbedField]]) -> int:
     """Validate embed fields.
 
     Args:
-        fields: Fields to validate
+        fields: List of fields to validate
 
     Returns:
-        int: Total length of fields
+        int: Total length of all fields
 
     Raises:
-        ValueError: If fields exceed limits
+        DiscordWebhookError: If fields exceed length limits
     """
     if not fields:
         return 0
 
     total_length = 0
     if len(fields) > ApiLimits.FIELDS_COUNT:
-        raise ValueError(ErrorMessages.FIELD_COUNT_EXCEEDED.format(
-            max_count=ApiLimits.FIELDS_COUNT
-        ))
+        raise DiscordWebhookError(
+            "Too many embed fields",
+            context={
+                "field_count": len(fields),
+                "max_fields": ApiLimits.FIELDS_COUNT
+            }
+        )
 
-    for field in fields:
-        name_length = len(field["name"])
-        value_length = len(field["value"])
+    for i, field in enumerate(fields):
+        name_len = len(field["name"])
+        value_len = len(field["value"])
 
-        if name_length > ApiLimits.FIELD_NAME_LENGTH:
-            raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-                field=f"field name '{field['name']}'",
-                max_length=ApiLimits.FIELD_NAME_LENGTH
-            ))
+        if name_len > ApiLimits.FIELD_NAME_LENGTH:
+            raise DiscordWebhookError(
+                "Field name exceeds Discord limit",
+                context={
+                    "field_index": i,
+                    "name_length": name_len,
+                    "max_length": ApiLimits.FIELD_NAME_LENGTH
+                }
+            )
 
-        if value_length > ApiLimits.FIELD_VALUE_LENGTH:
-            raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-                field=f"field value for '{field['name']}'",
-                max_length=ApiLimits.FIELD_VALUE_LENGTH
-            ))
+        if value_len > ApiLimits.FIELD_VALUE_LENGTH:
+            raise DiscordWebhookError(
+                "Field value exceeds Discord limit",
+                context={
+                    "field_index": i,
+                    "value_length": value_len,
+                    "max_length": ApiLimits.FIELD_VALUE_LENGTH
+                }
+            )
 
-        total_length += name_length + value_length
+        total_length += name_len + value_len
 
     return total_length
 
@@ -565,17 +614,20 @@ def validate_footer(footer: Optional[Dict[str, str]]) -> int:
         int: Length of footer text
 
     Raises:
-        ValueError: If footer text exceeds length limit
+        DiscordWebhookError: If footer text exceeds length limit
     """
     if not footer or "text" not in footer:
         return 0
 
     length = len(footer["text"])
-    if length > ApiLimits.FOOTER_TEXT_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="footer text",
-            max_length=ApiLimits.FOOTER_TEXT_LENGTH
-        ))
+    if length > ApiLimits.FOOTER_LENGTH:
+        raise DiscordWebhookError(
+            "Footer text exceeds Discord limit",
+            context={
+                "footer_length": length,
+                "max_length": ApiLimits.FOOTER_LENGTH
+            }
+        )
     return length
 
 
@@ -589,39 +641,21 @@ def validate_author(author: Optional[Dict[str, str]]) -> int:
         int: Length of author name
 
     Raises:
-        ValueError: If author name exceeds length limit
+        DiscordWebhookError: If author name exceeds length limit
     """
     if not author or "name" not in author:
         return 0
-    if len(author["name"]) > ApiLimits.AUTHOR_NAME_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="author name",
-            max_length=ApiLimits.AUTHOR_NAME_LENGTH
-        ))
-    return len(author["name"])
 
-
-def validate_embed_lengths(embed: Embed) -> None:
-    """Validate embed field lengths against Discord limits.
-
-    Args:
-        embed: Discord embed to validate
-
-    Raises:
-        ValueError: If any component exceeds Discord limits
-    """
-    total_length = 0
-    total_length += validate_title(embed.get("title"))
-    total_length += validate_description(embed.get("description"))
-    total_length += validate_fields(embed.get("fields"))
-    total_length += validate_footer(embed.get("footer"))
-    total_length += validate_author(embed.get("author"))
-
-    if total_length > ApiLimits.TOTAL_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="total embed length",
-            max_length=ApiLimits.TOTAL_LENGTH
-        ))
+    length = len(author["name"])
+    if length > ApiLimits.AUTHOR_NAME_LENGTH:
+        raise DiscordWebhookError(
+            "Author name exceeds Discord limit",
+            context={
+                "author_length": length,
+                "max_length": ApiLimits.AUTHOR_NAME_LENGTH
+            }
+        )
+    return length
 
 
 def validate_nesting_depth(data: Any, current_depth: int = 0, max_depth: int = 2) -> bool:

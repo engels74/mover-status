@@ -17,17 +17,52 @@ from shared.providers.telegram import (
     MessageLimit,
     ParseMode,
 )
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime
 
 
-class NotificationState(TypedDict, total=False):
-    """Telegram notification state tracking."""
-    message_id: int
-    chat_id: Union[int, str]
-    thread_id: Optional[int]
-    priority: MessagePriority
-    retry_count: int
-    last_error: Optional[str]
-    last_update: float
+@dataclass
+class NotificationState:
+    """Thread-safe Telegram notification state tracking."""
+    message_id: Optional[int] = None
+    chat_id: Optional[Union[int, str]] = None
+    thread_id: Optional[int] = None
+    priority: MessagePriority = MessagePriority.NORMAL
+    retry_count: int = 0
+    last_error: Optional[str] = None
+    last_update: float = field(default_factory=lambda: datetime.now().timestamp())
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def update(self, **kwargs) -> None:
+        """Thread-safe state update.
+
+        Args:
+            **kwargs: State attributes to update
+        """
+        async with self._lock:
+            for key, value in kwargs.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            self.last_update = datetime.now().timestamp()
+
+    async def increment_retry(self) -> int:
+        """Thread-safe retry count increment.
+
+        Returns:
+            int: New retry count
+        """
+        async with self._lock:
+            self.retry_count += 1
+            return self.retry_count
+
+    async def reset(self) -> None:
+        """Thread-safe state reset."""
+        async with self._lock:
+            self.message_id = None
+            self.retry_count = 0
+            self.last_error = None
+            self.last_update = datetime.now().timestamp()
 
 
 class InlineKeyboardButton(TypedDict, total=False):

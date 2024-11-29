@@ -12,7 +12,10 @@ Example:
     ... )
 """
 
-from typing import List, Optional, TypedDict
+from typing import List, Optional, TypedDict, Union
+from dataclasses import dataclass, field
+from datetime import datetime
+import asyncio
 
 from shared.providers.discord import (
     ApiLimits,
@@ -20,6 +23,7 @@ from shared.providers.discord import (
     Embed,
     WebhookPayload,
     get_progress_color,
+    DiscordWebhookError,
 )
 
 
@@ -59,6 +63,93 @@ class ForumThreadInfo(TypedDict, total=False):
     auto_archive_duration: int  # in minutes
 
 
+class NotificationState:
+    """Track Discord notification provider state."""
+
+    def __init__(self):
+        """Initialize notification state."""
+        self._lock = asyncio.Lock()
+        self.disabled: bool = False
+        self.rate_limited: bool = False
+        self.rate_limit_until: float = 0
+        self.last_error: Optional[DiscordWebhookError] = None
+        self.last_error_time: Optional[datetime] = None
+        self.last_success: Optional[datetime] = None
+        self.last_update: float = 0
+        self.consecutive_errors: int = 0
+        self.total_errors: int = 0
+        self.total_retries: int = 0
+
+    async def update(self, **kwargs) -> None:
+        """Thread-safe state update.
+
+        Args:
+            **kwargs: State attributes to update
+        """
+        async with self._lock:
+            for key, value in kwargs.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            self.last_update = datetime.now().timestamp()
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if provider is in a healthy state.
+
+        Returns:
+            bool: True if provider is healthy
+        """
+        return not (self.disabled or self.rate_limited)
+
+    @property
+    def can_retry(self) -> bool:
+        """Check if provider can retry operations.
+
+        Returns:
+            bool: True if retries are allowed
+        """
+        if self.rate_limited:
+            return datetime.now().timestamp() > self.rate_limit_until
+        return not self.disabled
+
+
+@dataclass
+class RateLimitState:
+    """Thread-safe rate limit tracking."""
+    limit: int = 0
+    remaining: int = 0
+    reset_after: float = 0
+    bucket: str = ""
+    last_update: float = field(default_factory=lambda: datetime.now().timestamp())
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def update(self, **kwargs) -> None:
+        """Thread-safe rate limit update.
+
+        Args:
+            **kwargs: Rate limit attributes to update
+        """
+        async with self._lock:
+            for key, value in kwargs.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            self.last_update = datetime.now().timestamp()
+
+    async def is_rate_limited(self) -> bool:
+        """Thread-safe rate limit check.
+
+        Returns:
+            bool: True if currently rate limited
+        """
+        async with self._lock:
+            if self.remaining > 0:
+                return False
+            if not self.reset_after:
+                return False
+            elapsed = datetime.now().timestamp() - self.last_update
+            return elapsed < self.reset_after
+
+
 # Re-export commonly used items
 __all__ = [
     'NotificationContext',
@@ -70,6 +161,8 @@ __all__ = [
     'Embed',
     'WebhookPayload',
     'get_progress_color',
+    'NotificationState',
+    'RateLimitState',
 ]
 
 # Rate limiting constants specific to notifications
