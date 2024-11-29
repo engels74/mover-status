@@ -160,6 +160,12 @@ class MoverMonitor:
         self._stopping = False
         self._tasks: Set[asyncio.Task] = set()
         self._event_handlers: Dict[Type[Events.MonitorEvent], Set[callable]] = {}
+        
+        # Thread safety
+        self._state_lock = asyncio.Lock()
+        self._provider_lock = asyncio.Lock()
+        self._task_lock = asyncio.Lock()
+        self._event_lock = asyncio.Lock()
 
     async def __aenter__(self) -> 'MoverMonitor':
         """Async context manager entry."""
@@ -176,19 +182,21 @@ class MoverMonitor:
             event_type: Type of event to subscribe to
             handler: Callback function
         """
-        if event_type not in self._event_handlers:
-            self._event_handlers[event_type] = set()
-        self._event_handlers[event_type].add(handler)
+        async with self._event_lock:
+            if event_type not in self._event_handlers:
+                self._event_handlers[event_type] = set()
+            self._event_handlers[event_type].add(handler)
 
-    def unsubscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
+    async def unsubscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
         """Unsubscribe from monitor events.
 
         Args:
             event_type: Type of event to unsubscribe from
             handler: Callback function to remove
         """
-        if event_type in self._event_handlers:
-            self._event_handlers[event_type].discard(handler)
+        async with self._event_lock:
+            if event_type in self._event_handlers:
+                self._event_handlers[event_type].discard(handler)
 
     async def _notify_event(self, event: Events.MonitorEvent) -> None:
         """Notify subscribers of an event.
@@ -266,26 +274,95 @@ class MoverMonitor:
 
     async def _setup_providers(self) -> None:
         """Initialize configured notification providers."""
-        for provider_id in self._settings.active_providers:
-            try:
-                config = None
-                if provider_id == NotificationProvider.DISCORD:
-                    config = self._settings.discord.to_provider_config()
-                elif provider_id == NotificationProvider.TELEGRAM:
-                    config = self._settings.telegram.to_provider_config()
+        async with self._provider_lock:
+            for provider_id in self._settings.active_providers:
+                try:
+                    config = None
+                    if provider_id == NotificationProvider.DISCORD:
+                        config = self._settings.discord.to_provider_config()
+                    elif provider_id == NotificationProvider.TELEGRAM:
+                        config = self._settings.telegram.to_provider_config()
 
-                if config:
-                    provider = await notification_factory.create_provider(
-                        provider_id, config
+                    if config:
+                        provider = await notification_factory.create_provider(
+                            provider_id, config
+                        )
+                        self._providers[provider_id] = provider
+                        logger.info(f"Initialized {provider_id} provider")
+
+                except Exception as err:
+                    logger.error(
+                        f"Failed to initialize {provider_id} provider",
+                        error=str(err)
                     )
-                    self._providers[provider_id] = provider
-                    logger.info(f"Initialized {provider_id} provider")
 
+    async def _send_notifications(
+        self,
+        stats: TransferStats,
+        force: bool = False
+    ) -> None:
+        """Send notifications to all configured providers.
+
+        Args:
+            stats: Current transfer statistics
+            force: Send notification regardless of increment check
+        """
+        async with self._provider_lock:
+            for provider in self._providers.values():
+                try:
+                    # Create progress message
+                    message = self._create_progress_message(stats)
+                    
+                    # Send notification
+                    await provider.notify_progress(
+                        stats.percent_complete,
+                        stats.remaining_formatted,
+                        stats.elapsed_formatted,
+                        stats.etc_formatted,
+                        description=message
+                    )
+                    
+                except NotificationError as err:
+                    logger.error(
+                        "Failed to send notification",
+                        provider=provider.__class__.__name__,
+                        error=str(err)
+                    )
+
+    async def _update_monitoring(self) -> None:
+        """Update monitoring state and statistics."""
+        async with self._state_lock:
+            try:
+                # Check if mover is running
+                is_running = await self._process_manager.is_running()
+                
+                if not is_running:
+                    self._state = States.MonitorState.STOPPED
+                    return
+
+                # Get current cache size
+                cache_size = await self._get_cache_size()
+                
+                # Update transfer statistics
+                self._calculator.update(cache_size)
+                stats = self._calculator.stats
+                
+                # Update state based on progress
+                if stats.percent_complete >= 100:
+                    self._state = States.MonitorState.COMPLETED
+                else:
+                    self._state = States.MonitorState.RUNNING
+
+                # Send notifications if needed
+                await self._send_notifications(stats)
+                
             except Exception as err:
                 logger.error(
-                    f"Failed to initialize {provider_id} provider",
-                    error=str(err)
+                    "Monitoring update failed",
+                    error=str(err),
+                    error_type=type(err).__name__
                 )
+                self._state = States.MonitorState.ERROR
 
     async def _cleanup(self) -> None:
         """Clean up resources and connections."""
@@ -320,93 +397,6 @@ class MoverMonitor:
         except Exception as err:
             logger.error("Cache size error", error=str(err))
             raise RuntimeError("Cache size calculation failed") from err
-
-    async def _send_notifications(
-        self,
-        stats: TransferStats,
-        force: bool = False
-    ) -> None:
-        """Send notifications to all configured providers.
-
-        Args:
-            stats: Current transfer statistics
-            force: Send notification regardless of increment check
-        """
-        now = datetime.now()
-        if not force and self._stats.last_notification:
-            time_since_last = (now - self._stats.last_notification).total_seconds()
-            if time_since_last < self._settings.monitoring.notification_increment:
-                return
-
-        notification_tasks = []
-        for provider in self._providers.values():
-            try:
-                task = asyncio.create_task(provider.notify(
-                    template=self._settings.monitoring.message_template,
-                    stats=stats
-                ))
-                notification_tasks.append(task)
-            except Exception as err:
-                logger.error("Notification creation error", error=str(err))
-
-        if notification_tasks:
-            try:
-                await asyncio.gather(*notification_tasks)
-                self._stats.last_notification = now
-            except NotificationError as err:
-                logger.error("Notification sending error", error=str(err))
-
-    async def _update_monitoring(self) -> None:
-        """Update monitoring state and statistics."""
-        try:
-            # Update process state
-            is_running = await self._process_manager.is_running()
-            new_state = self._process_manager.current_state
-
-            if new_state != self._stats.process_state:
-                self._stats.process_state = new_state
-                await self._notify_event(Events.MonitorEvent.STATE_CHANGED)
-
-            # Handle process state
-            if is_running and not self._stats.start_time:
-                # Process just started
-                self._stats.start_time = datetime.now()
-                initial_size = await self._get_cache_size()
-                self._calculator.initialize_transfer(initial_size)
-                logger.info(
-                    "Transfer started",
-                    initial_size=format_size(initial_size)
-                )
-                await self._notify_event(Events.MonitorEvent.TRANSFER_STARTED)
-
-            elif is_running:
-                # Process is running
-                current_size = await self._get_cache_size()
-                stats = self._calculator.update_progress(current_size)
-                self._stats.transfer_stats = stats
-                await self._send_notifications(stats)
-                await self._notify_event(Events.MonitorEvent.TRANSFER_PROGRESS)
-
-            elif self._stats.start_time and not is_running:
-                # Process just completed
-                if self._stats.transfer_stats:
-                    await self._send_notifications(
-                        self._stats.transfer_stats,
-                        force=True
-                    )
-                self._calculator.reset()
-                self._stats.start_time = None
-                self._stats.transfer_stats = None
-                logger.info("Transfer completed")
-                await self._notify_event(Events.MonitorEvent.TRANSFER_COMPLETED)
-
-        except Exception as err:
-            self._stats.error_count += 1
-            logger.error("Monitoring update error", error=str(err))
-            if self._stats.error_count >= 3:
-                self._state = States.MonitorState.ERROR
-                await self._notify_event(Events.MonitorEvent.ERROR)
-                raise RuntimeError("Too many monitoring errors") from err
 
     async def _monitoring_loop(self) -> None:
         """Main monitoring loop."""

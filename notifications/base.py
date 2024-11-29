@@ -73,14 +73,15 @@ class NotificationState(BaseModel):
         self._last_by_type: Dict[MessageType, Optional[datetime]] = {
             message_type: None for message_type in MessageType
         }
+        self._lock = asyncio.Lock()
 
-    def add_notification(
+    async def add_notification(
         self,
         message: str,
         success: bool = True,
         priority: MessagePriority = MessagePriority.NORMAL,
         message_type: MessageType = MessageType.CUSTOM
-    ):
+    ) -> None:
         """Add notification to history.
 
         Args:
@@ -89,38 +90,40 @@ class NotificationState(BaseModel):
             priority: Message priority level
             message_type: Type of message
         """
-        now = datetime.now()
-        self.last_notification = now
-        self._last_by_type[message_type] = now
+        async with self._lock:
+            # Update counts
+            self.notification_count += 1
+            if success:
+                self.success_count += 1
+            self._priority_counts[priority] += 1
+            self._type_counts[message_type] += 1
 
-        if success:
-            self.success_count += 1
-        else:
-            self.error_count += 1
+            # Update timestamps
+            now = datetime.now()
+            self.last_notification = now
+            self._last_by_type[message_type] = now
 
-        self.notification_count += 1
-        self._priority_counts[priority] += 1
-        self._type_counts[message_type] += 1
+            # Add to history
+            self.history.append({
+                "message": message,
+                "success": success,
+                "priority": priority,
+                "type": message_type,
+                "timestamp": now
+            })
 
-        self.history.append({
-            "message": message,
-            "timestamp": now,
-            "success": success,
-            "priority": priority.value,
-            "type": message_type.value
-        })
-
-        if len(self.history) > MAX_HISTORY_SIZE:
-            self.history.pop(0)
+            # Trim history if needed
+            if len(self.history) > MAX_HISTORY_SIZE:
+                self.history = self.history[-MAX_HISTORY_SIZE:]
 
     @property
-    def type_counts(self) -> Dict[str, int]:
+    def type_counts(self) -> Dict[MessageType, int]:
         """Get counts of messages by type."""
-        return {msg_type.value: count for msg_type, count in self._type_counts.items()}
+        return self._type_counts.copy()
 
     def get_last_by_type(self, message_type: MessageType) -> Optional[datetime]:
         """Get timestamp of last message of specific type."""
-        return self._last_by_type[message_type]
+        return self._last_by_type.get(message_type)
 
 
 class NotificationProvider(ABC, Generic[TConfig, TValidator]):
@@ -172,7 +175,8 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         }
 
         self._state = NotificationState()
-        self._lock = asyncio.Lock()
+        self._rate_lock = asyncio.Lock()
+        self._notify_lock = asyncio.Lock()
 
     @property
     def state(self) -> NotificationState:
@@ -188,20 +192,11 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         Returns:
             MessagePriority: Corresponding message priority
         """
-        priority_map = {
-            NotificationLevel.DEBUG: MessagePriority.LOW,
-            NotificationLevel.INFO: MessagePriority.NORMAL,
-            NotificationLevel.WARNING: MessagePriority.HIGH,
-            NotificationLevel.ERROR: MessagePriority.HIGH,
-            NotificationLevel.CRITICAL: MessagePriority.HIGH,
-            NotificationLevel.INFO_SUCCESS: MessagePriority.NORMAL,
-            NotificationLevel.INFO_FAILURE: MessagePriority.NORMAL,
-            NotificationLevel.INFO_PROGRESS: MessagePriority.NORMAL,
-            NotificationLevel.INFO_COMPLETE: MessagePriority.NORMAL,
-            NotificationLevel.INFO_BATCH: MessagePriority.NORMAL,
-            NotificationLevel.INFO_INTERACTIVE: MessagePriority.NORMAL,
-        }
-        return priority_map.get(level, MessagePriority.NORMAL)
+        if level in (NotificationLevel.ERROR, NotificationLevel.CRITICAL):
+            return MessagePriority.HIGH
+        elif level == NotificationLevel.WARNING:
+            return MessagePriority.NORMAL
+        return MessagePriority.LOW
 
     async def notify(
         self,
@@ -221,71 +216,43 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         Returns:
             bool: True if notification was sent successfully
         """
-        priority = self._get_priority_from_level(level)
-        retry_attempts = self._priority_retry_attempts[priority]
+        async with self._notify_lock:
+            # Get priority from level
+            priority = self._get_priority_from_level(level)
 
-        async with self._lock:
             try:
-                # Check rate limit
-                now = datetime.now()
-                if self._state.last_notification:
-                    elapsed = (now - self._state.last_notification).total_seconds()
-                    if elapsed < MIN_NOTIFICATION_INTERVAL:
-                        # Allow high priority messages to bypass rate limit
-                        if priority != MessagePriority.HIGH:
-                            logger.debug(
-                                "Rate limited",
-                                elapsed=f"{elapsed:.2f}s",
-                                min_interval=MIN_NOTIFICATION_INTERVAL,
-                                priority=priority.value
-                            )
+                # Check rate limits
+                async with self._rate_lock:
+                    last = self._state.get_last_by_type(message_type)
+                    if last:
+                        elapsed = (datetime.now() - last).total_seconds()
+                        if elapsed < MIN_NOTIFICATION_INTERVAL:
                             return False
 
-                # Attempt notification with priority-based retries
-                for attempt in range(retry_attempts + 1):
-                    try:
-                        success = await self.send_notification(
-                            message,
-                            level=level,
-                            priority=priority,
-                            message_type=message_type,
-                            **kwargs
-                        )
-                        if success:
-                            self._state.add_notification(message, priority=priority, message_type=message_type)
-                            return True
+                # Send notification with retries
+                success = await self.send_notification(
+                    message,
+                    level=level,
+                    priority=priority,
+                    message_type=message_type,
+                    **kwargs
+                )
 
-                        if attempt < retry_attempts:
-                            # Adjust retry delay based on priority
-                            delay = self._retry_delay * (2 if priority == MessagePriority.HIGH else 1)
-                            await asyncio.sleep(delay)
-                            continue
+                # Update state
+                await self._state.add_notification(
+                    message,
+                    success=success,
+                    priority=priority,
+                    message_type=message_type
+                )
 
-                        self._state.add_notification(message, success=False, priority=priority, message_type=message_type)
-                        return False
-
-                    except Exception as err:
-                        if attempt < retry_attempts:
-                            logger.warning(
-                                "Notification failed, retrying",
-                                error=str(err),
-                                attempt=attempt + 1,
-                                max_attempts=retry_attempts,
-                                priority=priority.value
-                            )
-                            await asyncio.sleep(self._retry_delay)
-                            continue
-
-                        raise
+                return success
 
             except Exception as err:
-                self._state.last_error = str(err)
-                self._state.add_notification(message, success=False, priority=priority, message_type=message_type)
                 logger.error(
                     "Notification failed",
                     error=str(err),
-                    error_type=type(err).__name__,
-                    priority=priority.value
+                    error_type=type(err).__name__
                 )
                 return False
 
