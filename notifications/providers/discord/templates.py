@@ -21,6 +21,7 @@ from config.constants import ErrorMessages, JsonDict, JsonValue
 from shared.providers.discord import (
     ApiLimits,
     DiscordColor,
+    DiscordWebhookError,
     Embed,
     EmbedAuthor,
     EmbedField,
@@ -28,7 +29,6 @@ from shared.providers.discord import (
     ForumConfig,
     WebhookPayload,
     get_progress_color,
-    DiscordWebhookError
 )
 from utils.formatters import format_timestamp
 from utils.version import version_checker

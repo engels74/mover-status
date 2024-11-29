@@ -16,6 +16,7 @@ Example:
 """
 
 import asyncio
+import random
 from datetime import datetime
 from typing import Any, Dict, Final, Optional, Union
 
@@ -24,7 +25,7 @@ from pydantic import HttpUrl
 from structlog import get_logger
 
 from config.constants import MessagePriority, MessageType, NotificationLevel
-from notifications.base import NotificationError, NotificationProvider
+from notifications.base import NotificationProvider
 from notifications.providers.discord.templates import (
     create_batch_embed,
     create_completion_embed,
@@ -37,42 +38,23 @@ from notifications.providers.discord.templates import (
     create_webhook_data,
 )
 from notifications.providers.discord.types import (
-    NotificationResponse,
-    RateLimitInfo,
+    NotificationState,
     WebhookPayload,
 )
 from notifications.providers.discord.validators import DiscordValidator
-from shared.providers.discord import WEBHOOK_DOMAINS, DiscordColor, Embed, validate_url
+from shared.providers.discord import (
+    WEBHOOK_DOMAINS,
+    DiscordColor,
+    DiscordWebhookError,
+    Embed,
+    validate_url,
+)
 
 logger = get_logger(__name__)
 
 # Default timeout settings
 DEFAULT_TIMEOUT: Final[int] = 30
 MAX_TIMEOUT: Final[int] = 300  # 5 minutes
-
-class DiscordWebhookError(Exception):
-    """Discord webhook error with context and state tracking."""
-    def __init__(
-        self,
-        message: str,
-        code: Optional[int] = None,
-        retry_after: Optional[int] = None,
-        context: Optional[Dict[str, Any]] = None
-    ):
-        """Initialize error with optional status code, retry delay, and context.
-
-        Args:
-            message: Error description
-            code: Optional HTTP status code
-            retry_after: Optional retry delay in seconds
-            context: Optional error context dictionary
-        """
-        super().__init__(message)
-        self.code = code
-        self.retry_after = retry_after
-        self.context = context or {}
-        self.is_transient = code in {408, 429, 500, 502, 503, 504} if code else False
-        self.timestamp = datetime.now()
 
 class DiscordProvider(NotificationProvider):
     """Discord webhook notification provider implementation."""
@@ -117,7 +99,7 @@ class DiscordProvider(NotificationProvider):
         self._current_backoff: float = self._retry_delay
         self._state = NotificationState()
         self._consecutive_errors = 0
-        
+
         # Thread safety locks
         self._session_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
@@ -133,10 +115,10 @@ class DiscordProvider(NotificationProvider):
                 default=DEFAULT_TIMEOUT
             )
             timeout = DEFAULT_TIMEOUT
-        self.timeout: float = float(timeout)
+        self._timeout: float = float(timeout)
 
         # Session and rate limit management
-        self.session: Optional[aiohttp.ClientSession] = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def __aenter__(self) -> "DiscordProvider":
         """Async context manager entry."""
@@ -150,19 +132,19 @@ class DiscordProvider(NotificationProvider):
     async def connect(self) -> None:
         """Initialize aiohttp session for webhook requests."""
         async with self._session_lock:
-            if not self.session or self.session.closed:
-                self.session = aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+            if not self._session or self._session.closed:
+                self._session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self._timeout)
                 )
 
     async def disconnect(self) -> None:
         """Close aiohttp session."""
         async with self._session_lock:
-            if self.session and not self.session.closed:
+            if self._session and not self._session.closed:
                 try:
-                    await self.session.close()
+                    await self._session.close()
                 finally:
-                    self.session = None
+                    self._session = None
                     self._last_rate_limit = None
                     self._current_backoff = self._retry_delay
 
@@ -176,7 +158,7 @@ class DiscordProvider(NotificationProvider):
             # Check rate limit headers
             remaining = response.headers.get("X-RateLimit-Remaining")
             reset_after = response.headers.get("X-RateLimit-Reset-After")
-            
+
             if remaining and reset_after:
                 try:
                     if int(remaining) == 0:
@@ -184,6 +166,127 @@ class DiscordProvider(NotificationProvider):
                         self._current_backoff = float(reset_after)
                 except ValueError:
                     pass
+
+    async def _handle_send_webhook_response(
+        self,
+        response: aiohttp.ClientResponse,
+        data: WebhookPayload
+    ) -> None:
+        """Handle webhook response and update state.
+
+        Args:
+            response: Response from webhook request
+            data: Original webhook payload
+
+        Raises:
+            DiscordWebhookError: If request fails
+        """
+        if response.status == 429:
+            # Rate limited
+            retry_after = float(response.headers.get("Retry-After", 5))
+            error = DiscordWebhookError(
+                "Rate limit exceeded",
+                code=response.status,
+                retry_after=retry_after,
+                context={
+                    "retry_after": retry_after,
+                    "data": data
+                }
+            )
+            await self._update_error_state(error)
+            raise error
+
+        elif response.status >= 400:
+            # Other errors
+            error = DiscordWebhookError(
+                f"Webhook request failed with status {response.status}",
+                code=response.status,
+                context={
+                    "status": response.status,
+                    "data": data
+                }
+            )
+            await self._update_error_state(error)
+            raise error
+
+    async def send_webhook(
+        self,
+        data: WebhookPayload,
+        max_retries: int = 3
+    ) -> bool:
+        """Send webhook request with retries.
+
+        Args:
+            data: Webhook payload to send
+            max_retries: Maximum number of retries
+
+        Returns:
+            bool: True if request succeeded
+
+        Raises:
+            DiscordWebhookError: If request fails after retries
+        """
+        attempt = 0
+        last_error = None
+
+        while attempt <= max_retries:
+            try:
+                # Ensure session is connected
+                if not self._session or self._session.closed:
+                    await self.connect()
+
+                # Send request
+                async with self._session.post(
+                    self._webhook_url,
+                    json=data,
+                    timeout=self._timeout
+                ) as response:
+                    # Handle response
+                    await self._handle_send_webhook_response(response, data)
+
+                    # Update rate limit state
+                    await self._update_rate_limit_state(response)
+
+                    # Reset error state on success
+                    async with self._state_lock:
+                        self._consecutive_errors = 0
+                        self._current_backoff = self._retry_delay
+                        self._state.last_success = datetime.now()
+                        self._state.total_retries = 0
+
+                    return True
+
+            except DiscordWebhookError as err:
+                last_error = err
+                attempt += 1
+
+                if attempt <= max_retries:
+                    # Calculate backoff delay
+                    delay = self._calculate_backoff(attempt)
+                    await asyncio.sleep(delay)
+                    continue
+
+                raise DiscordWebhookError(
+                    f"Max retries ({max_retries}) exceeded",
+                    context={
+                        "attempts": attempt,
+                        "max_retries": max_retries,
+                        "last_error": str(last_error)
+                    }
+                ) from err
+
+            except asyncio.TimeoutError as err:
+                last_error = DiscordWebhookError(
+                    "Request timed out",
+                    context={"timeout": self._timeout}
+                )
+                await self._update_error_state(last_error)
+                raise last_error from err
+
+            except Exception as err:
+                error = self._handle_request_error(err, "send_webhook")
+                await self._update_error_state(error)
+                raise error from err
 
     async def send_notification(
         self,
@@ -217,14 +320,14 @@ class DiscordProvider(NotificationProvider):
 
                 # Send webhook request
                 async with self._session_lock:
-                    if not self.session or self.session.closed:
+                    if not self._session or self._session.closed:
                         await self.connect()
 
                     response = await self._send_webhook_request(payload)
-                    
+
                     # Update rate limit state
                     await self._update_rate_limit_state(response)
-                    
+
                     return True
 
             except Exception as err:
@@ -232,7 +335,7 @@ class DiscordProvider(NotificationProvider):
                 async with self._state_lock:
                     self._state.last_error = error
                     self._state.last_error_time = datetime.now()
-                raise error
+                raise error from err
 
     def _calculate_backoff(self, attempt: int) -> float:
         """Calculate exponential backoff delay.
@@ -244,138 +347,8 @@ class DiscordProvider(NotificationProvider):
             float: Delay in seconds
         """
         # Exponential backoff with jitter
-        import random
         max_backoff = min(self._retry_delay * (2 ** attempt), 30)  # Cap at 30 seconds
         return random.uniform(0, max_backoff)
-
-    async def send_webhook(
-        self,
-        data: WebhookPayload,
-        retries: Optional[int] = None,
-        require_embeds: bool = True
-    ) -> NotificationResponse:
-        """Send webhook request to Discord.
-
-        Args:
-            data: Webhook payload data
-            retries: Optional override for retry attempts
-            require_embeds: If True, at least one embed is required
-
-        Returns:
-            NotificationResponse: Discord response data
-
-        Raises:
-            DiscordWebhookError: If webhook request fails or required embeds are missing
-        """
-        if not self.session:
-            await self.connect()
-
-        if self._state.disabled:
-            raise DiscordWebhookError(
-                "Provider is disabled due to excessive errors",
-                context={"last_error": str(self._state.last_error)}
-            )
-
-        # Validate webhook data
-        if require_embeds and (not data.get("embeds") or len(data["embeds"]) == 0):
-            raise DiscordWebhookError(
-                "At least one embed is required for this webhook message",
-                context={"endpoint": self._webhook_url}
-            )
-
-        max_retries = retries if retries is not None else self._retry_attempts
-        last_error = None
-
-        for attempt in range(max_retries + 1):
-            try:
-                async with self.session.post(
-                    self._webhook_url,
-                    json=data,
-                    headers={"Content-Type": "application/json"}
-                ) as response:
-                    # Handle rate limiting
-                    if retry_after := await self._handle_rate_limit(response, await response.json()):
-                        if attempt < max_retries:
-                            base_delay = retry_after * (1.5 ** attempt)  # Exponential backoff
-                            await asyncio.sleep(base_delay)
-                            self._state.total_retries += 1
-                            continue
-                        raise DiscordWebhookError(
-                            "Rate limit exceeded",
-                            code=429,
-                            retry_after=retry_after,
-                            context={
-                                "endpoint": self._webhook_url,
-                                "attempt": attempt,
-                                "max_retries": max_retries
-                            }
-                        )
-
-                    # Handle successful response
-                    if response.status == 204:  # Success without content
-                        async with self._state_lock:
-                            self._consecutive_errors = 0
-                            self._state.last_success = datetime.now()
-                            self._state.rate_limited = False
-                        return NotificationResponse(
-                            id="0",  # Discord doesn't return IDs for webhooks
-                            type=1,  # Default webhook type
-                            channel_id="0",
-                            content=data.get("content", ""),
-                            timestamp=datetime.utcnow().isoformat()
-                        )
-
-                    # Handle error responses
-                    error_text = await response.text()
-                    error = DiscordWebhookError(
-                        f"Discord webhook failed ({response.status}): {error_text}",
-                        code=response.status,
-                        context={
-                            "endpoint": self._webhook_url,
-                            "attempt": attempt,
-                            "response": error_text
-                        }
-                    )
-                    await self._update_error_state(error)
-                    raise error
-
-            except asyncio.TimeoutError as err:
-                last_error = DiscordWebhookError(
-                    "Request timed out",
-                    code=408,
-                    context={
-                        "endpoint": self._webhook_url,
-                        "attempt": attempt,
-                        "timeout": self.timeout
-                    }
-                )
-                last_error.__cause__ = err
-            except aiohttp.ClientError as err:
-                last_error = DiscordWebhookError(
-                    f"Request failed: {err}",
-                    context={
-                        "endpoint": self._webhook_url,
-                        "attempt": attempt
-                    }
-                )
-                last_error.__cause__ = err
-
-            if attempt < max_retries:
-                backoff = self._calculate_backoff(attempt)
-                await asyncio.sleep(backoff)
-                self._state.total_retries += 1
-                continue
-
-            # Update error state and raise
-            await self._update_error_state(last_error or DiscordWebhookError(
-                "Maximum retries exceeded",
-                context={
-                    "endpoint": self._webhook_url,
-                    "attempts": attempt + 1,
-                    "max_retries": max_retries
-                }
-            ))
-            raise self._state.last_error
 
     async def notify_progress(
         self,
@@ -406,8 +379,7 @@ class DiscordProvider(NotificationProvider):
                 remaining=remaining,
                 elapsed=elapsed,
                 etc=etc,
-                description=description,
-                color=self._embed_color
+                description=description
             )
 
             webhook_data = create_webhook_data(
@@ -425,7 +397,7 @@ class DiscordProvider(NotificationProvider):
             async with self._state_lock:
                 self._state.last_error = error
                 self._state.last_error_time = datetime.now()
-            raise error
+            raise error from err
 
     async def notify_completion(
         self,
@@ -462,7 +434,7 @@ class DiscordProvider(NotificationProvider):
             async with self._state_lock:
                 self._state.last_error = error
                 self._state.last_error_time = datetime.now()
-            raise error
+            raise error from err
 
     async def notify_error(
         self,
@@ -506,7 +478,7 @@ class DiscordProvider(NotificationProvider):
             async with self._state_lock:
                 self._state.last_error = error
                 self._state.last_error_time = datetime.now()
-            raise error
+            raise error from err
 
     def _create_typed_embed(
         self,
@@ -654,7 +626,7 @@ class DiscordProvider(NotificationProvider):
             self._consecutive_errors += 1
             self._state.last_error = error
             self._state.last_error_time = datetime.now()
-            
+
             # Reset error count after successful operation
             if not isinstance(error, DiscordWebhookError):
                 self._consecutive_errors = 0

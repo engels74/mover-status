@@ -9,6 +9,9 @@ Example:
     >>> text = validate_message_length("Hello, World!")
 """
 
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List, Optional, TypedDict, Union
 
 from config.constants import ErrorMessages, MessagePriority
@@ -17,9 +20,6 @@ from shared.providers.telegram import (
     MessageLimit,
     ParseMode,
 )
-import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime
 
 
 @dataclass

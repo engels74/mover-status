@@ -29,7 +29,6 @@ from core.calculator import TransferCalculator, TransferStats
 from core.process import ProcessManager
 from notifications.base import NotificationError, NotificationProvider
 from notifications.factory import notification_factory
-from utils.formatters import format_size
 from utils.version import version_checker
 
 logger = get_logger(__name__)
@@ -160,7 +159,7 @@ class MoverMonitor:
         self._stopping = False
         self._tasks: Set[asyncio.Task] = set()
         self._event_handlers: Dict[Type[Events.MonitorEvent], Set[callable]] = {}
-        
+
         # Thread safety
         self._state_lock = asyncio.Lock()
         self._provider_lock = asyncio.Lock()
@@ -312,7 +311,7 @@ class MoverMonitor:
                 try:
                     # Create progress message
                     message = self._create_progress_message(stats)
-                    
+
                     # Send notification
                     await provider.notify_progress(
                         stats.percent_complete,
@@ -321,7 +320,7 @@ class MoverMonitor:
                         stats.etc_formatted,
                         description=message
                     )
-                    
+
                 except NotificationError as err:
                     logger.error(
                         "Failed to send notification",
@@ -335,18 +334,18 @@ class MoverMonitor:
             try:
                 # Check if mover is running
                 is_running = await self._process_manager.is_running()
-                
+
                 if not is_running:
                     self._state = States.MonitorState.STOPPED
                     return
 
                 # Get current cache size
                 cache_size = await self._get_cache_size()
-                
+
                 # Update transfer statistics
                 self._calculator.update(cache_size)
                 stats = self._calculator.stats
-                
+
                 # Update state based on progress
                 if stats.percent_complete >= 100:
                     self._state = States.MonitorState.COMPLETED
@@ -355,7 +354,7 @@ class MoverMonitor:
 
                 # Send notifications if needed
                 await self._send_notifications(stats)
-                
+
             except Exception as err:
                 logger.error(
                     "Monitoring update failed",

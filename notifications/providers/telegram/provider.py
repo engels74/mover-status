@@ -123,7 +123,7 @@ class TelegramProvider(NotificationProvider):
         self._consecutive_errors: int = 0
         self._last_error_time: Optional[datetime] = None
         self._tags: Set[str] = set(self._config.get("tags", []))
-        
+
         # Thread safety
         self._session_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
@@ -276,7 +276,7 @@ class TelegramProvider(NotificationProvider):
             self._consecutive_errors += 1
             self._last_error_time = datetime.now()
             self._state.last_error = error
-            
+
             # Reset error count after successful operation
             if not isinstance(error, TelegramError):
                 self._consecutive_errors = 0
@@ -360,11 +360,12 @@ class TelegramProvider(NotificationProvider):
                 continue
 
             # Update error state and raise
-            self._update_error_state(last_error or TelegramError(
+            last_error = TelegramError(
                 "Maximum retries exceeded",
                 context={"endpoint": method}
-            ))
-            raise self._state.last_error
+            )
+            await self._update_error_state(last_error)
+            raise last_error
 
     async def send_notification(
         self,
@@ -415,7 +416,7 @@ class TelegramProvider(NotificationProvider):
             except Exception as err:
                 error = self._handle_request_error(err, "sendMessage")
                 await self._update_error_state(error)
-                raise error
+                raise error from err
 
     def _create_typed_message(
         self,

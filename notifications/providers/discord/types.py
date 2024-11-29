@@ -12,18 +12,18 @@ Example:
     ... )
 """
 
-from typing import List, Optional, TypedDict, Union
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-import asyncio
+from typing import List, Optional, TypedDict
 
 from shared.providers.discord import (
     ApiLimits,
     DiscordColor,
+    DiscordWebhookError,
     Embed,
     WebhookPayload,
     get_progress_color,
-    DiscordWebhookError,
 )
 
 

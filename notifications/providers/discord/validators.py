@@ -1,30 +1,17 @@
 # notifications/providers/discord/validators.py
 
-"""
-Discord-specific configuration validation.
-Handles validation of webhook URLs, message content, and Discord-specific constraints.
-
-Example:
-    >>> validator = DiscordValidator()
-    >>> config = {
-    ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
-    ...     "username": "Mover Bot"
-    ... }
-    >>> validated = validator.validate_config(config)
-"""
+"""Discord webhook configuration validator."""
 
 from typing import Any, Dict, Optional, Union
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 from pydantic import HttpUrl
 
 from config.constants import JsonDict
 from shared.providers.discord import (
     ALLOWED_IMAGE_EXTENSIONS,
-    ALLOWED_SCHEMES,
     ASSET_DOMAINS,
     MAX_URL_LENGTH,
-    MESSAGES,
     THREAD_NAME_PATTERN,
     USERNAME_PATTERN,
     WEBHOOK_DOMAINS,
@@ -33,11 +20,7 @@ from shared.providers.discord import (
     ApiLimits,
     DiscordColor,
 )
-from utils.validators import (
-    BaseProviderValidator,
-    URLValidationError,
-    ValidationError,
-)
+from utils.validators import BaseProviderValidator, ValidationError
 
 
 class DiscordValidationError(Exception):
@@ -63,16 +46,101 @@ class DiscordValidator(BaseProviderValidator):
     DEFAULT_COLOR = DiscordColor.INFO
 
     @classmethod
+    def _validate_webhook_path(
+        cls,
+        url: str,
+        parsed: ParseResult
+    ) -> None:
+        """Validate webhook path format.
+
+        Args:
+            url: Full webhook URL
+            parsed: Parsed URL components
+
+        Raises:
+            DiscordValidationError: If path format is invalid
+        """
+        if not parsed.path.startswith(WEBHOOK_PATH_PREFIX):
+            raise DiscordValidationError(
+                "Invalid webhook path",
+                context={"url": url, "path": parsed.path}
+            )
+
+        path_parts = parsed.path.strip("/").split("/")
+        if len(path_parts) != 4 or path_parts[0:2] != ["api", "webhooks"]:
+            raise DiscordValidationError(
+                "Invalid webhook path",
+                context={"url": url, "path": parsed.path}
+            )
+
+        webhook_id, token = path_parts[2:4]
+        if not webhook_id.isdigit():
+            raise DiscordValidationError(
+                "Invalid webhook ID",
+                context={"url": url, "webhook_id": webhook_id}
+            )
+
+        if not WEBHOOK_TOKEN_PATTERN.match(token):
+            raise DiscordValidationError(
+                "Invalid webhook token",
+                context={"url": url, "token": token}
+            )
+
+    @classmethod
+    def _validate_webhook_url_format(
+        cls,
+        url: str,
+        parsed: ParseResult
+    ) -> None:
+        """Validate webhook URL format.
+
+        Args:
+            url: Full webhook URL
+            parsed: Parsed URL components
+
+        Raises:
+            DiscordValidationError: If URL format is invalid
+        """
+        if not all([parsed.scheme, parsed.netloc, parsed.path]):
+            raise DiscordValidationError(
+                "Invalid webhook URL format",
+                context={"url": url}
+            )
+
+        if parsed.scheme not in {"http", "https"}:
+            raise DiscordValidationError(
+                "Webhook URL must use HTTPS",
+                context={"url": url, "scheme": parsed.scheme}
+            )
+
+        if parsed.netloc not in cls.ALLOWED_DOMAINS:
+            raise DiscordValidationError(
+                "Invalid webhook domain",
+                context={"url": url, "domain": parsed.netloc}
+            )
+
+        # Check URL length
+        if len(url) > MAX_URL_LENGTH:
+            raise DiscordValidationError(
+                "Webhook URL exceeds maximum length",
+                context={
+                    "url": url,
+                    "length": len(url),
+                    "max_length": MAX_URL_LENGTH
+                }
+            )
+
+    @classmethod
     def validate_webhook_url(
         cls,
-        url: Optional[Union[str, HttpUrl]],
+        url: Optional[str],
         required: bool = True
     ) -> Optional[str]:
-        """Validate Discord webhook URL format.
+        """Validate Discord webhook URL.
 
         Args:
             url: Webhook URL to validate
-            required: Whether URL is required
+            required: If True, URL is required
 
         Returns:
             Optional[str]: Validated webhook URL or None
@@ -90,61 +158,10 @@ class DiscordValidator(BaseProviderValidator):
 
         try:
             parsed = urlparse(url)
-            if not all([parsed.scheme, parsed.netloc, parsed.path]):
-                raise DiscordValidationError(
-                    "Invalid webhook URL format",
-                    context={"url": url}
-                )
-
-            if parsed.scheme not in {"http", "https"}:
-                raise DiscordValidationError(
-                    "Webhook URL must use HTTPS",
-                    context={"url": url, "scheme": parsed.scheme}
-                )
-
-            if parsed.netloc not in cls.ALLOWED_DOMAINS:
-                raise DiscordValidationError(
-                    "Invalid webhook domain",
-                    context={"url": url, "domain": parsed.netloc}
-                )
-
-            # Check URL length
-            if len(url) > MAX_URL_LENGTH:
-                raise DiscordValidationError(
-                    "Webhook URL exceeds maximum length",
-                    context={
-                        "url": url,
-                        "length": len(url),
-                        "max_length": MAX_URL_LENGTH
-                    }
-                )
-
-            # Validate webhook path format
-            if not parsed.path.startswith(WEBHOOK_PATH_PREFIX):
-                raise DiscordValidationError(
-                    "Invalid webhook path",
-                    context={"url": url, "path": parsed.path}
-                )
-
-            path_parts = parsed.path.strip("/").split("/")
-            if len(path_parts) != 4 or path_parts[0:2] != ["api", "webhooks"]:
-                raise DiscordValidationError(
-                    "Invalid webhook path",
-                    context={"url": url, "path": parsed.path}
-                )
-
-            webhook_id, token = path_parts[2:4]
-            if not webhook_id.isdigit():
-                raise DiscordValidationError(
-                    "Invalid webhook ID",
-                    context={"url": url, "webhook_id": webhook_id}
-                )
-
-            if not WEBHOOK_TOKEN_PATTERN.match(token):
-                raise DiscordValidationError(
-                    "Invalid webhook token",
-                    context={"url": url, "token": token}
-                )
+            # Validate basic URL format
+            cls._validate_webhook_url_format(url, parsed)
+            # Validate webhook path components
+            cls._validate_webhook_path(url, parsed)
 
             return url
 
