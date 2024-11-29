@@ -234,7 +234,7 @@ class MoverMonitor:
             monitoring_task.add_done_callback(self._tasks.discard)
 
             # Start version checking if enabled
-            if self._settings.check_version:
+            if self._settings.application.check_version:
                 version_task = asyncio.create_task(self._version_check_loop())
                 self._tasks.add(version_task)
                 version_task.add_done_callback(self._tasks.discard)
@@ -336,14 +336,14 @@ class MoverMonitor:
         now = datetime.now()
         if not force and self._stats.last_notification:
             time_since_last = (now - self._stats.last_notification).total_seconds()
-            if time_since_last < self._settings.notification_increment:
+            if time_since_last < self._settings.monitoring.notification_increment:
                 return
 
         notification_tasks = []
         for provider in self._providers.values():
             try:
                 task = asyncio.create_task(provider.notify(
-                    template=self._settings.message_template,
+                    template=self._settings.monitoring.message_template,
                     stats=stats
                 ))
                 notification_tasks.append(task)
