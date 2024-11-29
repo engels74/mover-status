@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Final, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import DiscordSchemaError, WebhookConfigSchema
@@ -82,7 +82,7 @@ class ForumSettings(BaseModel):
         description="Thread auto-archive duration in minutes"
     )
 
-    @validator("default_thread_name")
+    @field_validator("default_thread_name")
     @classmethod
     def validate_thread_name(cls, v: Optional[str]) -> Optional[str]:
         """Validate thread name format if provided.
@@ -104,7 +104,7 @@ class ForumSettings(BaseModel):
 
 class WebhookSettings(BaseModel):
     """Discord webhook configuration settings."""
-    url: HttpUrl = Field(
+    url: str = Field(
         ...,
         title="Webhook URL",
         description="Discord webhook URL"
@@ -114,30 +114,57 @@ class WebhookSettings(BaseModel):
         title="Username",
         description="Override the default username of the webhook"
     )
-    avatar_url: Optional[HttpUrl] = Field(
+    avatar_url: Optional[str] = Field(
         None,
         title="Avatar URL",
         description="Override the default avatar of the webhook"
     )
+    thread_id: Optional[str] = Field(
+        None,
+        title="Thread ID",
+        description="Thread ID to send messages to"
+    )
     thread_name: Optional[str] = Field(
         None,
         title="Thread Name",
-        description="Name of thread to send messages to"
+        description="Thread name to send messages to"
     )
 
-    @validator("url")
+    @field_validator("url")
+    @classmethod
     def validate_webhook_url(cls, v: str) -> str:
         """Validate webhook URL domain."""
         if not validate_url(str(v), WEBHOOK_DOMAINS):
             raise ValueError("Invalid webhook URL domain")
         return str(v)
 
-    @validator("avatar_url")
+    @field_validator("avatar_url")
+    @classmethod
     def validate_avatar_url(cls, v: Optional[str]) -> Optional[str]:
         """Validate avatar URL domain."""
         if v is not None and not validate_url(str(v), ASSET_DOMAINS):
             raise ValueError("Invalid avatar URL domain")
         return str(v) if v else None
+
+    @field_validator("thread_name")
+    @classmethod
+    def validate_thread_name(cls, v: Optional[str]) -> Optional[str]:
+        """Validate thread name format."""
+        if v is not None:
+            if not v.strip():
+                raise ValueError("Thread name cannot be empty")
+            if not validate_thread_name(v):
+                raise ValueError("Invalid thread name format")
+        return v
+
+    @field_validator("thread_id", "thread_name")
+    @classmethod
+    def validate_thread_settings(cls, v: Optional[str], info: Dict[str, Any]) -> Optional[str]:
+        """Validate thread settings."""
+        if "thread_id" in info.data and "thread_name" in info.data:
+            if bool(info.data["thread_id"]) != bool(info.data["thread_name"]):
+                raise ValueError("Both thread_id and thread_name must be provided together")
+        return v
 
 
 class DiscordSettings(BaseProviderSettings):

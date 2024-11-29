@@ -14,7 +14,7 @@ Example:
 
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from shared.providers.discord import (
     ASSET_DOMAINS,
@@ -41,6 +41,7 @@ class DiscordSchemaError(Exception):
 
 class EmbedFieldSchema(BaseModel):
     """Schema for Discord embed field validation."""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -58,14 +59,12 @@ class EmbedFieldSchema(BaseModel):
         description="Display field inline"
     )
 
-    @validator('name', 'value')
+    @field_validator("name", "value")
+    @classmethod
     def validate_content(cls, v: str) -> str:
         """Validate field content is not empty after trimming."""
         if not v.strip():
-            raise DiscordSchemaError(
-                "Field name and value cannot be empty or whitespace",
-                field="name" if not v.strip() else "value"
-            )
+            raise ValueError("Content cannot be empty")
         return v
 
     def calculate_length(self) -> int:
@@ -75,6 +74,7 @@ class EmbedFieldSchema(BaseModel):
 
 class EmbedFooterSchema(BaseModel):
     """Schema for Discord embed footer validation."""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -86,11 +86,12 @@ class EmbedFooterSchema(BaseModel):
         description="Footer icon URL"
     )
 
-    @validator('icon_url')
+    @field_validator("icon_url")
+    @classmethod
     def validate_icon_url(cls, v: Optional[str]) -> Optional[str]:
         """Validate icon URL is from allowed domains."""
         if v is not None and not validate_url(v, ASSET_DOMAINS):
-            raise DiscordSchemaError("Invalid icon URL domain", field="icon_url")
+            raise ValueError("Invalid icon URL domain")
         return v
 
 
@@ -116,11 +117,12 @@ class ForumConfigSchema(BaseModel):
         description="Thread auto-archive duration in minutes"
     )
 
-    @validator("default_thread_name")
+    @field_validator("default_thread_name")
+    @classmethod
     def validate_thread_name(cls, v: Optional[str]) -> Optional[str]:
         """Validate thread name format."""
         if v is not None and not v.strip():
-            raise DiscordSchemaError("Thread name cannot be empty or whitespace", field="default_thread_name")
+            raise ValueError("Thread name cannot be empty or whitespace")
         return v
 
     def to_dict(self) -> Dict[str, Any]:
@@ -151,33 +153,6 @@ class WebhookConfigSchema(BaseModel):
         description="Name of thread to send messages to"
     )
 
-    @validator("webhook_url")
-    def validate_webhook_url(cls, v: str) -> str:
-        """Validate webhook URL."""
-        if not validate_url(v, WEBHOOK_DOMAINS):
-            raise ValueError("Invalid webhook URL domain")
-        return v
-
-    @validator("avatar_url")
-    def validate_avatar_url(cls, v: Optional[str]) -> Optional[str]:
-        """Validate avatar URL."""
-        if v is not None and not validate_url(v, ASSET_DOMAINS):
-            raise ValueError("Invalid avatar URL domain")
-        return v
-
-    def to_webhook_config(self) -> WebhookConfig:
-        """Convert schema to webhook configuration.
-
-        Returns:
-            WebhookConfig: Webhook configuration dictionary
-        """
-        return {
-            "webhook_url": self.webhook_url,
-            "username": self.username,
-            "avatar_url": self.avatar_url,
-            "thread_name": self.thread_name,
-        }
-
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -197,3 +172,38 @@ class WebhookConfigSchema(BaseModel):
             ]
         }
     }
+
+    @field_validator("webhook_url")
+    @classmethod
+    def validate_webhook_url(cls, v: str) -> str:
+        """Validate webhook URL."""
+        if not validate_url(v, WEBHOOK_DOMAINS):
+            raise ValueError("Invalid webhook URL domain")
+        return v
+
+    @field_validator("avatar_url")
+    @classmethod
+    def validate_avatar_url(cls, v: Optional[str]) -> Optional[str]:
+        """Validate avatar URL."""
+        if v is not None and not validate_url(v, ASSET_DOMAINS):
+            raise ValueError("Invalid avatar URL domain")
+        return v
+
+    def to_webhook_config(self) -> WebhookConfig:
+        """Convert schema to webhook configuration.
+
+        Returns:
+            WebhookConfig: Webhook configuration dictionary
+        """
+        config: WebhookConfig = {
+            "url": self.webhook_url,
+        }
+
+        if self.username:
+            config["username"] = self.username
+        if self.avatar_url:
+            config["avatar_url"] = self.avatar_url
+        if self.thread_name:
+            config["thread_name"] = self.thread_name
+
+        return config
