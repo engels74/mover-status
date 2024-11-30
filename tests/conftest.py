@@ -10,20 +10,30 @@ Example:
         assert monitor.state == MonitorState.IDLE
 """
 
+# Standard library imports
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Generator, List
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    List,
+)
 
+# Third-party imports
 import aiohttp
 import pytest
 import structlog
 from _pytest.logging import LogCaptureFixture
 from aioresponses import aioresponses
 from pydantic import BaseModel
-from pytest_mock import MockerFixture
+from pytest_mock import MockerFixture, MockFixture
 
+# Local imports
 from config.constants import ProcessState
 from config.settings import Settings
 from core.calculator import TransferStats
@@ -37,9 +47,13 @@ from utils.version import Version
 # Test data directory
 TEST_DATA_DIR = Path(__file__).parent / "data"
 
+# Fixtures: Basic test utilities
 @pytest.fixture
 def temp_dir(tmp_path: Path) -> Path:
     """Provide a temporary directory for test files.
+
+    Args:
+        tmp_path: pytest-provided temporary path
 
     Returns:
         Path: Temporary directory path
@@ -47,11 +61,27 @@ def temp_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 @pytest.fixture
+def load_test_data() -> Callable[[str], Dict[str, Any]]:
+    """Create function to load test data files.
+
+    Returns:
+        Callable[[str], Dict[str, Any]]: Function to load test data
+    """
+    def _load_data(filename: str) -> Dict[str, Any]:
+        file_path = TEST_DATA_DIR / filename
+        if not file_path.exists():
+            raise FileNotFoundError(f"Test data file not found: {filename}")
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return _load_data
+
+# Fixtures: Mock application components
+@pytest.fixture
 def mock_settings() -> Settings:
     """Create mock application settings.
 
     Returns:
-        Settings: Mock settings instance
+        Settings: Mock settings instance with test configuration
     """
     return Settings(
         cache_path="/mnt/cache",
@@ -88,16 +118,17 @@ def mock_process_stats() -> ProcessStats:
     """Create mock process statistics.
 
     Returns:
-        ProcessStats: Mock process statistics
+        ProcessStats: Mock process statistics with realistic test values
     """
+    now = datetime.now()
     return ProcessStats(
         script_pid=12345,
         related_pids=[12346, 12347],
         total_cpu_percent=5.0,
         total_memory_percent=2.0,
-        io_read_bytes=1024 * 1024,
-        io_write_bytes=2048 * 1024,
-        start_time=datetime.now(),
+        io_read_bytes=1024 * 1024,  # 1 MB
+        io_write_bytes=2048 * 1024,  # 2 MB
+        start_time=now,
         command_line="/usr/local/sbin/mover",
         nice_level=10,
         io_class="best-effort"
@@ -108,27 +139,29 @@ def mock_transfer_stats() -> TransferStats:
     """Create mock transfer statistics.
 
     Returns:
-        TransferStats: Mock transfer statistics
+        TransferStats: Mock transfer statistics with realistic test values
     """
+    now = datetime.now()
     return TransferStats(
-        initial_size=10 * 1024 * 1024 * 1024,  # 10GB
-        current_size=5 * 1024 * 1024 * 1024,   # 5GB
-        bytes_moved=5 * 1024 * 1024 * 1024,    # 5GB
-        transfer_rate=100 * 1024 * 1024,       # 100MB/s
+        initial_size=10 * 1024 * 1024 * 1024,  # 10 GB
+        current_size=5 * 1024 * 1024 * 1024,   # 5 GB
+        bytes_moved=5 * 1024 * 1024 * 1024,    # 5 GB
+        transfer_rate=100 * 1024 * 1024,       # 100 MB/s
         percent_complete=50.0,
-        start_time=datetime.now(),
-        estimated_completion=datetime.now()
+        start_time=now,
+        estimated_completion=now + timedelta(hours=1)
     )
 
+# Fixtures: Mock network components
 @pytest.fixture
 def mock_notification_provider() -> NotificationProvider:
     """Create mock notification provider.
 
     Returns:
-        NotificationProvider: Mock provider instance
+        NotificationProvider: Mock provider instance with message tracking
     """
     class MockProvider(NotificationProvider):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
             self.sent_messages: List[str] = []
 
@@ -136,7 +169,7 @@ def mock_notification_provider() -> NotificationProvider:
             self.sent_messages.append(message)
             return True
 
-        def _format_message(self, message: str) -> Dict:
+        def _format_message(self, message: str) -> Dict[str, Any]:
             return {"text": message}
 
     return MockProvider()
@@ -146,7 +179,7 @@ async def mock_aiohttp_session() -> AsyncGenerator[aiohttp.ClientSession, None]:
     """Create mock aiohttp session.
 
     Yields:
-        AsyncGenerator[aiohttp.ClientSession, None]: Mock session
+        AsyncGenerator[aiohttp.ClientSession, None]: Mock session for testing
     """
     async with aiohttp.ClientSession() as session:
         yield session
@@ -156,19 +189,21 @@ def mock_responses() -> Generator[aioresponses, None, None]:
     """Create mock aiohttp responses.
 
     Yields:
-        Generator[aioresponses, None, None]: Mock response manager
+        Generator[aioresponses, None, None]: Mock response manager for testing
     """
     with aioresponses() as m:
         yield m
 
+# Fixtures: Mock system components
 @pytest.fixture
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create event loop for async tests.
 
     Yields:
-        Generator[asyncio.AbstractEventLoop, None, None]: Event loop
+        Generator[asyncio.AbstractEventLoop, None, None]: Test event loop
     """
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
@@ -180,7 +215,7 @@ def mock_logger(caplog: LogCaptureFixture) -> structlog.BoundLogger:
         caplog: pytest log capture fixture
 
     Returns:
-        structlog.BoundLogger: Mock logger
+        structlog.BoundLogger: Configured test logger
     """
     structlog.configure(
         processors=[
@@ -190,18 +225,19 @@ def mock_logger(caplog: LogCaptureFixture) -> structlog.BoundLogger:
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
     return structlog.get_logger()
 
 @pytest.fixture
-def mock_process_manager(mocker: MockerFixture) -> Generator[MockerFixture, None, None]:
+def mock_process_manager(mocker: MockerFixture) -> Generator[MockFixture, None, None]:
     """Mock process manager.
 
     Args:
         mocker: pytest mocker fixture
 
     Yields:
-        Generator[MockerFixture, None, None]: Mocker fixture
+        Generator[MockFixture, None, None]: Configured process manager mock
     """
     mock = mocker.patch("core.process.ProcessManager")
     mock.return_value.current_state = ProcessState.RUNNING
@@ -209,48 +245,41 @@ def mock_process_manager(mocker: MockerFixture) -> Generator[MockerFixture, None
     yield mock
 
 @pytest.fixture
-def load_test_data() -> callable:
-    """Create function to load test data files.
-
-    Returns:
-        callable: Function to load test data
-    """
-    def _load_data(filename: str) -> Dict:
-        file_path = TEST_DATA_DIR / filename
-        with open(file_path, "r") as f:
-            return json.load(f)
-    return _load_data
-
-@pytest.fixture
-def assert_called_with_delay():
+def assert_called_with_delay() -> Callable[[MockFixture, float], None]:
     """Create assertion helper for delayed function calls.
 
     Returns:
-        callable: Assertion helper function
+        Callable[[MockFixture, float], None]: Assertion helper function
     """
-    async def _assert_delay(mock_func: MockerFixture, expected_delay: float) -> None:
+    async def _assert_delay(mock_func: MockFixture, expected_delay: float) -> None:
         """Assert that a mock was called with a specific delay.
 
         Args:
             mock_func: Mock function to check
             expected_delay: Expected delay in seconds
+
+        Raises:
+            AssertionError: If the actual delay differs from expected by more than 0.1s
         """
         call_times = [call[0][0] for call in mock_func.await_args_list]
         actual_delay = (call_times[-1] - call_times[0]).total_seconds()
-        assert abs(actual_delay - expected_delay) < 0.1
+        assert abs(actual_delay - expected_delay) < 0.1, (
+            f"Expected delay of {expected_delay}s, got {actual_delay}s"
+        )
 
     return _assert_delay
 
+# Fixtures: Mock HTTP components
 class MockResponse(BaseModel):
     """Mock HTTP response model."""
     status: int = 200
-    data: Dict = {}
+    data: Dict[str, Any] = {}
 
-    def json(self) -> Dict:
+    def json(self) -> Dict[str, Any]:
         """Get response data as JSON.
 
         Returns:
-            Dict: Response data
+            Dict[str, Any]: Response data
         """
         return self.data
 
@@ -264,11 +293,11 @@ def mock_http_response() -> MockResponse:
     return MockResponse()
 
 @pytest.fixture
-def version_response() -> Dict:
+def version_response() -> Dict[str, Any]:
     """Create mock version response data.
 
     Returns:
-        Dict: Version response data
+        Dict[str, Any]: Version response data
     """
     return {
         "tag_name": "v0.1.0",
@@ -292,5 +321,5 @@ def mock_version(mocker: MockerFixture) -> Version:
     mocker.patch("utils.version.Version.from_string", return_value=version)
     return version
 
-# Add test data directory to sys.path
+# Initialize test environment
 TEST_DATA_DIR.mkdir(exist_ok=True)

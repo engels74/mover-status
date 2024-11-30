@@ -14,18 +14,15 @@ Example:
 
 import argparse
 import asyncio
-from datetime import datetime
 import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Dict, List, NoReturn, Optional, Set, Type
-
+from typing import List, NoReturn, Optional
 
 import structlog
 from structlog.stdlib import LoggerFactory
 from structlog.types import Processor
-
 
 from config.settings import Settings
 from core.monitor import MoverMonitor
