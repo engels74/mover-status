@@ -10,7 +10,7 @@ Example:
         assert monitor.state == MonitorState.IDLE
 """
 
-# Standard library imports
+
 import asyncio
 import json
 from datetime import datetime, timedelta
@@ -24,7 +24,7 @@ from typing import (
     List,
 )
 
-# Third-party imports
+
 import aiohttp
 import pytest
 import structlog
@@ -33,7 +33,7 @@ from aioresponses import aioresponses
 from pydantic import BaseModel
 from pytest_mock import MockerFixture, MockFixture
 
-# Local imports
+
 from config.constants import ProcessState
 from config.settings import Settings
 from core.calculator import TransferStats
