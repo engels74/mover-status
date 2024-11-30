@@ -53,6 +53,7 @@ logger = get_logger(__name__)
 # Constants
 MAX_CONSECUTIVE_ERRORS: Final[int] = 3
 BACKOFF_BASE: Final[float] = 2.0
+DEFAULT_TIMEOUT: Final[float] = 10.0  # seconds
 
 class TelegramError(NotificationError):
     """Raised when Telegram API request fails."""
@@ -131,6 +132,17 @@ class TelegramProvider(BaseNotificationProvider):
         self.api_base_url: str = self._config["api_base_url"]
         self.max_message_length: int = self._config["max_message_length"]
 
+        # Request timeout configuration
+        timeout = self._config.get("timeout", DEFAULT_TIMEOUT)
+        if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > 300:
+            logger.warning(
+                "Invalid timeout value, using default",
+                timeout=timeout,
+                default=DEFAULT_TIMEOUT
+            )
+            timeout = DEFAULT_TIMEOUT
+        self._timeout: float = float(timeout)
+
         # Session management
         self.session: Optional[aiohttp.ClientSession] = None
         self._last_message_id: Optional[int] = None
@@ -170,7 +182,7 @@ class TelegramProvider(BaseNotificationProvider):
         async with self._session_lock:
             if not self.session or self.session.closed:
                 self.session = aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    timeout=aiohttp.ClientTimeout(total=self._timeout)
                 )
 
     async def disconnect(self) -> None:
@@ -267,7 +279,7 @@ class TelegramProvider(BaseNotificationProvider):
             error = TelegramError(
                 "Request timed out",
                 code=408,
-                context={"endpoint": method}
+                context={"endpoint": method, "timeout": self._timeout}
             )
         elif isinstance(err, aiohttp.ClientError):
             error = TelegramError(

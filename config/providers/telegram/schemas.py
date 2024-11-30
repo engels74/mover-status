@@ -186,6 +186,13 @@ class BotConfigSchema(ProviderConfigModel):
         le=API.MAX_RETRY_DELAY,
         description="Delay between retries in seconds"
     )
+    timeout: float = Field(
+        default=10.0,
+        ge=0.1,
+        le=300.0,
+        description="Request timeout in seconds",
+        examples=[10.0, 30.0, 60.0]
+    )
 
     model_config = {
         "json_schema_extra": {

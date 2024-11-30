@@ -49,6 +49,14 @@ class TelegramSettings(BaseProviderSettings):
         description="Message parsing mode for formatting"
     )
 
+    timeout: float = Field(
+        default=10.0,
+        description="Request timeout in seconds",
+        ge=0.1,
+        le=300.0,
+        examples=[10.0, 30.0, 60.0]
+    )
+
     disable_notifications: bool = Field(
         default=False,
         description="Send messages silently without notifications"
@@ -222,7 +230,8 @@ class TelegramSettings(BaseProviderSettings):
         config.update({
             "bot_config": bot_config,
             "max_message_length": self.max_message_length,
-            "chat_type": self.chat_type.value if self.chat_type else None
+            "chat_type": self.chat_type.value if self.chat_type else None,
+            "timeout": self.timeout
         })
 
         return config

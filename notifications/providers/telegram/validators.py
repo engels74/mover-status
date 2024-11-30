@@ -39,6 +39,8 @@ class TelegramValidator(BaseProviderValidator):
     DEFAULT_PARSE_MODE = ParseMode.HTML
     BOT_TOKEN_PATTERN = r"^\d+:[A-Za-z0-9_-]{30,}$"
     CHANNEL_USERNAME_PATTERN = r"^@[A-Za-z0-9_]{5,}$"
+    MIN_TIMEOUT = 0.1
+    MAX_TIMEOUT = 300.0
 
     @classmethod
     def validate_bot_token(
@@ -305,6 +307,14 @@ class TelegramValidator(BaseProviderValidator):
                     f"Message length limit must be between 1 and {MessageLimit.MESSAGE_TEXT}"
                 )
 
+            # Validate timeout settings
+            timeouts = self.validate_timeouts(
+                connect_timeout=config.get("timeout"),
+                min_timeout=self.MIN_TIMEOUT,
+                max_timeout=self.MAX_TIMEOUT
+            )
+            timeout = timeouts.get("connect")
+
             # Validate rate limits
             rate_limit = config.get("rate_limit", 20)
             rate_period = config.get("rate_period", 60)
@@ -337,6 +347,7 @@ class TelegramValidator(BaseProviderValidator):
                 "chat_type": chat_type,
                 "rate_limit": rate_limit,
                 "rate_period": rate_period,
+                "timeout": timeout,
             }
 
         except ValidationError as err:
