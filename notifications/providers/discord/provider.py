@@ -1,4 +1,14 @@
-"""Discord webhook notification provider."""
+"""Discord webhook notification provider.
+
+Provides Discord webhook integration with support for:
+- Customizable embeds for different message types
+- Rate limiting and retry logic
+- Thread support
+- Optional color coding for embeds and progress bars (configurable via settings)
+
+Color support can be disabled globally through the base provider settings
+or overridden per-embed through the color parameter.
+"""
 
 import asyncio
 import random
@@ -48,6 +58,7 @@ class DiscordConfig(TypedDict, total=False):
     username: Optional[str]
     avatar_url: Optional[str]
     thread_name: Optional[str]
+    color_enabled: Optional[bool]
 
 class DiscordProvider(NotificationProvider):
     """Discord webhook notification provider implementation."""
@@ -89,6 +100,7 @@ class DiscordProvider(NotificationProvider):
         self._username: Optional[str] = self._config["username"]
         self._avatar_url: Optional[HttpUrl] = self._config.get("avatar_url")
         self._thread_name: Optional[str] = self._config.get("thread_name")
+        self._color_enabled: bool = self._config.get("color_enabled", True)
         self._embed_color: DiscordColor = self._config.get("embed_color", DiscordColor.INFO)
         self._last_message_id: Optional[str] = None
         self._last_rate_limit: Optional[datetime] = None
@@ -560,24 +572,25 @@ class DiscordProvider(NotificationProvider):
             timestamp=datetime.utcnow().isoformat()
         )
 
-    def _get_level_color(self, level: NotificationLevel) -> int:
+    def _get_level_color(self, level: NotificationLevel) -> Optional[int]:
         """Get Discord color based on notification level.
 
         Args:
             level: Notification level
 
         Returns:
-            int: Discord color code
+            Optional[int]: Discord color code, or None if colors are disabled
         """
+        if not self._color_enabled:
+            return None
+
         return {
-            NotificationLevel.DEBUG: DiscordColor.GREYPLE,
+            NotificationLevel.DEBUG: DiscordColor.DEBUG,
             NotificationLevel.INFO: DiscordColor.INFO,
             NotificationLevel.WARNING: DiscordColor.WARNING,
             NotificationLevel.ERROR: DiscordColor.ERROR,
-            NotificationLevel.CRITICAL: DiscordColor.DARK_RED,
-            NotificationLevel.INFO_SUCCESS: DiscordColor.SUCCESS,
-            NotificationLevel.INFO_FAILURE: DiscordColor.ERROR
-        }.get(level, DiscordColor.DEFAULT)
+            NotificationLevel.CRITICAL: DiscordColor.ERROR,
+        }.get(level, DiscordColor.INFO)
 
     def _handle_request_error(
         self,

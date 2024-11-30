@@ -205,7 +205,8 @@
 19. ~~Add timeout configuration to Telegram templates~~ ✅
 20. ~~Update providers to use new progress bar styles~~ ✅
 21. ~~Update providers to use new time formats~~ ✅
-22. Add color support to provider messages (should be optional for the user)
+22. if color_enabled:
+    embed["color"] = color if color is not None else default_color
  
 **Recent Changes:**
 1. Discord Validation Consolidation

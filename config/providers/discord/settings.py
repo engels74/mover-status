@@ -168,10 +168,36 @@ class WebhookSettings(BaseModel):
 
 
 class DiscordSettings(BaseProviderSettings):
-    """Discord webhook configuration settings."""
-    webhook: WebhookSettings = Field(
-        default_factory=WebhookSettings,
-        description="Discord webhook configuration"
+    """Discord webhook notification settings."""
+
+    webhook_url: str = Field(
+        ...,
+        pattern=r"^https://discord\.com/api/webhooks/\d+/.+$",
+        description="Discord webhook URL"
+    )
+
+    username: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=80,
+        description="Custom username for webhook messages"
+    )
+
+    avatar_url: Optional[str] = Field(
+        default=None,
+        pattern=r"^https?://.+",
+        description="Custom avatar URL for webhook messages"
+    )
+
+    thread_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description="Thread ID to send messages to"
+    )
+
+    forum: Optional[ForumSettings] = Field(
+        default=None,
+        description="Optional forum channel settings"
     )
 
     embed_color: Optional[int] = Field(
@@ -179,11 +205,6 @@ class DiscordSettings(BaseProviderSettings):
         ge=0,
         le=0xFFFFFF,  # 16777215
         description="Default color for Discord embeds (hex color code)"
-    )
-
-    forum: Optional[ForumSettings] = Field(
-        default=None,
-        description="Optional forum channel settings"
     )
 
     def to_provider_config(self) -> Dict[str, Any]:
@@ -201,11 +222,11 @@ class DiscordSettings(BaseProviderSettings):
 
             # Create webhook config using schema
             webhook_config = None
-            if self.webhook.url:
+            if self.webhook_url:
                 webhook_config = WebhookConfigSchema(
-                    webhook_url=str(self.webhook.url),
-                    username=self.webhook.username,
-                    avatar_url=self.webhook.avatar_url,
+                    webhook_url=str(self.webhook_url),
+                    username=self.username,
+                    avatar_url=self.avatar_url,
                     forum=self.forum.model_dump() if self.forum else None
                 ).to_webhook_config()
 
@@ -234,19 +255,18 @@ class DiscordSettings(BaseProviderSettings):
             "examples": [
                 {
                     "enabled": True,
-                    "webhook": {
-                        "url": "https://discord.com/api/webhooks/123/abc",
-                        "username": "Mover Bot"
-                    },
-                    "embed_color": DiscordColor.INFO,
+                    "webhook_url": "https://discord.com/api/webhooks/123/abc",
+                    "username": "Mover Bot"
                 },
                 {
                     "enabled": True,
-                    "webhook": {
-                        "url": "https://discord.com/api/webhooks/123/abc",
-                        "username": "Status Bot",
-                        "avatar_url": "https://cdn.discordapp.com/avatars/123/abc.png",
-                    },
+                    "webhook_url": "https://discord.com/api/webhooks/123/abc",
+                    "username": "Status Bot",
+                    "avatar_url": "https://cdn.discordapp.com/avatars/123/abc.png",
+                },
+                {
+                    "enabled": True,
+                    "webhook_url": "https://discord.com/api/webhooks/123/abc",
                     "forum": {
                         "enabled": True,
                         "auto_thread": True,

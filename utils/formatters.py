@@ -194,7 +194,7 @@ def format_progress(
     style: Union[str, ProgressStyle] = ProgressStyle.ASCII,
     width: Optional[int] = None,
     show_percent: bool = True,
-    color: bool = False
+    color_enabled: bool = False
 ) -> str:
     """Format progress value as percentage or progress bar.
 
@@ -203,7 +203,7 @@ def format_progress(
         style: Progress bar style
         width: Width of progress bar
         show_percent: Whether to show percentage
-        color: Whether to use ANSI color codes
+        color_enabled: Whether to use ANSI color codes in the output
 
     Returns:
         str: Formatted progress string
@@ -216,6 +216,8 @@ def format_progress(
         '[===============     ] 75.5%'
         >>> format_progress(75.5, style=ProgressStyle.UNICODE)
         '│████████░░░░│ 75.5%'
+        >>> format_progress(75.5, color_enabled=True)
+        '[■■■■■■■■□□□□] 75.5%'  # With ANSI color codes
     """
     if not isinstance(value, (int, float)):
         raise ValueError("Progress value must be a number")
@@ -242,7 +244,7 @@ def format_progress(
     empty = inner_width - filled
 
     # Build progress bar
-    if color:
+    if color_enabled:
         # Color gradient based on progress
         if value < 33:
             color_code = "\033[91m"  # Red

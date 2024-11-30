@@ -4,10 +4,15 @@
 Base configuration models for notification providers.
 Defines abstract base classes and common functionality for provider settings.
 
+Providers can be configured with common settings like rate limiting,
+API configuration, message templates, and color support. Color support
+can be enabled/disabled globally through the base settings.
+
 Example:
     >>> class MyProviderSettings(BaseProviderSettings):
     ...     api_key: str
     ...     username: str = "Default User"
+    ...     # color_enabled is inherited from BaseProviderSettings
 """
 
 from typing import Dict, List, Optional, Set
@@ -140,6 +145,11 @@ class BaseProviderSettings(BaseModel):
     enabled: bool = Field(
         default=False,
         description="Enable this notification provider"
+    )
+
+    color_enabled: bool = Field(
+        default=True,
+        description="Enable colored output where supported (e.g. progress bars, Discord embeds)"
     )
 
     rate_limit: RateLimitSettings = Field(

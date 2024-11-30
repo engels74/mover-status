@@ -4,13 +4,18 @@
 Message templates and formatting utilities for Discord notifications.
 Provides template management and message construction for the Discord provider.
 
+All embed creation functions support optional color configuration:
+- color: Optional color override for the embed
+- color_enabled: Whether to use colors in the embed (from base settings)
+
 Example:
     >>> from notifications.providers.discord.templates import create_progress_embed
     >>> embed = create_progress_embed(
     ...     percent=75.5,
     ...     remaining="1.2 GB",
     ...     elapsed="2 hours",
-    ...     etc="15:30"
+    ...     etc="15:30",
+    ...     color_enabled=True  # Use colors from base settings
     ... )
 """
 
@@ -129,7 +134,9 @@ def create_progress_embed(
     title: str = "Mover Status",
     description: Optional[str] = None,
     author: Optional[EmbedAuthor] = None,
-    use_native_timestamps: bool = True
+    use_native_timestamps: bool = True,
+    color: Optional[int] = None,
+    color_enabled: bool = True
 ) -> Embed:
     """Create a complete progress update embed.
 
@@ -142,6 +149,8 @@ def create_progress_embed(
         description: Optional description
         author: Optional author information
         use_native_timestamps: Whether to use Discord's native timestamps
+        color: Optional color override
+        color_enabled: Whether to use colors in the embed (from base settings)
 
     Returns:
         Embed: Formatted Discord embed
@@ -152,53 +161,42 @@ def create_progress_embed(
     if not 0 <= percent <= 100:
         raise ValueError("Percent must be between 0 and 100")
 
-    # Format progress bar
-    progress_bar = format_progress(percent, style=ProgressStyle.BLOCKS, width=20)
-
-    # Format timestamps based on preference
-    elapsed_dt = datetime.now() - timedelta(seconds=float(elapsed))
-    completion_time = datetime.strptime(etc, "%H:%M")
-
-    if use_native_timestamps:
-        elapsed_time = format_discord_timestamp(elapsed_dt, "R")
-        etc_formatted = format_discord_timestamp(completion_time, "t")
-    else:
-        elapsed_time = format_timestamp(elapsed_dt, format_type=TimeFormat.RELATIVE)
-        etc_formatted = format_timestamp(completion_time, format_type=TimeFormat.FRIENDLY)
-
-    embed = Embed(
-        title=title,
-        description=description or "",
-        color=get_progress_color(percent)
+    # Create progress field
+    progress_field = create_progress_field(
+        percent=percent,
+        remaining=remaining,
+        elapsed=elapsed,
+        etc=etc
     )
 
+    # Build embed
+    embed: Embed = {
+        "title": truncate_string(title, ApiLimits.TITLE_LENGTH),
+        "fields": [progress_field],
+        "footer": create_footer(),
+        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
+    }
+
+    # Set color if enabled
+    if color_enabled:
+        embed["color"] = color if color is not None else get_progress_color(percent)
+
+    # Add optional components
+    if description:
+        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
     if author:
-        embed.set_author(**author)
+        embed["author"] = author
 
-    embed.add_field(
-        name="Progress",
-        value=f"{progress_bar} **{percent:.1f}%**",
-        inline=False
-    )
-
-    embed.add_field(
-        name="Time Info",
-        value=(
-            f"⏱️ Elapsed: {elapsed_time}\n"
-            f"⌛ Remaining: {remaining}\n"
-            f"🏁 ETC: {etc_formatted}"
-        ),
-        inline=False
-    )
-
-    embed.set_footer(text=f"Last updated: {format_discord_timestamp(datetime.now(), 'R')}")
+    validate_embed_lengths(embed)
     return embed
 
 
 def create_completion_embed(
     description: Optional[str] = None,
     stats: Optional[Dict[str, Union[str, int, float]]] = None,
-    use_native_timestamps: bool = True
+    use_native_timestamps: bool = True,
+    color: Optional[int] = None,
+    color_enabled: bool = True
 ) -> Embed:
     """Create embed for transfer completion notification.
 
@@ -206,36 +204,38 @@ def create_completion_embed(
         description: Optional custom description
         stats: Optional transfer statistics to include
         use_native_timestamps: Whether to use Discord's native timestamps
+        color: Optional color override
+        color_enabled: Whether to use colors in the embed (from base settings)
 
     Returns:
         Embed: Formatted completion embed
     """
-    embed = Embed(
-        title="Transfer Complete",
-        description=description or "The transfer has been completed successfully.",
-        color=DiscordColor.SUCCESS
-    )
+    # Build base embed
+    embed: Embed = {
+        "title": "Transfer Complete",
+        "footer": create_footer(),
+        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
+    }
 
+    # Set color if enabled
+    if color_enabled:
+        embed["color"] = color if color is not None else DiscordColor.SUCCESS
+
+    # Add description if provided
+    if description:
+        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
+
+    # Add stats as fields if provided
     if stats:
-        formatted_stats = []
-        for key, value in stats.items():
-            if isinstance(value, datetime):
-                if use_native_timestamps:
-                    value = format_discord_timestamp(value, "f")
-                else:
-                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
-            formatted_stats.append(f"**{key}:** {value}")
+        embed["fields"] = []
+        for name, value in stats.items():
+            embed["fields"].append({
+                "name": truncate_string(str(name), ApiLimits.FIELD_NAME_LENGTH),
+                "value": truncate_string(str(value), ApiLimits.FIELD_VALUE_LENGTH),
+                "inline": True
+            })
 
-        if formatted_stats:
-            embed.add_field(
-                name="Transfer Statistics",
-                value="\n".join(formatted_stats),
-                inline=False
-            )
-
-    current_time = datetime.now()
-    completion_text = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
-    embed.set_footer(text=f"Completed at {completion_text}")
+    validate_embed_lengths(embed)
     return embed
 
 
@@ -243,7 +243,9 @@ def create_error_embed(
     error_message: str,
     error_code: Optional[int] = None,
     error_details: Optional[Dict[str, str]] = None,
-    use_native_timestamps: bool = True
+    use_native_timestamps: bool = True,
+    color: Optional[int] = None,
+    color_enabled: bool = True
 ) -> Embed:
     """Create embed for error notification.
 
@@ -252,6 +254,8 @@ def create_error_embed(
         error_code: Optional error code
         error_details: Optional error details
         use_native_timestamps: Whether to use Discord's native timestamps
+        color: Optional color override
+        color_enabled: Whether to use colors in the embed (from base settings)
 
     Returns:
         Embed: Formatted error embed
@@ -262,39 +266,38 @@ def create_error_embed(
     if not error_message:
         raise ValueError("Error message cannot be empty")
 
-    embed = Embed(
-        title="Error",
-        description=error_message,
-        color=DiscordColor.ERROR
-    )
+    # Build base embed
+    embed: Embed = {
+        "title": "Error",
+        "description": truncate_string(error_message, ApiLimits.DESCRIPTION_LENGTH),
+        "footer": create_footer(),
+        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
+    }
 
-    if error_code:
-        embed.add_field(
-            name="Error Code",
-            value=str(error_code),
-            inline=True
-        )
+    # Set color if enabled
+    if color_enabled:
+        embed["color"] = color if color is not None else DiscordColor.ERROR
 
+    # Add error code if provided
+    if error_code is not None:
+        embed["fields"] = [{
+            "name": "Error Code",
+            "value": str(error_code),
+            "inline": True
+        }]
+
+    # Add error details if provided
     if error_details:
-        formatted_details = []
-        for key, value in error_details.items():
-            if isinstance(value, datetime):
-                if use_native_timestamps:
-                    value = format_discord_timestamp(value, "f")
-                else:
-                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
-            formatted_details.append(f"**{key}:** {value}")
+        if "fields" not in embed:
+            embed["fields"] = []
+        for name, value in error_details.items():
+            embed["fields"].append({
+                "name": truncate_string(str(name), ApiLimits.FIELD_NAME_LENGTH),
+                "value": truncate_string(str(value), ApiLimits.FIELD_VALUE_LENGTH),
+                "inline": True
+            })
 
-        if formatted_details:
-            embed.add_field(
-                name="Error Details",
-                value="\n".join(formatted_details),
-                inline=False
-            )
-
-    current_time = datetime.now()
-    error_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
-    embed.set_footer(text=f"Error occurred at {error_time}")
+    validate_embed_lengths(embed)
     return embed
 
 
