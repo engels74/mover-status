@@ -36,9 +36,7 @@ from shared.providers.discord import (
     get_progress_color,
 )
 from utils.formatters import (
-    ProgressStyle,
     TimeFormat,
-    format_progress,
     format_timestamp,
 )
 from utils.version import version_checker
