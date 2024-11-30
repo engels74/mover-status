@@ -1,15 +1,28 @@
 # config/providers/telegram/settings.py
 
 """
-Telegram-specific configuration models and settings.
-Extends base provider settings with Telegram Bot API configuration.
+Telegram-specific configuration models and settings for the Mover Status application.
+This module provides configuration classes for integrating with the Telegram Bot API,
+extending the base provider settings with Telegram-specific functionality.
+
+The main configuration class `TelegramSettings` handles:
+- Bot authentication and API configuration
+- Chat and message delivery settings
+- Rate limiting and timeout controls
+- Message formatting and content protection
 
 Example:
     >>> from config.providers.telegram.settings import TelegramSettings
     >>> settings = TelegramSettings(
     ...     enabled=True,
     ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-    ...     chat_id="-1001234567890"
+    ...     chat_id="-1001234567890",
+    ...     parse_mode="HTML",
+    ...     rate_limit={
+    ...         "rate_limit": 20,
+    ...         "rate_period": 60,
+    ...         "retry_attempts": 3
+    ...     }
     ... )
 """
 
@@ -30,7 +43,34 @@ from shared.providers.telegram import (
 
 
 class TelegramSettings(BaseProviderSettings):
-    """Telegram bot configuration settings."""
+    """Configuration settings for Telegram bot integration.
+
+    This class extends BaseProviderSettings to provide Telegram-specific configuration
+    options for bot communication, message formatting, and delivery control. It includes
+    validation for bot tokens, chat IDs, and message constraints.
+
+    Attributes:
+        bot_token (Optional[str]): Telegram bot API token for authentication
+        chat_id (Optional[Union[int, str]]): Target chat identifier for message delivery
+        parse_mode (ParseMode): Message formatting mode (HTML, Markdown, etc.)
+        timeout (float): API request timeout in seconds
+        disable_notifications (bool): Option to send messages silently
+        protect_content (bool): Prevent message forwarding/saving
+        message_thread_id (Optional[int]): Forum/topic thread identifier
+        api_base_url (HttpUrl): Telegram API endpoint URL
+        max_message_length (int): Maximum allowed message length
+        chat_type (Optional[ChatType]): Type of chat destination
+
+    Example:
+        >>> settings = TelegramSettings(
+        ...     enabled=True,
+        ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        ...     chat_id="@channelname",
+        ...     parse_mode=ParseMode.HTML,
+        ...     protect_content=True
+        ... )
+        >>> config = settings.to_provider_config()
+    """
 
     bot_token: Optional[str] = Field(
         default=None,

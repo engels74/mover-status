@@ -2,8 +2,22 @@
 
 """
 Project-wide constants, type aliases, and configuration defaults.
-Provides centralized definition of constants and types used across the application.
+
+This module provides centralized definitions for constants and types used across
+the application. It includes:
+
+- Type aliases for JSON and filesystem operations
+- Time and byte size constants
+- Notification and message configuration
+- Path and monitoring defaults
+- Message templates and standard responses
+
 Provider-specific constants should be defined in their respective modules.
+
+Example:
+    >>> from config.constants import TimeConstants, ByteSizes
+    >>> timeout = TimeConstants.MINUTE * 5  # 5 minutes in seconds
+    >>> max_size = ByteSizes.GB * 2  # 2 GB in bytes
 """
 
 from enum import IntEnum, StrEnum
@@ -20,7 +34,18 @@ ExcludedPaths: TypeAlias = List[Path]
 ProviderConfig: TypeAlias = Dict[str, Union[str, bool, int]]
 
 class TimeConstants(IntEnum):
-    """Time-related constants in seconds."""
+    """Time-related constants in seconds.
+
+    This enum defines commonly used time intervals in seconds,
+    providing a type-safe way to work with time values.
+
+    Attributes:
+        SECOND: Base unit (1 second)
+        MINUTE: 60 seconds
+        HOUR: 60 minutes
+        DAY: 24 hours
+        VERSION_CHECK_INTERVAL: Interval between version checks
+    """
     SECOND = 1
     MINUTE = 60 * SECOND
     HOUR = 60 * MINUTE
@@ -48,7 +73,20 @@ class LogLevel(StrEnum):
     CRITICAL = "CRITICAL"
 
 class NotificationLevel(StrEnum):
-    """Notification severity levels."""
+    """Notification severity levels for message classification.
+
+    This enum defines the different severity levels for notifications,
+    allowing for consistent message categorization across providers.
+
+    Attributes:
+        DEBUG: Detailed information for debugging purposes
+        INFO: General informational messages
+        WARNING: Warning messages that require attention
+        ERROR: Error messages indicating failures
+        CRITICAL: Critical errors requiring immediate attention
+        INFO_SUCCESS: Success information messages
+        INFO_FAILURE: Failure information messages
+    """
     DEBUG = "debug"         # Detailed information for debugging purposes
     INFO = "info"          # General informational messages
     WARNING = "warning"    # Warning messages that require attention
@@ -64,7 +102,22 @@ class MessagePriority(StrEnum):
     HIGH = "high"
 
 class MessageType(StrEnum):
-    """Message type classifications."""
+    """Message type classifications for notification routing.
+
+    This enum defines the different types of messages that can be sent,
+    helping to determine how messages should be formatted and routed.
+
+    Attributes:
+        PROGRESS: Progress updates for ongoing operations
+        COMPLETION: Operation completion notifications
+        ERROR: Error notifications
+        WARNING: Warning messages (non-critical issues)
+        SYSTEM: System status and health updates
+        DEBUG: Debug messages for development
+        BATCH: Batch operation updates
+        INTERACTIVE: Messages with interactive elements
+        CUSTOM: Custom/generic messages
+    """
     PROGRESS = "progress"      # Progress updates for ongoing operations
     COMPLETION = "completion"  # Operation completion notifications
     ERROR = "error"           # Error notifications
@@ -106,7 +159,24 @@ class API:
     DEFAULT_RETRY_DELAY = 5     # seconds
 
 class Templates:
-    """Message template definitions."""
+    """Message template definitions and placeholder mappings.
+
+    This class provides standard message templates and defines
+    the available placeholders that can be used in templates.
+
+    Attributes:
+        DEFAULT_MESSAGE: Standard progress message template
+        PLACEHOLDERS: Dictionary mapping placeholder names to their patterns
+
+    Example:
+        >>> template = Templates.DEFAULT_MESSAGE
+        >>> placeholders = Templates.PLACEHOLDERS
+        >>> message = template.format(
+        ...     percent=50,
+        ...     remaining_data="500MB",
+        ...     etc="10 minutes"
+        ... )
+    """
     DEFAULT_MESSAGE = (
         "Transfer Progress: {percent}%\n"
         "Remaining Data: {remaining_data}\n"
@@ -125,7 +195,18 @@ class Templates:
     }
 
 class ErrorMessages:
-    """Standard error message templates."""
+    """Standard error message templates for consistent error reporting.
+
+    This class provides a centralized set of error message templates,
+    ensuring consistent error reporting across the application.
+
+    All messages support string formatting with relevant parameters.
+
+    Example:
+        >>> error_msg = ErrorMessages.INVALID_PATH.format(path="/invalid/path")
+        >>> print(error_msg)
+        'Invalid path specified: /invalid/path'
+    """
     INVALID_PATH = "Invalid path specified: {path}"
     PROCESS_NOT_FOUND = "Mover process not found"
     NOTIFICATION_FAILED = "Failed to send notification: {error}"

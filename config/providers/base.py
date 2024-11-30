@@ -2,11 +2,17 @@
 
 """
 Base configuration models for notification providers.
-Defines abstract base classes and common functionality for provider settings.
 
-Providers can be configured with common settings like rate limiting,
-API configuration, message templates, and color support. Color support
-can be enabled/disabled globally through the base settings.
+This module defines the base configuration models and validation logic for
+notification providers (e.g., Discord, Telegram). It includes:
+
+- Rate limiting configuration
+- API settings and validation
+- Message template handling
+- Common provider settings
+
+The configuration models use Pydantic for validation and type safety.
+Provider-specific settings should inherit from BaseProviderSettings.
 
 Example:
     >>> class MyProviderSettings(BaseProviderSettings):
@@ -29,7 +35,25 @@ from config.constants import (
 
 
 class RateLimitSettings(BaseModel):
-    """Rate limiting configuration shared across providers."""
+    """Rate limiting configuration for message delivery.
+
+    This model defines settings to control message rate limiting,
+    including retry behavior for failed deliveries.
+
+    Attributes:
+        rate_limit: Maximum messages allowed per period (1-60)
+        rate_period: Time window for rate limiting in seconds (30-3600)
+        retry_attempts: Number of retries for failed messages (1-5)
+        retry_delay: Seconds to wait between retries (1-30)
+
+    Example:
+        >>> settings = RateLimitSettings(
+        ...     rate_limit=30,
+        ...     rate_period=60,
+        ...     retry_attempts=3,
+        ...     retry_delay=5
+        ... )
+    """
 
     rate_limit: int = Field(
         default=30,
@@ -75,7 +99,24 @@ class RateLimitSettings(BaseModel):
 
 
 class ApiSettings(BaseModel):
-    """Common API settings for providers."""
+    """Common API configuration for notification providers.
+
+    This model defines settings for API communication, including
+    timeouts, base URLs, and custom headers. It includes validation
+    for header names and URL formats.
+
+    Attributes:
+        timeout: API request timeout in seconds (1-300)
+        base_url: Optional base URL for API requests (must be http/https)
+        headers: Optional custom headers for API requests
+
+    Example:
+        >>> settings = ApiSettings(
+        ...     timeout=30,
+        ...     base_url="https://api.example.com",
+        ...     headers={"X-Custom-Header": "value"}
+        ... )
+    """
 
     timeout: int = Field(
         default=API.DEFAULT_TIMEOUT,
@@ -140,7 +181,35 @@ class ApiSettings(BaseModel):
 
 
 class BaseProviderSettings(BaseModel):
-    """Abstract base class for provider settings."""
+    """Base configuration model for notification providers.
+
+    This model serves as the foundation for all provider-specific settings.
+    It handles common configuration needs like:
+    - Provider enablement
+    - Rate limiting
+    - API configuration
+    - Message templating
+    - Visual customization (colors)
+    - Message categorization (tags)
+
+    All provider-specific setting models should inherit from this class
+    and add their own specific configuration fields.
+
+    Attributes:
+        enabled: Whether this provider is active
+        color_enabled: Support for colored output in messages
+        rate_limit: Rate limiting configuration
+        api_settings: API communication settings
+        message_template: Custom template for notifications
+        message_priority: Default priority for messages
+        notification_increment: Progress update frequency
+        tags: Optional message categorization tags
+
+    Example:
+        >>> class DiscordSettings(BaseProviderSettings):
+        ...     webhook_url: str
+        ...     username: str = "MoverBot"
+    """
 
     enabled: bool = Field(
         default=False,

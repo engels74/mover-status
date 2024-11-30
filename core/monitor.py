@@ -1,13 +1,33 @@
 # core/monitor.py
 
 """
-Main monitoring loop and event handling for the MoverStatus system.
-Coordinates process monitoring, progress calculation, and notifications.
+Core monitoring system for tracking file transfer operations.
+This module implements the main monitoring loop and event handling system for
+tracking file transfers, calculating progress, and sending notifications.
+
+Components:
+- DirectoryScanner: Async directory size calculation with caching
+- MonitorStats: Statistics tracking for transfers and events
+- MoverMonitor: Main coordinator for monitoring and notifications
+
+Features:
+- Asynchronous directory scanning with path exclusions
+- Real-time transfer progress calculation
+- Event-based notification system
+- Version checking and update notifications
+- Resource cleanup and graceful shutdown
 
 Example:
     >>> from core.monitor import MoverMonitor
+    >>> from config.settings import Settings
+    >>>
+    >>> settings = Settings.from_file("config.yaml")
     >>> monitor = MoverMonitor(settings)
+    >>>
     >>> async with monitor:
+    ...     # Subscribe to events if needed
+    ...     monitor.subscribe(Events.TransferComplete, on_complete)
+    ...     # Start monitoring
     ...     await monitor.start()
 """
 
@@ -34,7 +54,24 @@ from utils.version import version_checker
 logger = get_logger(__name__)
 
 class DirectoryScanner:
-    """Asynchronous directory size scanner with path exclusion support."""
+    """Asynchronous directory size scanner with caching and exclusion support.
+
+    This class provides efficient directory size calculation with the following features:
+    - Asynchronous scanning using aiofiles
+    - Path exclusion for skipping specific directories
+    - Size caching with configurable TTL
+    - Thread-safe cache access
+
+    Attributes:
+        _excluded_paths (Set[Path]): Paths to exclude from scanning
+        _cache (Dict[Path, tuple[int, float]]): Size cache with timestamps
+        _cache_ttl (float): Cache entry lifetime in seconds
+        _lock (asyncio.Lock): Thread safety for cache access
+
+    Example:
+        >>> scanner = DirectoryScanner({Path("/tmp")}, cache_ttl=10.0)
+        >>> size = await scanner.get_size(Path("/data"))
+    """
 
     def __init__(self, excluded_paths: Set[Path], cache_ttl: float = 5.0):
         """Initialize directory scanner.
@@ -127,7 +164,22 @@ class DirectoryScanner:
 
 @dataclass
 class MonitorStats:
-    """Combined monitoring statistics."""
+    """Statistics tracking for the monitoring system.
+
+    Tracks various metrics about the current monitoring state, including:
+    - Process state and transfer statistics
+    - Error counts and notification timing
+    - Active monitoring events
+    - Start time for duration calculation
+
+    Attributes:
+        process_state (States.ProcessState): Current process state
+        transfer_stats (Optional[TransferStats]): Current transfer progress
+        last_notification (Optional[datetime]): Timestamp of last notification
+        error_count (int): Number of errors encountered
+        start_time (Optional[datetime]): Monitoring start timestamp
+        events (Set[Events.MonitorEvent]): Currently active events
+    """
     process_state: States.ProcessState = States.ProcessState.UNKNOWN
     transfer_stats: Optional[TransferStats] = None
     last_notification: Optional[datetime] = None
@@ -135,8 +187,37 @@ class MonitorStats:
     start_time: Optional[datetime] = None
     events: Set[Events.MonitorEvent] = field(default_factory=set)
 
+
 class MoverMonitor:
-    """Coordinates process monitoring, transfer tracking, and notifications."""
+    """Main coordinator for file transfer monitoring and notifications.
+
+    This class orchestrates the monitoring system with the following responsibilities:
+    - Process state tracking and statistics collection
+    - Directory size calculation and progress updates
+    - Event-based notification system
+    - Provider management and notification delivery
+    - Resource cleanup and graceful shutdown
+
+    The monitor uses an event-driven architecture where subscribers can receive
+    notifications about various monitoring events (transfer complete, errors, etc.).
+    It also manages multiple notification providers for different delivery methods.
+
+    Attributes:
+        state (property): Current monitoring state
+        stats (property): Current monitoring statistics
+
+    Example:
+        >>> monitor = MoverMonitor(settings)
+        >>> async with monitor:
+        ...     # Subscribe to transfer completion
+        ...     monitor.subscribe(Events.TransferComplete, on_complete)
+        ...     # Start monitoring
+        ...     await monitor.start()
+        ...     # Monitor will run until stopped
+        ...     await asyncio.sleep(3600)
+        ...     # Stop monitoring
+        ...     await monitor.stop()
+    """
 
     def __init__(self, settings: Settings):
         """Initialize monitor with settings.
@@ -167,19 +248,34 @@ class MoverMonitor:
         self._event_lock = asyncio.Lock()
 
     async def __aenter__(self) -> 'MoverMonitor':
-        """Async context manager entry."""
+        """Async context manager entry point.
+
+        Returns:
+            MoverMonitor: Self reference for context management
+        """
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Async context manager exit."""
+        """Async context manager exit point.
+
+        Ensures graceful shutdown of the monitoring system by calling stop().
+        """
         await self.stop()
 
     def subscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
-        """Subscribe to monitor events.
+        """Subscribe to specific monitor events.
+
+        Registers a callback function to be called when events of the specified
+        type occur. The handler can be either a regular function or a coroutine.
 
         Args:
-            event_type: Type of event to subscribe to
-            handler: Callback function
+            event_type (Type[Events.MonitorEvent]): Event type to listen for
+            handler (callable): Callback function to handle the event
+
+        Example:
+            >>> async def on_complete(event):
+            ...     print(f"Transfer completed: {event.stats}")
+            >>> monitor.subscribe(Events.TransferComplete, on_complete)
         """
         async with self._event_lock:
             if event_type not in self._event_handlers:
@@ -187,21 +283,28 @@ class MoverMonitor:
             self._event_handlers[event_type].add(handler)
 
     async def unsubscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
-        """Unsubscribe from monitor events.
+        """Remove a subscription to monitor events.
+
+        Unregisters a previously registered callback function for the specified
+        event type. If the handler is not found, this operation is a no-op.
 
         Args:
-            event_type: Type of event to unsubscribe from
-            handler: Callback function to remove
+            event_type (Type[Events.MonitorEvent]): Event type to unsubscribe from
+            handler (callable): Callback function to remove
         """
         async with self._event_lock:
             if event_type in self._event_handlers:
                 self._event_handlers[event_type].discard(handler)
 
     async def _notify_event(self, event: Events.MonitorEvent) -> None:
-        """Notify subscribers of an event.
+        """Notify all subscribers of a monitor event.
+
+        Calls all registered handlers for the event type, handling both regular
+        functions and coroutines appropriately. Errors in handlers are logged
+        but do not stop other handlers from being called.
 
         Args:
-            event: Event to notify about
+            event (Events.MonitorEvent): Event instance to notify about
         """
         if event.__class__ in self._event_handlers:
             for handler in self._event_handlers[event.__class__]:
@@ -220,8 +323,18 @@ class MoverMonitor:
     async def start(self) -> None:
         """Start the monitoring system.
 
+        Initializes notification providers and starts the main monitoring loop.
+        If version checking is enabled in settings, also starts the version
+        check loop.
+
+        The monitoring system transitions through the following states:
+        1. IDLE -> STARTING: Initial state transition
+        2. STARTING -> MONITORING: After provider setup
+        3. MONITORING: Active monitoring state
+        4. ERROR: If startup fails
+
         Raises:
-            RuntimeError: If monitoring is already active
+            RuntimeError: If monitoring is already active or startup fails
         """
         if self._state != States.MonitorState.IDLE:
             raise RuntimeError("Monitor is already running")
@@ -251,7 +364,18 @@ class MoverMonitor:
             raise RuntimeError("Failed to start monitoring") from err
 
     async def stop(self) -> None:
-        """Stop the monitoring system gracefully."""
+        """Stop the monitoring system gracefully.
+
+        Performs the following shutdown sequence:
+        1. Sets stopping flag to prevent new tasks
+        2. Cancels all running tasks
+        3. Waits for tasks to complete
+        4. Cleans up resources
+        5. Transitions to STOPPED state
+
+        This method is idempotent and can be called multiple times safely.
+        If the system is already stopped, this is a no-op.
+        """
         if self._state == States.MonitorState.STOPPED:
             return
 
@@ -272,7 +396,17 @@ class MoverMonitor:
         logger.info("Monitor stopped")
 
     async def _setup_providers(self) -> None:
-        """Initialize configured notification providers."""
+        """Initialize and configure notification providers.
+
+        Creates provider instances for each enabled provider in settings using
+        the notification factory. Currently supports Discord and Telegram providers.
+        Provider initialization failures are logged but don't stop other providers.
+
+        Provider initialization sequence:
+        1. Load provider-specific configuration
+        2. Create provider instance via factory
+        3. Store provider in internal registry
+        """
         async with self._provider_lock:
             for provider_id in self._settings.active_providers:
                 try:
@@ -300,11 +434,25 @@ class MoverMonitor:
         stats: TransferStats,
         force: bool = False
     ) -> None:
-        """Send notifications to all configured providers.
+        """Send progress notifications to all configured providers.
+
+        Creates a progress message from the current transfer statistics and
+        sends it to each configured notification provider. Notification failures
+        for individual providers are logged but don't prevent other providers
+        from receiving updates.
 
         Args:
-            stats: Current transfer statistics
-            force: Send notification regardless of increment check
+            stats (TransferStats): Current transfer progress statistics
+            force (bool, optional): If True, send notification regardless of
+                progress increment check. Defaults to False.
+
+        Note:
+            The notification includes:
+            - Completion percentage
+            - Remaining size/files
+            - Elapsed time
+            - Estimated time to completion
+            - Custom progress message
         """
         async with self._provider_lock:
             for provider in self._providers.values():
@@ -329,114 +477,152 @@ class MoverMonitor:
                     )
 
     async def _update_monitoring(self) -> None:
-        """Update monitoring state and statistics."""
-        async with self._state_lock:
-            try:
-                # Check if mover is running
-                is_running = await self._process_manager.is_running()
+        """Update monitoring state and transfer statistics.
 
-                if not is_running:
-                    self._state = States.MonitorState.STOPPED
-                    return
+        Performs a full update cycle:
+        1. Update process state from process manager
+        2. Calculate current cache directory size
+        3. Update transfer statistics with calculator
+        4. Send notifications if progress threshold reached
+        5. Emit monitoring events based on state changes
+        """
+        # Update process state
+        self._stats.process_state = await self._process_manager.get_state()
 
-                # Get current cache size
-                cache_size = await self._get_cache_size()
+        try:
+            # Get current cache size
+            cache_size = await self._get_cache_size()
 
-                # Update transfer statistics
-                self._calculator.update(cache_size)
-                stats = self._calculator.stats
+            # Update transfer stats
+            stats = await self._calculator.update(cache_size)
+            self._stats.transfer_stats = stats
 
-                # Update state based on progress
-                if stats.percent_complete >= 100:
-                    self._state = States.MonitorState.COMPLETED
-                else:
-                    self._state = States.MonitorState.RUNNING
+            # Send notifications
+            await self._send_notifications(stats)
 
-                # Send notifications if needed
-                await self._send_notifications(stats)
-
-            except Exception as err:
-                logger.error(
-                    "Monitoring update failed",
-                    error=str(err),
-                    error_type=type(err).__name__
-                )
-                self._state = States.MonitorState.ERROR
+        except Exception as err:
+            logger.error("Monitoring update failed", error=str(err))
+            self._stats.error_count += 1
 
     async def _cleanup(self) -> None:
-        """Clean up resources and connections."""
-        self._process_manager.stop()
-        self._calculator.reset()
-        await self._scanner.clear_cache()
+        """Clean up monitoring system resources.
 
-        for provider in self._providers.values():
-            try:
-                if hasattr(provider, 'disconnect'):
-                    await provider.disconnect()
-            except Exception as err:
-                logger.warning(
-                    "Provider disconnect error",
-                    error=str(err)
-                )
+        Performs cleanup tasks:
+        1. Close all notification providers
+        2. Clear event handlers
+        3. Reset internal state
+        """
+        # Close providers
+        async with self._provider_lock:
+            for provider in self._providers.values():
+                try:
+                    await provider.close()
+                except Exception as err:
+                    logger.error(
+                        "Provider cleanup error",
+                        provider=provider.__class__.__name__,
+                        error=str(err)
+                    )
+            self._providers.clear()
+
+        # Clear handlers
+        async with self._event_lock:
+            self._event_handlers.clear()
 
     async def _get_cache_size(self) -> int:
-        """Get current cache directory size.
+        """Calculate the current size of the cache directory.
+
+        Uses the directory scanner to calculate the total size of the cache
+        directory, respecting path exclusions defined in settings.
 
         Returns:
-            int: Size in bytes
+            int: Total size of cache directory in bytes
 
         Raises:
             RuntimeError: If size calculation fails
         """
         try:
-            cache_path = Path(self._settings.filesystem.cache_path)
-            if not await aiofiles.os.path.exists(str(cache_path)):
-                raise RuntimeError(f"Cache path does not exist: {cache_path}")
-            return await self._scanner.get_size(cache_path)
-        except Exception as err:
-            logger.error("Cache size error", error=str(err))
-            raise RuntimeError("Cache size calculation failed") from err
+            return await self._scanner.get_size(
+                Path(self._settings.filesystem.cache_path)
+            )
+        except OSError as err:
+            logger.error(
+                "Cache size calculation failed",
+                error=str(err)
+            )
+            raise RuntimeError("Failed to calculate cache size") from err
 
     async def _monitoring_loop(self) -> None:
-        """Main monitoring loop."""
-        try:
-            while not self._stopping:
-                try:
-                    await self._update_monitoring()
-                    await asyncio.sleep(self._settings.monitoring.polling_interval)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as err:
-                    logger.error("Monitoring loop error", error=str(err))
-                    await asyncio.sleep(5)  # Brief delay before retry
+        """Main monitoring loop.
 
-        except asyncio.CancelledError:
-            logger.info("Monitoring loop cancelled")
-            raise
+        Runs the monitoring update cycle at the configured interval. The loop
+        continues until the stopping flag is set or an unrecoverable error occurs.
 
-    async def _version_check_loop(self) -> None:
-        """Periodic version check loop."""
+        The loop performs the following steps:
+        1. Update monitoring state and statistics
+        2. Sleep for the configured interval
+        3. Check for stopping condition
+        """
+        self._stats.start_time = datetime.now()
+        logger.info("Monitoring loop started")
+
         while not self._stopping:
             try:
-                update_available, latest_version = await version_checker.check_for_updates()
-                if update_available:
-                    logger.info(
-                        "Update available",
-                        current=str(version_checker.current_version),
-                        latest=latest_version
-                    )
-                    await self._notify_event(Events.MonitorEvent.UPDATE_AVAILABLE)
+                await self._update_monitoring()
+                await asyncio.sleep(self._settings.monitoring.update_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as err:
+                logger.error("Monitoring loop error", error=str(err))
+                if self._stats.error_count >= self._settings.monitoring.max_errors:
+                    logger.error("Maximum error count reached, stopping monitor")
+                    break
+                await asyncio.sleep(1)
+
+        logger.info("Monitoring loop stopped")
+
+    async def _version_check_loop(self) -> None:
+        """Periodic version check loop.
+
+        Checks for new versions of the application at the configured interval.
+        If a new version is found, emits an update available event.
+
+        The loop continues until the stopping flag is set or an error occurs.
+        Version check failures are logged but don't stop the loop.
+        """
+        logger.info("Version check loop started")
+
+        while not self._stopping:
+            try:
+                current = await version_checker.get_current_version()
+                latest = await version_checker.get_latest_version()
+
+                if latest > current:
+                    await self._notify_event(Events.UpdateAvailable(latest))
+
+                await asyncio.sleep(self._settings.application.version_check_interval)
+            except asyncio.CancelledError:
+                break
             except Exception as err:
                 logger.error("Version check error", error=str(err))
+                await asyncio.sleep(60)
 
-            await asyncio.sleep(3600)  # Check once per hour
+        logger.info("Version check loop stopped")
 
     @property
     def state(self) -> States.MonitorState:
-        """Get current monitor state."""
+        """Get the current state of the monitoring system.
+
+        Returns:
+            States.MonitorState: Current monitor state
+        """
         return self._state
 
     @property
     def stats(self) -> MonitorStats:
-        """Get current monitoring statistics."""
+        """Get the current monitoring statistics.
+
+        Returns:
+            MonitorStats: Current monitoring statistics and state
+        """
         return self._stats

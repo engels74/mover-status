@@ -2,15 +2,37 @@
 
 """
 Process management utilities for monitoring the Unraid Mover process.
-Provides process state tracking and resource monitoring without control capabilities.
+This module implements process state tracking and resource monitoring capabilities
+for the Unraid Mover process without direct control functionality.
+
+Components:
+- ProcessState: Enumeration of possible process states
+- ProcessStats: Data structure for process resource usage statistics
+- ProcessManager: Main coordinator for process monitoring and statistics
+
+Features:
+- Asynchronous process monitoring with configurable check intervals
+- Detailed resource usage statistics (CPU, memory, I/O, threads)
+- Thread-safe process state tracking
+- Automatic process discovery and reconnection
+- Error handling for common process monitoring issues
 
 Example:
+    >>> from core.process import ProcessManager
+    >>> from config.settings import Settings
+    >>>
+    >>> settings = Settings.from_file("config.yaml")
     >>> manager = ProcessManager(settings)
+    >>>
     >>> async with manager:
+    ...     # Check if process is running
     ...     is_running = await manager.is_running()
     ...     if is_running:
+    ...         # Get resource usage statistics
     ...         stats = manager.last_stats
     ...         print(f"CPU Usage: {stats.total_cpu_percent}%")
+    ...         print(f"Memory Usage: {stats.total_memory_percent}%")
+    ...         print(f"IO Operations: {stats.io_read_count + stats.io_write_count}")
 """
 
 import asyncio
@@ -28,7 +50,18 @@ from config.settings import Settings
 logger = get_logger(__name__)
 
 class ProcessState(StrEnum):
-    """Possible states of the mover process."""
+    """Process state enumeration for the mover process.
+
+    Defines the possible states that the mover process can be in at any given time.
+    Used for tracking process lifecycle and health monitoring.
+
+    States:
+        UNKNOWN: Initial state or when process state cannot be determined
+        RUNNING: Process is currently active and executing
+        STOPPED: Process has terminated normally
+        ERROR: Process encountered an error condition
+        ZOMBIE: Process is in zombie/defunct state (terminated but not cleaned up)
+    """
     UNKNOWN = "unknown"    # Initial state
     RUNNING = "running"    # Process is active
     STOPPED = "stopped"    # Process has stopped
@@ -37,7 +70,26 @@ class ProcessState(StrEnum):
 
 @dataclass(frozen=True)
 class ProcessStats:
-    """Process resource usage statistics."""
+    """Process resource usage statistics data structure.
+
+    Collects and stores various metrics about process resource utilization,
+    including CPU usage, memory consumption, I/O operations, and thread statistics.
+    This class is immutable (frozen) to ensure thread safety.
+
+    Attributes:
+        total_cpu_percent (float): CPU usage percentage across all cores
+        total_memory_percent (float): Memory usage as percentage of system memory
+        total_memory_bytes (int): Actual memory usage in bytes (RSS)
+        io_read_bytes (int): Total bytes read from disk
+        io_write_bytes (int): Total bytes written to disk
+        io_read_count (int): Number of read operations performed
+        io_write_count (int): Number of write operations performed
+        num_threads (int): Current number of threads in the process
+        num_fds (int): Number of open file descriptors
+        num_handles (int): Number of open handles (Windows-specific)
+        num_ctx_switches (int): Total number of context switches
+        process_state (str): Current process state string
+    """
     total_cpu_percent: float = 0.0
     total_memory_percent: float = 0.0
     total_memory_bytes: int = 0
@@ -64,9 +116,38 @@ class ProcessAccessError(ProcessError):
     pass
 
 class ProcessManager:
-    """
-    Monitors the Unraid Mover process and related child processes.
-    Provides status information and resource usage statistics.
+    """Process monitoring and statistics collection system.
+
+    This class provides the core functionality for monitoring the Unraid Mover process
+    and collecting resource usage statistics. It implements an asynchronous monitoring
+    system with automatic process discovery and reconnection capabilities.
+
+    Features:
+    - Asynchronous process state monitoring
+    - Resource usage statistics collection
+    - Thread-safe operations with asyncio locks
+    - Automatic process rediscovery on failures
+    - Configurable check intervals
+    - Error handling and logging
+
+    The manager operates in a non-intrusive manner, only observing the process
+    without attempting to control or modify its behavior. This ensures safe
+    operation alongside the Unraid system.
+
+    Attributes:
+        last_stats (property): Most recently collected process statistics
+        _process (Optional[psutil.Process]): Current process reference
+        _last_stats (Optional[ProcessStats]): Cached process statistics
+        _last_check (Optional[datetime]): Timestamp of last process check
+        _lock (asyncio.Lock): Thread safety lock
+
+    Example:
+        >>> async with ProcessManager(settings) as manager:
+        ...     # Check process state
+        ...     if await manager.is_running():
+        ...         # Access latest statistics
+        ...         stats = manager.last_stats
+        ...         print(f"Memory Usage: {stats.total_memory_percent:.1f}%")
     """
 
     def __init__(self, settings: Settings):

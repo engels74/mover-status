@@ -4,7 +4,10 @@
 
 """
 MoverStatus application entry point.
-Handles command-line arguments, configuration, logging setup, and main execution loop.
+
+This module serves as the main entry point for the MoverStatus application.
+It handles command-line argument parsing, configuration loading, logging setup,
+and the main monitoring execution loop.
 
 Example:
     $ python -m mover_status --config config.yml
@@ -137,7 +140,14 @@ def setup_logging(debug: bool = False, log_file: Optional[Path] = None) -> None:
     )
 
 async def check_version() -> None:
-    """Check for available updates."""
+    """Check for available updates from the repository.
+
+    This function checks the current version against the latest available version
+    and logs a message if an update is available.
+
+    Raises:
+        Exception: If the version check fails, the error is logged as a warning.
+    """
     try:
         update_available, latest_version = await version_checker.check_for_updates()
         if update_available:
@@ -175,10 +185,16 @@ def handle_signal(monitor: MoverMonitor, loop: asyncio.AbstractEventLoop) -> Non
         )
 
 async def run_monitor(settings: Settings) -> None:
-    """Run the main monitoring loop.
+    """Run the main monitoring loop with signal handling.
+
+    This function initializes and runs the mover monitor, setting up signal handlers
+    for graceful shutdown. It runs indefinitely until interrupted or an error occurs.
 
     Args:
-        settings: Application settings
+        settings: Application settings including monitoring and notification configuration.
+
+    Raises:
+        Exception: If a monitor error occurs, it's logged and the application exits.
     """
     monitor = MoverMonitor(settings)
 
@@ -238,7 +254,21 @@ async def test_notifications(settings: Settings) -> None:
         await monitor.stop()
 
 def main() -> NoReturn:
-    """Application entry point."""
+    """Application entry point and main execution flow.
+
+    This function handles the main execution flow including:
+    - Command-line argument parsing
+    - Configuration loading from YAML (if specified)
+    - Logging setup
+    - Version checking
+    - Monitor initialization and execution
+
+    The function never returns normally, instead exiting with an appropriate
+    status code based on execution success or failure.
+
+    Raises:
+        SystemExit: With status code 0 for normal exit, 1 for errors.
+    """
     args = parse_args()
 
     # Show version and exit if requested

@@ -1,14 +1,23 @@
 # config/providers/telegram/schemas.py
 
 """
-Validation schemas for Telegram bot configuration.
-Provides Pydantic models for configuration validation and type safety.
+Validation schemas for Telegram bot configuration and message formatting.
+This module provides Pydantic models for validating and type-checking Telegram-specific
+configuration, including bot settings, message entities, and inline keyboards.
+
+Key components:
+- BotConfigSchema: Core bot configuration and API settings
+- MessageEntitySchema: Text formatting and entity validation
+- InlineKeyboardSchema: Interactive button configuration
+- Message content validation utilities
 
 Example:
     >>> from config.providers.telegram.schemas import BotConfigSchema
     >>> config = BotConfigSchema(
     ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-    ...     chat_id="-1001234567890"
+    ...     chat_id="-1001234567890",
+    ...     parse_mode="HTML",
+    ...     rate_limit=20
     ... )
 """
 
@@ -32,7 +41,27 @@ from shared.providers.telegram import (
 
 
 class MessageEntitySchema(BaseModel):
-    """Schema for Telegram message entity validation."""
+    """Schema for validating Telegram message formatting entities.
+
+    This model validates special text entities like bold, italic, links, and code blocks
+    according to Telegram Bot API specifications. It ensures proper UTF-16 offsets and
+    required fields for specific entity types.
+
+    Attributes:
+        type (str): Entity type (bold, italic, code, text_link, etc.)
+        offset (int): Starting position in UTF-16 code units
+        length (int): Length of entity in UTF-16 code units
+        url (Optional[HttpUrl]): URL for text_link entities
+        language (Optional[str]): Programming language for code blocks
+
+    Example:
+        >>> entity = MessageEntitySchema(
+        ...     type="text_link",
+        ...     offset=0,
+        ...     length=10,
+        ...     url="https://example.com"
+        ... )
+    """
     type: str = Field(
         ...,  # Required field
         description="Type of the entity",
@@ -77,7 +106,22 @@ class MessageEntitySchema(BaseModel):
 
 
 class InlineKeyboardButtonSchema(BaseModel):
-    """Schema for Telegram inline keyboard button validation."""
+    """Schema for validating Telegram inline keyboard buttons.
+
+    This model ensures that buttons have valid text and exactly one action type
+    (URL or callback data) as required by the Telegram Bot API.
+
+    Attributes:
+        text (str): Button label text
+        url (Optional[HttpUrl]): URL to open when clicked
+        callback_data (Optional[str]): Data for callback query
+
+    Example:
+        >>> button = InlineKeyboardButtonSchema(
+        ...     text="Visit Website",
+        ...     url="https://example.com"
+        ... )
+    """
     text: str = Field(
         ...,
         min_length=1,
@@ -110,7 +154,22 @@ class InlineKeyboardButtonSchema(BaseModel):
 
 
 class InlineKeyboardMarkupSchema(BaseModel):
-    """Schema for Telegram inline keyboard markup validation."""
+    """Schema for validating Telegram inline keyboard layouts.
+
+    This model validates the structure of inline keyboards, ensuring they meet
+    Telegram's size limits and button arrangement requirements.
+
+    Attributes:
+        inline_keyboard (List[List[InlineKeyboardButtonSchema]]): Matrix of keyboard buttons
+
+    Example:
+        >>> keyboard = InlineKeyboardMarkupSchema(
+        ...     inline_keyboard=[
+        ...         [{"text": "Row 1 Button", "url": "https://example.com"}],
+        ...         [{"text": "Row 2 Button", "callback_data": "action_1"}]
+        ...     ]
+        ... )
+    """
     inline_keyboard: List[List[InlineKeyboardButtonSchema]] = Field(
         ...,
         max_length=MessageLimit.KEYBOARD_ROWS,
@@ -129,15 +188,43 @@ class InlineKeyboardMarkupSchema(BaseModel):
 
 
 class BotConfigSchema(ProviderConfigModel):
-    """Schema for Telegram bot configuration validation."""
+    """Schema for comprehensive Telegram bot configuration validation.
+
+    This model validates all aspects of a Telegram bot's configuration, including
+    authentication, chat targeting, message formatting, rate limiting, and retry policies.
+    It extends the base provider configuration with Telegram-specific requirements.
+
+    Attributes:
+        bot_token (str): Bot API authentication token
+        chat_id (Union[int, str]): Target chat identifier
+        parse_mode (ParseMode): Message formatting mode
+        disable_notification (bool): Silent message delivery option
+        protect_content (bool): Content forwarding protection
+        message_thread_id (Optional[int]): Forum topic thread ID
+        api_base_url (HttpUrl): Bot API endpoint URL
+        rate_limit (int): Messages per minute limit
+        rate_period (int): Rate limit window in seconds
+        retry_attempts (int): Maximum API retry attempts
+        retry_delay (int): Delay between retries
+        timeout (float): API request timeout
+
+    Example:
+        >>> config = BotConfigSchema(
+        ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        ...     chat_id="@channelname",
+        ...     parse_mode="HTML",
+        ...     rate_limit=20,
+        ...     timeout=30.0
+        ... )
+    """
     bot_token: str = Field(
-        ...,
+        ...,  # Required field
         description="Telegram bot API token",
         pattern=r"^\d+:[A-Za-z0-9_-]{35,}$",
         examples=["123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"]
     )
     chat_id: Union[int, str] = Field(
-        ...,
+        ...,  # Required field
         description="Target chat ID or @username",
         examples=["-1001234567890", "@channelname"]
     )

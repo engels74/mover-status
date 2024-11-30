@@ -2,8 +2,16 @@
 
 """
 Configuration management using Pydantic.
-Handles environment variables, YAML files, and provides type-safe access to settings.
-Designed to work seamlessly with Docker environment variables and configuration files.
+
+This module provides a type-safe configuration system using Pydantic models.
+It supports loading settings from environment variables and YAML files,
+with validation and automatic type conversion.
+
+The configuration is structured into logical groups:
+- FileSystem: Cache directory and exclusion settings
+- Logging: Log levels and output configuration
+- Monitoring: Polling intervals and notification settings
+- Providers: Discord and Telegram notification settings
 
 Example:
     >>> settings = Settings()  # Load from environment
@@ -31,7 +39,18 @@ from config.providers.telegram.settings import TelegramSettings
 
 
 class FileSystemSettings(BaseModel):
-    """File system related settings."""
+    """File system monitoring configuration.
+
+    This model defines settings for filesystem monitoring, including
+    the cache directory to watch and paths to exclude from monitoring.
+
+    Attributes:
+        cache_path: Directory path to monitor for mover activity
+        excluded_paths: Set of directory paths to exclude from monitoring
+
+    Raises:
+        ValueError: If paths don't exist or aren't directories
+    """
     cache_path: Path = Field(
         default=Paths.DEFAULT_CACHE,
         description="Path to the cache directory to monitor"
@@ -90,7 +109,17 @@ class LoggingSettings(BaseModel):
 
 
 class MonitoringSettings(BaseModel):
-    """Monitoring behavior settings."""
+    """Monitoring behavior configuration.
+
+    This model defines settings that control how the monitoring process works,
+    including polling frequency and notification thresholds.
+
+    Attributes:
+        polling_interval: Time between monitoring checks (0.1-60.0 seconds)
+        notification_increment: Progress percentage between notifications
+        message_template: Template string for notification messages
+        message_priority: Priority level for notifications
+    """
     polling_interval: float = Field(
         default=Monitoring.MONITORING_INTERVAL,
         ge=0.1,
@@ -115,9 +144,25 @@ class MonitoringSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    """
-    Main application settings.
-    Combines all setting categories and provider configurations.
+    """Main application settings.
+
+    This is the root settings model that combines all configuration categories
+    and provider settings. It supports loading from environment variables with
+    the prefix 'MOVER_' and nested delimiter '__'.
+
+    Attributes:
+        filesystem: File system monitoring settings
+        logging: Logging configuration
+        monitoring: Monitor behavior settings
+        discord: Discord notification settings
+        telegram: Telegram notification settings
+        dry_run: If True, skip sending actual notifications
+        check_version: If True, check for updates on startup
+
+    Example:
+        >>> settings = Settings()  # Load from environment
+        >>> if settings.discord.enabled:
+        ...     print(f"Discord webhook: {settings.discord.webhook_url}")
     """
     # Core settings groups
     filesystem: FileSystemSettings = Field(default_factory=FileSystemSettings)

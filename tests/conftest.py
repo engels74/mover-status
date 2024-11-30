@@ -24,7 +24,6 @@ from typing import (
     List,
 )
 
-
 import aiohttp
 import pytest
 import structlog
@@ -32,7 +31,6 @@ from _pytest.logging import LogCaptureFixture
 from aioresponses import aioresponses
 from pydantic import BaseModel
 from pytest_mock import MockerFixture, MockFixture
-
 
 from config.constants import ProcessState
 from config.settings import Settings

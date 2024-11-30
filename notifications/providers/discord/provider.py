@@ -1,13 +1,64 @@
-"""Discord webhook notification provider.
+# notifications/providers/discord/provider.py
 
-Provides Discord webhook integration with support for:
-- Customizable embeds for different message types
-- Rate limiting and retry logic
-- Thread support
-- Optional color coding for embeds and progress bars (configurable via settings)
+"""Discord webhook notification provider implementation.
 
-Color support can be disabled globally through the base provider settings
-or overridden per-embed through the color parameter.
+This module implements a Discord webhook-based notification provider that sends
+messages, progress updates, and error notifications to Discord channels.
+
+Configuration:
+    The provider requires a Discord webhook URL and supports optional settings:
+    - username: Custom webhook username
+    - avatar_url: Custom webhook avatar URL
+    - thread_name: Target thread for messages
+    - color_enabled: Enable/disable message colors
+    - embed_color: Default embed color
+    - timeout: Request timeout in seconds
+    - rate_limit: Maximum requests per period
+    - rate_period: Rate limit period in seconds
+    - retry_attempts: Maximum retry attempts
+    - retry_delay: Initial retry delay in seconds
+
+Key Features:
+    - Message types: text, embeds, progress bars, error reports
+    - Rate limiting and retry handling
+    - Thread-safe async operations
+    - Configurable timeouts and retries
+    - Custom webhook appearance
+
+Example:
+    >>> from notifications.providers.discord import DiscordProvider
+    >>>
+    >>> # Basic configuration
+    >>> config = {
+    ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
+    ...     "username": "Status Bot",
+    ...     "timeout": 30.0,
+    ...     "color_enabled": True
+    ... }
+    >>>
+    >>> async with DiscordProvider(config) as provider:
+    ...     # Send basic notification
+    ...     await provider.notify("Transfer complete!")
+    ...
+    ...     # Send progress update
+    ...     await provider.notify_progress(
+    ...         percent=50,
+    ...         remaining="500MB",
+    ...         elapsed="1m 30s",
+    ...         etc="3m 0s"
+    ...     )
+    ...
+    ...     # Send error notification
+    ...     await provider.notify_error(
+    ...         "Connection failed",
+    ...         error_code=404,
+    ...         error_details={"host": "example.com"}
+    ...     )
+
+Note:
+    This provider implements Discord's webhook rate limits and backoff
+    requirements. For details, see:
+    https://discord.com/developers/docs/topics/rate-limits
 """
 
 import asyncio
@@ -53,7 +104,29 @@ RETRY_LIMIT: Final[int] = 3
 BACKOFF_BASE: Final[float] = 2.0
 
 class DiscordConfig(TypedDict, total=False):
-    """Discord provider configuration type."""
+    """Discord webhook provider configuration type definition.
+
+    This TypedDict defines the structure and types for Discord provider configuration,
+    supporting both required and optional parameters for webhook customization.
+
+    Required Parameters:
+        webhook_url (str): Discord webhook URL for message delivery
+            Format: https://discord.com/api/webhooks/{webhook.id}/{webhook.token}
+
+    Optional Parameters:
+        username (Optional[str]): Custom username for the webhook
+        avatar_url (Optional[str]): Custom avatar URL for the webhook
+        thread_name (Optional[str]): Name of thread to create/use
+        color_enabled (Optional[bool]): Enable/disable embed colors
+
+    Example:
+        >>> config: DiscordConfig = {
+        ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
+        ...     "username": "Status Bot",
+        ...     "color_enabled": True
+        ... }
+        >>> provider = DiscordProvider(config)
+    """
     webhook_url: str
     username: Optional[str]
     avatar_url: Optional[str]
@@ -61,20 +134,121 @@ class DiscordConfig(TypedDict, total=False):
     color_enabled: Optional[bool]
 
 class DiscordProvider(NotificationProvider):
-    """Discord webhook notification provider implementation."""
+    """Discord webhook notification provider with advanced message formatting and delivery.
+
+    This provider implements Discord webhook integration with support for rich message
+    formatting, rate limiting, and error handling. It extends the base NotificationProvider
+    with Discord-specific functionality and robust error recovery mechanisms.
+
+    Features:
+        - Rich Message Formatting:
+            * Customizable embeds with dynamic colors
+            * Progress bar visualization
+            * Support for system, error, warning, and debug messages
+            * Thread support for organized discussions
+
+        - Reliability & Performance:
+            * Automatic rate limit handling
+            * Configurable retry logic
+            * Connection pooling
+            * Thread-safe operations
+
+        - Monitoring & Error Handling:
+            * Comprehensive error tracking
+            * Rate limit monitoring
+            * Message delivery statistics
+            * Structured logging
+
+    Configuration:
+        The provider is configured through a DiscordConfig dictionary containing
+        webhook settings and customization options. See DiscordConfig for details.
+
+    Rate Limiting:
+        - Implements Discord's rate limit guidelines
+        - Automatic backoff on rate limit errors
+        - Configurable rate limit parameters
+        - State tracking for rate limit headers
+
+    Thread Safety:
+        All operations are protected by appropriate locks:
+        - _session_lock: Protects session lifecycle
+        - _state_lock: Protects provider state
+        - _message_lock: Ensures sequential message sending
+        - _rate_limit_lock: Manages rate limit state
+
+    Example:
+        >>> config = {
+        ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
+        ...     "username": "Status Bot",
+        ...     "rate_limit": 30,  # messages per minute
+        ...     "retry_attempts": 3
+        ... }
+        >>>
+        >>> async with DiscordProvider(config) as provider:
+        ...     # Send system notification
+        ...     await provider.notify(
+        ...         "Backup started",
+        ...         type=MessageType.SYSTEM,
+        ...         level=NotificationLevel.INFO
+        ...     )
+        ...
+        ...     # Send progress update
+        ...     await provider.notify(
+        ...         "Processing files",
+        ...         type=MessageType.PROGRESS,
+        ...         progress=50,
+        ...         total=100
+        ...     )
+        ...
+        ...     # Send completion notification
+        ...     await provider.notify(
+        ...         "Backup completed",
+        ...         type=MessageType.COMPLETION,
+        ...         level=NotificationLevel.SUCCESS
+        ...     )
+
+    Note:
+        - Always use the provider as an async context manager for proper resource cleanup
+        - Configure appropriate timeouts for your use case
+        - Monitor rate limit state for optimal performance
+        - Use structured error handling for production deployments
+    """
 
     ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
     ALLOWED_ASSET_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
 
     def __init__(self, config: DiscordConfig):
-        """Initialize Discord provider.
+        """Initialize a new Discord webhook provider instance.
+
+        Creates a new provider instance with the specified configuration, setting up
+        connection management, rate limiting, and thread safety mechanisms.
 
         Args:
-            config: Provider configuration containing webhook settings
+            config (DiscordConfig): Provider configuration containing:
+                - webhook_url: Discord webhook URL
+                - username: Optional custom username
+                - avatar_url: Optional custom avatar URL
+                - thread_name: Optional thread to post in
+                - color_enabled: Optional color support flag
+                - embed_color: Optional default embed color
+                - timeout: Optional request timeout (default: 10.0s)
+                - rate_limit: Optional rate limit (requests/period)
+                - rate_period: Optional rate limit period in seconds
+                - retry_attempts: Optional max retry attempts
+                - retry_delay: Optional initial retry delay
 
         Raises:
-            ValueError: If webhook configuration is invalid
+            ValueError: If configuration validation fails
             DiscordWebhookError: If webhook URL is invalid
+
+        Example:
+            >>> config = {
+            ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
+            ...     "username": "Status Bot",
+            ...     "timeout": 30.0,
+            ...     "rate_limit": 30
+            ... }
+            >>> provider = DiscordProvider(config)
         """
         # Validate configuration using dedicated validator
         validator = DiscordValidator()
@@ -129,16 +303,54 @@ class DiscordProvider(NotificationProvider):
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def __aenter__(self) -> "DiscordProvider":
-        """Async context manager entry."""
+        """Enter the async context manager, initializing resources.
+
+        This method is called when entering an async context manager block.
+        It ensures that the provider is properly initialized and connected.
+
+        Returns:
+            DiscordProvider: The initialized provider instance
+
+        Example:
+            >>> async with DiscordProvider(config) as provider:
+            ...     await provider.notify("Hello, Discord!")
+        """
         await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Async context manager exit."""
+        """Exit the async context manager, cleaning up resources.
+
+        This method is called when exiting an async context manager block.
+        It ensures proper cleanup of resources, including closing connections.
+
+        Args:
+            exc_type: Type of exception that was raised, if any
+            exc_val: Exception instance that was raised, if any
+            exc_tb: Traceback of exception that was raised, if any
+
+        Example:
+            >>> async with DiscordProvider(config) as provider:
+            ...     await provider.notify("Hello!")
+            ... # Session is automatically cleaned up here
+        """
         await self.disconnect()
 
     async def connect(self) -> None:
-        """Initialize aiohttp session for webhook requests."""
+        """Initialize the HTTP session for webhook requests.
+
+        Creates a new aiohttp ClientSession if one doesn't exist or if the
+        existing session is closed. The session is configured with the
+        provider's timeout settings.
+
+        Thread Safety:
+            This method is protected by _session_lock for thread safety.
+
+        Example:
+            >>> provider = DiscordProvider(config)
+            >>> await provider.connect()
+            >>> # Session is now ready for use
+        """
         async with self._session_lock:
             if not self._session or self._session.closed:
                 self._session = aiohttp.ClientSession(
@@ -146,7 +358,18 @@ class DiscordProvider(NotificationProvider):
                 )
 
     async def disconnect(self) -> None:
-        """Close aiohttp session."""
+        """Close the HTTP session and clean up resources.
+
+        Closes the aiohttp ClientSession if it exists and is open.
+        Also resets rate limiting and backoff state.
+
+        Thread Safety:
+            This method is protected by _session_lock for thread safety.
+
+        Example:
+            >>> await provider.disconnect()
+            >>> # All resources are now cleaned up
+        """
         async with self._session_lock:
             if self._session and not self._session.closed:
                 try:
@@ -157,10 +380,32 @@ class DiscordProvider(NotificationProvider):
                     self._current_backoff = self._retry_delay
 
     async def _update_rate_limit_state(self, response: aiohttp.ClientResponse) -> None:
-        """Update rate limit state from response headers.
+        """Update the provider's rate limit state based on response headers.
+
+        Processes Discord's rate limit headers to update the provider's internal
+        rate limit state, including remaining requests and reset timing.
 
         Args:
-            response: API response with rate limit headers
+            response (aiohttp.ClientResponse): Response containing rate limit headers:
+                - X-RateLimit-Remaining: Number of remaining requests
+                - X-RateLimit-Reset-After: Seconds until limit resets
+
+        Thread Safety:
+            This method is protected by _rate_limit_lock for thread safety.
+
+        Note:
+            Discord's rate limit headers:
+            - X-RateLimit-Limit: Total requests allowed
+            - X-RateLimit-Remaining: Requests remaining
+            - X-RateLimit-Reset: Epoch time when limit resets
+            - X-RateLimit-Reset-After: Seconds until reset
+            - X-RateLimit-Bucket: Rate limit bucket ID
+
+        Example:
+            >>> async with session.post(webhook_url, json=data) as response:
+            ...     await provider._update_rate_limit_state(response)
+            ...     if response.status == 429:  # Rate limited
+            ...         await asyncio.sleep(float(response.headers["Retry-After"]))
         """
         async with self._rate_limit_lock:
             # Check rate limit headers
@@ -180,14 +425,33 @@ class DiscordProvider(NotificationProvider):
         response: aiohttp.ClientResponse,
         data: Dict[str, Any]
     ) -> None:
-        """Handle webhook response and update state.
+        """Handle the webhook response and manage error states.
+
+        Processes the webhook response, handling various status codes and updating
+        the provider's state accordingly. Handles rate limits and other errors.
 
         Args:
-            response: Response from webhook request
-            data: Original webhook payload
+            response (aiohttp.ClientResponse): Response from the webhook request
+            data (Dict[str, Any]): Original webhook payload that was sent
 
         Raises:
-            DiscordWebhookError: If request fails
+            DiscordWebhookError: If the request fails due to:
+                - Rate limiting (429)
+                - Invalid request (4xx)
+                - Server error (5xx)
+
+        Error Handling:
+            - 429: Rate limit exceeded, includes retry timing
+            - 400-499: Client errors (invalid payload, permissions, etc.)
+            - 500-599: Server errors
+
+        Example:
+            >>> async with session.post(webhook_url, json=data) as response:
+            ...     try:
+            ...         await provider._handle_send_webhook_response(response, data)
+            ...     except DiscordWebhookError as e:
+            ...         if e.code == 429:  # Rate limited
+            ...             await asyncio.sleep(e.retry_after)
         """
         if response.status == 429:
             # Rate limited
@@ -225,14 +489,18 @@ class DiscordProvider(NotificationProvider):
         """Send webhook request with retries.
 
         Args:
-            data: Webhook payload to send
-            max_retries: Maximum number of retries
+            data (Dict[str, Any]): Webhook payload to send
+            max_retries (int): Maximum number of retries (default: 3)
 
         Returns:
             bool: True if request succeeded
 
         Raises:
             DiscordWebhookError: If request fails after retries
+
+        Example:
+            >>> data = {"content": "Hello, Discord!"}
+            >>> await provider.send_webhook(data)
         """
         attempt = 0
         last_error = None
@@ -307,10 +575,10 @@ class DiscordProvider(NotificationProvider):
         """Send notification via Discord webhook.
 
         Args:
-            message: Message content
-            level: Notification level
-            priority: Message priority
-            message_type: Type of message
+            message (str): Message content
+            level (NotificationLevel): Notification level (default: INFO)
+            priority (MessagePriority): Message priority (default: NORMAL)
+            message_type (MessageType): Type of message (default: CUSTOM)
             **kwargs: Additional message parameters
 
         Returns:
@@ -318,6 +586,9 @@ class DiscordProvider(NotificationProvider):
 
         Raises:
             DiscordError: If sending fails
+
+        Example:
+            >>> await provider.send_notification("Hello, Discord!")
         """
         async with self._message_lock:
             try:
@@ -349,7 +620,7 @@ class DiscordProvider(NotificationProvider):
         """Calculate exponential backoff delay.
 
         Args:
-            attempt: Current attempt number
+            attempt (int): Current attempt number
 
         Returns:
             float: Delay in seconds
@@ -369,17 +640,20 @@ class DiscordProvider(NotificationProvider):
         """Send progress update notification.
 
         Args:
-            percent: Progress percentage
-            remaining: Remaining data amount
-            elapsed: Elapsed time
-            etc: Estimated time of completion
-            description: Optional description
+            percent (float): Progress percentage
+            remaining (str): Remaining data amount
+            elapsed (str): Elapsed time
+            etc (str): Estimated time of completion
+            description (Optional[str]): Optional description
 
         Returns:
             bool: True if notification was sent successfully
 
         Raises:
             DiscordWebhookError: If notification fails
+
+        Example:
+            >>> await provider.notify_progress(50, "10MB", "10s", "10s")
         """
         try:
             embed = create_progress_embed(
@@ -414,13 +688,16 @@ class DiscordProvider(NotificationProvider):
         """Send completion notification.
 
         Args:
-            stats: Optional transfer statistics to include
+            stats (Optional[Dict[str, Union[str, int, float]]]): Optional transfer statistics to include
 
         Returns:
             bool: True if notification was sent successfully
 
         Raises:
             DiscordWebhookError: If notification fails
+
+        Example:
+            >>> await provider.notify_completion({"files": 10, "size": "10MB"})
         """
         try:
             embed = create_completion_embed(
@@ -453,15 +730,18 @@ class DiscordProvider(NotificationProvider):
         """Send error notification.
 
         Args:
-            error_message: Error description
-            error_code: Optional error code
-            error_details: Optional error details
+            error_message (str): Error description
+            error_code (Optional[int]): Optional error code
+            error_details (Optional[Dict[str, str]]): Optional error details
 
         Returns:
             bool: True if notification was sent successfully
 
         Raises:
             DiscordWebhookError: If notification fails
+
+        Example:
+            >>> await provider.notify_error("Connection failed", 404, {"host": "example.com"})
         """
         try:
             embed = create_error_embed(
@@ -498,13 +778,16 @@ class DiscordProvider(NotificationProvider):
         """Create appropriate embed based on message type.
 
         Args:
-            message: Message content
-            message_type: Type of message
-            level: Notification level
+            message (str): Message content
+            message_type (MessageType): Type of message
+            level (NotificationLevel): Notification level
             **kwargs: Additional message-specific arguments
 
         Returns:
             Embed: Formatted Discord embed
+
+        Example:
+            >>> embed = provider._create_typed_embed("Hello!", MessageType.CUSTOM, NotificationLevel.INFO)
         """
         if message_type == MessageType.PROGRESS:
             return create_progress_embed(
@@ -576,10 +859,13 @@ class DiscordProvider(NotificationProvider):
         """Get Discord color based on notification level.
 
         Args:
-            level: Notification level
+            level (NotificationLevel): Notification level
 
         Returns:
             Optional[int]: Discord color code, or None if colors are disabled
+
+        Example:
+            >>> color = provider._get_level_color(NotificationLevel.INFO)
         """
         if not self._color_enabled:
             return None
@@ -600,11 +886,14 @@ class DiscordProvider(NotificationProvider):
         """Handle request errors and create appropriate DiscordWebhookError.
 
         Args:
-            err: Original exception
-            method: API method name
+            err (Exception): Original exception
+            method (str): API method name
 
         Returns:
             DiscordWebhookError: Wrapped error with context
+
+        Example:
+            >>> error = provider._handle_request_error(err, "send_webhook")
         """
         if isinstance(err, asyncio.TimeoutError):
             error = DiscordWebhookError(
@@ -629,7 +918,10 @@ class DiscordProvider(NotificationProvider):
         """Update provider state after an error.
 
         Args:
-            error: The error that occurred
+            error (DiscordWebhookError): The error that occurred
+
+        Example:
+            >>> await provider._update_error_state(error)
         """
         async with self._state_lock:
             self._consecutive_errors += 1
@@ -648,11 +940,14 @@ class DiscordProvider(NotificationProvider):
         """Handle Discord rate limit response.
 
         Args:
-            response: API response
-            data: Response data dictionary
+            response (aiohttp.ClientResponse): API response
+            data (Dict[str, Any]): Response data dictionary
 
         Returns:
             Optional[int]: Retry delay in seconds if rate limited
+
+        Example:
+            >>> delay = await provider._handle_rate_limit(response, data)
         """
         if response.status == 429:  # Rate limited
             retry_after = int(data.get("retry_after", 5))

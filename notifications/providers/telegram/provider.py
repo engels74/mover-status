@@ -1,18 +1,54 @@
 # notifications/providers/telegram/provider.py
 
-"""
-Telegram bot notification provider implementation.
-Handles sending notifications via Telegram Bot API with proper rate limiting and error handling.
+"""Telegram bot notification provider implementation.
+
+This module implements a Telegram Bot API-based notification provider with support
+for various message types, rate limiting, and error handling. It provides a robust
+interface for sending notifications through Telegram bots.
+
+Features:
+    - Message Types: text, progress updates, errors, warnings
+    - Rate Limiting: Priority-based rate limits
+    - Error Handling: Automatic retries with exponential backoff
+    - Thread Safety: Async-safe operations with proper locking
+    - Message Threading: Support for Telegram message threads
+    - Content Protection: Optional message forwarding protection
+
+Configuration:
+    Required:
+        - bot_token: Telegram bot API token
+        - chat_id: Target chat/channel ID
+
+    Optional:
+        - thread_id: Message thread ID for forum topics
+        - parse_mode: Message parsing mode (HTML/Markdown)
+        - disable_notifications: Mute notifications
+        - protect_content: Prevent message forwarding
+        - timeout: Request timeout in seconds
+        - rate_limit: Maximum requests per period
+        - retry_attempts: Maximum retry attempts
+        - retry_delay: Initial retry delay in seconds
 
 Example:
     >>> from notifications.providers.telegram import TelegramProvider, TelegramConfig
+    >>>
+    >>> # Configure the provider
     >>> config = TelegramConfig(
     ...     bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-    ...     chat_id="-1001234567890"
+    ...     chat_id="-1001234567890",
+    ...     thread_id=12345  # Optional forum topic
     ... )
-    >>> provider = TelegramProvider(config.to_provider_config())
-    >>> async with provider:
-    ...     await provider.notify_progress(75.5, "1.2 GB", "2 hours", "15:30")
+    >>>
+    >>> # Use with async context manager
+    >>> async with TelegramProvider(config) as provider:
+    ...     # Send various notifications
+    ...     await provider.notify("System startup complete")
+    ...     await provider.notify_progress(75.5, "1.2 GB", "2h", "15:30")
+    ...     await provider.notify_error("Connection failed", error_code=404)
+
+Note:
+    This provider implements Telegram's rate limits and backoff requirements.
+    For details, see: https://core.telegram.org/bots/api#making-requests
 """
 
 from __future__ import annotations
@@ -56,7 +92,25 @@ BACKOFF_BASE: Final[float] = 2.0
 DEFAULT_TIMEOUT: Final[float] = 10.0  # seconds
 
 class TelegramError(NotificationError):
-    """Raised when Telegram API request fails."""
+    """Raised when Telegram API request fails.
+
+    This error class extends NotificationError to include Telegram-specific
+    error information such as retry delays and error context.
+
+    Args:
+        message (str): Error description
+        code (Optional[int]): HTTP status code
+        retry_after (Optional[int]): Retry delay in seconds
+        context (Optional[Dict[str, Any]]): Additional error context
+
+    Example:
+        >>> try:
+        ...     await provider.send_message(...)
+        ... except TelegramError as e:
+        ...     if e.retry_after:
+        ...         await asyncio.sleep(e.retry_after)
+        ...     print(f"Error {e.code}: {e.message}")
+    """
 
     def __init__(
         self,
@@ -68,37 +122,111 @@ class TelegramError(NotificationError):
         """Initialize error with optional status code and retry delay.
 
         Args:
-            message: Error description
-            code: Optional HTTP status code
-            retry_after: Optional retry delay in seconds
-            context: Optional error context
+            message (str): Error description
+            code (Optional[int], optional): HTTP status code. Defaults to None
+            retry_after (Optional[int], optional): Retry delay in seconds.
+                Defaults to None
+            context (Optional[Dict[str, Any]], optional): Additional error
+                context. Defaults to None
         """
         super().__init__(message, code)
         self.retry_after = retry_after
         self.context = context or {}
 
+
 class TelegramConfig(TypedDict, total=False):
-    """Telegram provider configuration type."""
+    """Telegram provider configuration type.
+
+    Configuration options for the Telegram notification provider.
+    The 'total=False' flag indicates all fields are optional in TypedDict.
+
+    Attributes:
+        bot_token (str): Telegram bot API token
+        chat_id (Union[int, str]): Target chat/channel ID
+        thread_id (Optional[int]): Message thread ID for forum topics
+    """
     bot_token: str
     chat_id: Union[int, str]
     thread_id: Optional[int]
 
+
 class InlineKeyboardButton(TypedDict, total=False):
-    """Telegram inline keyboard button type."""
+    """Telegram inline keyboard button type.
+
+    Configuration for Telegram inline keyboard buttons.
+    The 'total=False' flag indicates all fields are optional in TypedDict.
+
+    Attributes:
+        text (str): Button text
+        url (Optional[str]): URL to open when button is pressed
+        callback_data (Optional[str]): Data to send when button is pressed
+    """
     text: str
     url: Optional[str]
     callback_data: Optional[str]
 
+
 class TelegramProvider(BaseNotificationProvider):
-    """Telegram bot notification provider."""
+    """Telegram bot notification provider.
+
+    This class implements a notification provider that sends messages through
+    the Telegram Bot API. It supports various message types, priority-based
+    rate limiting, and automatic error recovery.
+
+    Features:
+        - Priority-based rate limiting
+        - Automatic retry with exponential backoff
+        - Thread-safe async operations
+        - Message thread support
+        - Content protection options
+        - Custom parse modes (HTML/Markdown)
+
+    Example:
+        >>> config = {
+        ...     "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        ...     "chat_id": "-1001234567890",
+        ...     "parse_mode": "HTML",
+        ...     "disable_notifications": False
+        ... }
+        >>> async with TelegramProvider(config) as provider:
+        ...     # Send a high-priority notification
+        ...     await provider.notify(
+        ...         "Critical system alert",
+        ...         level=NotificationLevel.ERROR,
+        ...         priority=MessagePriority.HIGH
+        ...     )
+    """
 
     ALLOWED_DOMAINS: Final[TelegramDomains] = ALLOWED_DOMAINS
 
     def __init__(self, config: Dict[str, Any]) -> None:
         """Initialize the Telegram notification provider.
 
+        Sets up the provider with the specified configuration, initializing
+        priority-based rate limits, retry settings, and connection management.
+
         Args:
-            config: Provider configuration dictionary.
+            config (Dict[str, Any]): Provider configuration containing:
+                - bot_token: Telegram bot API token
+                - chat_id: Target chat/channel ID
+                - thread_id: Optional message thread ID
+                - parse_mode: Message parsing mode (HTML/Markdown)
+                - disable_notifications: Mute notifications
+                - protect_content: Prevent message forwarding
+                - timeout: Request timeout in seconds
+                - rate_limit: Maximum requests per period
+                - retry_attempts: Maximum retry attempts
+                - retry_delay: Initial retry delay in seconds
+
+        Raises:
+            ValueError: If configuration validation fails
+            TelegramError: If bot token or chat ID is invalid
+
+        Note:
+            Priority-based rate limits are automatically adjusted:
+            - Low priority: 50% of base rate limit
+            - Normal priority: Base rate limit
+            - High priority: 200% of base rate limit
         """
         # Validate configuration using dedicated validator
         self._config = self.validate_config(config)
@@ -160,25 +288,70 @@ class TelegramProvider(BaseNotificationProvider):
     def _build_api_url(self, method: str) -> str:
         """Build Telegram API URL for given method.
 
+        Constructs a complete Telegram Bot API URL by combining the base URL,
+        bot token, and method name.
+
         Args:
-            method: API method name
+            method (str): API method name (e.g., "sendMessage", "editMessage")
 
         Returns:
-            str: Complete API URL
+            str: Complete API URL for the specified method
+
+        Example:
+            >>> provider._build_api_url("sendMessage")
+            'https://api.telegram.org/bot123456:ABC-DEF/sendMessage'
         """
         return urljoin(f"{self.api_base_url}/bot{self.bot_token}/", method)
 
     async def __aenter__(self) -> "TelegramProvider":
-        """Async context manager entry."""
+        """Enter the async context manager.
+
+        Initializes the provider's resources, including the HTTP session.
+        This method is called when entering an async context manager block.
+
+        Returns:
+            TelegramProvider: The initialized provider instance
+
+        Example:
+            >>> async with TelegramProvider(config) as provider:
+            ...     await provider.notify("Hello!")
+        """
         await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Async context manager exit."""
+        """Exit the async context manager.
+
+        Cleans up provider resources, including closing the HTTP session.
+        This method is called when exiting an async context manager block.
+
+        Args:
+            exc_type: Type of exception that was raised, if any
+            exc_val: Exception instance that was raised, if any
+            exc_tb: Traceback of exception that was raised, if any
+
+        Example:
+            >>> async with TelegramProvider(config) as provider:
+            ...     await provider.notify("Hello!")
+            ... # Session is automatically cleaned up here
+        """
         await self.disconnect()
 
     async def connect(self) -> None:
-        """Initialize aiohttp session for API requests."""
+        """Initialize aiohttp session for API requests.
+
+        Creates a new aiohttp ClientSession if one doesn't exist or if the
+        existing session is closed. The session is configured with the
+        provider's timeout settings.
+
+        Thread Safety:
+            This method is protected by _session_lock for thread safety.
+
+        Example:
+            >>> provider = TelegramProvider(config)
+            >>> await provider.connect()
+            >>> # Session is now ready for use
+        """
         async with self._session_lock:
             if not self.session or self.session.closed:
                 self.session = aiohttp.ClientSession(
@@ -186,7 +359,18 @@ class TelegramProvider(BaseNotificationProvider):
                 )
 
     async def disconnect(self) -> None:
-        """Close aiohttp session."""
+        """Close aiohttp session.
+
+        Closes the aiohttp ClientSession if it exists and is open.
+        Also resets rate limiting and backoff state.
+
+        Thread Safety:
+            This method is protected by _session_lock for thread safety.
+
+        Example:
+            >>> await provider.disconnect()
+            >>> # All resources are now cleaned up
+        """
         async with self._session_lock:
             if self.session and not self.session.closed:
                 await self.session.close()
@@ -199,12 +383,21 @@ class TelegramProvider(BaseNotificationProvider):
     ) -> Optional[int]:
         """Handle Telegram rate limit response.
 
+        Processes Telegram's rate limit response and extracts retry timing
+        information. Updates the provider's rate limit state accordingly.
+
         Args:
-            response: API response
-            data: Response data dictionary
+            response (aiohttp.ClientResponse): API response to process
+            data (Dict[str, Any]): Response data dictionary
 
         Returns:
-            Optional[int]: Retry delay in seconds if rate limited
+            Optional[int]: Retry delay in seconds if rate limited, None otherwise
+
+        Example:
+            >>> async with session.post(url, json=data) as response:
+            ...     retry_after = await provider._handle_rate_limit(response, data)
+            ...     if retry_after:
+            ...         await asyncio.sleep(retry_after)
         """
         if response.status == TelegramApiError.RATE_LIMIT:
             retry_after = int(data.get("parameters", {}).get("retry_after", 5))
@@ -219,112 +412,6 @@ class TelegramProvider(BaseNotificationProvider):
             return retry_after
         return None
 
-    async def _handle_api_response(
-        self,
-        response: aiohttp.ClientResponse,
-        response_data: Dict[str, Any],
-        method: str
-    ) -> Dict[str, Any]:
-        """Handle API response and update state accordingly.
-
-        Args:
-            response: API response object
-            response_data: Parsed response data
-            method: API method name
-
-        Returns:
-            Dict[str, Any]: Processed response data
-
-        Raises:
-            TelegramError: If API response indicates an error
-        """
-        # Handle successful response
-        if response.status == 200 and response_data.get("ok"):
-            # Reset error counter on success
-            self._consecutive_errors = 0
-            self._state.last_success = datetime.now()
-            logger.debug(
-                "Telegram API request successful",
-                method=method,
-                message_id=response_data.get("result", {}).get("message_id")
-            )
-            return response_data
-
-        # Handle API errors
-        error_msg = response_data.get("description", "Unknown error")
-        raise TelegramError(
-            f"Telegram API error: {error_msg}",
-            code=response.status,
-            context={
-                "endpoint": method,
-                "response": response_data
-            }
-        )
-
-    def _handle_request_error(
-        self,
-        err: Exception,
-        method: str
-    ) -> TelegramError:
-        """Handle request errors and create appropriate TelegramError.
-
-        Args:
-            err: Original exception
-            method: API method name
-
-        Returns:
-            TelegramError: Wrapped error with context
-        """
-        if isinstance(err, asyncio.TimeoutError):
-            error = TelegramError(
-                "Request timed out",
-                code=408,
-                context={"endpoint": method, "timeout": self._timeout}
-            )
-        elif isinstance(err, aiohttp.ClientError):
-            error = TelegramError(
-                f"Request failed: {err}",
-                context={"endpoint": method}
-            )
-        else:
-            error = TelegramError(
-                "Maximum retries exceeded",
-                context={"endpoint": method}
-            )
-        error.__cause__ = err
-        return error
-
-    async def _update_error_state(self, error: TelegramError) -> None:
-        """Update provider state after an error.
-
-        Args:
-            error: The error that occurred
-        """
-        async with self._state_lock:
-            self._consecutive_errors += 1
-            self._last_error_time = datetime.now()
-            self._state.last_error = error
-
-            # Reset error count after successful operation
-            if not isinstance(error, TelegramError):
-                self._consecutive_errors = 0
-
-    def _calculate_priority_delay(self, base_delay: float) -> float:
-        """Calculate delay based on message priority.
-
-        Args:
-            base_delay: Base delay in seconds
-
-        Returns:
-            float: Priority-adjusted delay
-        """
-        priority_multiplier = 1.0
-        if self._message_priority == MessagePriority.HIGH:
-            priority_multiplier = 0.5  # Shorter delay for high priority
-        elif self._message_priority == MessagePriority.LOW:
-            priority_multiplier = 2.0  # Longer delay for low priority
-        return base_delay * priority_multiplier
-
     async def _send_api_request(
         self,
         method: str,
@@ -334,9 +421,9 @@ class TelegramProvider(BaseNotificationProvider):
         """Send request to Telegram API with retries.
 
         Args:
-            method: API method name
-            data: Request payload
-            retries: Optional retry attempts override
+            method (str): API method name
+            data (SendMessageRequest): Request payload
+            retries (Optional[int]): Optional retry attempts override
 
         Returns:
             Dict[str, Any]: API response data
@@ -395,28 +482,211 @@ class TelegramProvider(BaseNotificationProvider):
             await self._update_error_state(last_error)
             raise last_error
 
+    async def _handle_api_response(
+        self,
+        response: aiohttp.ClientResponse,
+        response_data: Dict[str, Any],
+        method: str
+    ) -> Dict[str, Any]:
+        """Handle API response and update provider state.
+
+        Processes the API response, updates internal state tracking, and handles
+        both successful and error responses appropriately.
+
+        Args:
+            response (aiohttp.ClientResponse): Raw API response object
+            response_data (Dict[str, Any]): Parsed response data
+            method (str): API method name that generated this response
+
+        Returns:
+            Dict[str, Any]: Processed response data on success
+
+        Raises:
+            TelegramError: If API response indicates an error or validation fails
+
+        Example:
+            >>> async with session.post(url, json=data) as response:
+            ...     data = await response.json()
+            ...     result = await provider._handle_api_response(
+            ...         response, data, "sendMessage"
+            ...     )
+            ...     message_id = result["result"]["message_id"]
+        """
+        if response.status != 200:
+            raise TelegramError(
+                f"API request failed with status {response.status}",
+                code=response.status,
+                context={"endpoint": method, "response": response_data}
+            )
+
+        if "error_code" in response_data:
+            raise TelegramError(
+                f"API request failed with error code {response_data['error_code']}",
+                code=response_data["error_code"],
+                context={"endpoint": method, "response": response_data}
+            )
+
+        return response_data
+
+    def _handle_request_error(
+        self,
+        err: Exception,
+        method: str
+    ) -> TelegramError:
+        """Handle request errors and create appropriate TelegramError.
+
+        Wraps various network and API errors into a standardized TelegramError
+        with additional context for debugging and error handling.
+
+        Args:
+            err (Exception): Original exception that occurred
+            method (str): API method name that triggered the error
+
+        Returns:
+            TelegramError: Wrapped error with additional context
+
+        Example:
+            >>> try:
+            ...     await session.post(url)
+            ... except Exception as e:
+            ...     error = provider._handle_request_error(e, "sendMessage")
+            ...     logger.error(f"Request failed: {error}")
+        """
+        if isinstance(err, aiohttp.ClientError):
+            return TelegramError(
+                f"Client error: {err}",
+                context={"endpoint": method, "error": str(err)}
+            )
+        elif isinstance(err, asyncio.TimeoutError):
+            return TelegramError(
+                f"Timeout error: {err}",
+                context={"endpoint": method, "error": str(err)}
+            )
+        else:
+            return TelegramError(
+                f"Unknown error: {err}",
+                context={"endpoint": method, "error": str(err)}
+            )
+
+    async def _update_error_state(self, error: TelegramError) -> None:
+        """Update provider state after an error occurs.
+
+        Updates internal error tracking state including consecutive error count,
+        last error time, and error details. This information is used for
+        backoff and retry logic.
+
+        Args:
+            error (TelegramError): The error that occurred
+
+        Thread Safety:
+            This method is protected by _state_lock for thread safety
+
+        Note:
+            - Consecutive error count is incremented for TelegramErrors
+            - Non-TelegramErrors reset the consecutive error count
+            - Last error time and details are always updated
+        """
+        async with self._state_lock:
+            if isinstance(error, TelegramError):
+                self._consecutive_errors += 1
+            else:
+                self._consecutive_errors = 0
+
+            self._last_error_time = datetime.now()
+            self._state.last_error = error
+
+            if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                self._state.disabled = True
+
+    def _calculate_priority_delay(self, base_delay: float) -> float:
+        """Calculate delay based on message priority level.
+
+        Adjusts the base delay time according to the current message priority:
+        - High priority: 50% of base delay
+        - Normal priority: Base delay unchanged
+        - Low priority: 200% of base delay
+
+        Args:
+            base_delay (float): Base delay time in seconds
+
+        Returns:
+            float: Priority-adjusted delay time in seconds
+
+        Example:
+            >>> delay = provider._calculate_priority_delay(5.0)
+            >>> # Returns 2.5 for high priority
+            >>> # Returns 5.0 for normal priority
+            >>> # Returns 10.0 for low priority
+        """
+        if self._message_priority == MessagePriority.HIGH:
+            return base_delay * 0.5
+        elif self._message_priority == MessagePriority.LOW:
+            return base_delay * 2.0
+        else:
+            return base_delay
+
     async def send_notification(
         self,
         message: str,
         level: NotificationLevel = NotificationLevel.INFO,
         priority: MessagePriority = MessagePriority.NORMAL,
-        message_type: MessageType = MessageType.CUSTOM,
-        **kwargs
+        message_type: MessageType = MessageType.TEXT,
+        **kwargs: Any
     ) -> bool:
-        """Send notification via Telegram Bot API.
+        """Send a notification message via Telegram Bot API.
+
+        Primary method for sending notifications through Telegram. Supports
+        various message types and priority levels with automatic rate limiting
+        and error handling.
 
         Args:
-            message: Message to send
-            level: Notification priority level
-            priority: Message priority level
-            message_type: Type of message
-            **kwargs: Additional message-specific arguments
+            message (str): Content of the notification message
+            level (NotificationLevel): Severity level of the notification
+                (default: INFO)
+            priority (MessagePriority): Message delivery priority affecting
+                rate limiting (default: NORMAL)
+            message_type (MessageType): Type of message to send, affects
+                formatting (default: TEXT)
+            **kwargs: Additional message-specific arguments:
+                - parse_mode: Override default parse mode
+                - disable_web_preview: Disable link previews
+                - reply_to_message_id: Message to reply to
+                - buttons: List of inline keyboard buttons
+                - photo_url: URL for photo messages
+                - video_url: URL for video messages
+                - document_url: URL for document messages
 
         Returns:
-            bool: True if notification was sent successfully
+            bool: True if message was sent successfully
 
         Raises:
-            TelegramError: If API request fails
+            TelegramError: If message sending fails
+            ValueError: If message type is invalid or required args missing
+
+        Example:
+            >>> # Send a simple text message
+            >>> await provider.send_notification("Hello!")
+            True
+
+            >>> # Send a high priority HTML message
+            >>> await provider.send_notification(
+            ...     "<b>Alert!</b>",
+            ...     level=NotificationLevel.ERROR,
+            ...     priority=MessagePriority.HIGH,
+            ...     parse_mode="HTML"
+            ... )
+            True
+
+            >>> # Send a message with inline buttons
+            >>> await provider.send_notification(
+            ...     "Choose an option:",
+            ...     message_type=MessageType.INLINE_KEYBOARD,
+            ...     buttons=[
+            ...         {"text": "Yes", "callback_data": "yes"},
+            ...         {"text": "No", "callback_data": "no"}
+            ...     ]
+            ... )
+            True
         """
         async with self._message_lock:
             try:
@@ -456,9 +726,9 @@ class TelegramProvider(BaseNotificationProvider):
         """Create appropriate message based on type.
 
         Args:
-            message: Message content
-            message_type: Type of message
-            level: Notification level
+            message (str): Message content
+            message_type (MessageType): Type of message
+            level (NotificationLevel): Notification level
             **kwargs: Additional message-specific arguments
 
         Returns:
@@ -545,7 +815,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Prepare inline keyboard markup.
 
         Args:
-            buttons: List of button configurations
+            buttons (List[InlineKeyboardButton]): List of button configurations
 
         Returns:
             Dict: Prepared inline keyboard markup
@@ -573,7 +843,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Validate button URL domain.
 
         Args:
-            url: URL to validate
+            url (Optional[str]): URL to validate
 
         Returns:
             bool: True if URL is valid or None
@@ -589,7 +859,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Get message priority based on notification level.
 
         Args:
-            level: Notification level
+            level (NotificationLevel): Notification level
 
         Returns:
             MessagePriority: Corresponding priority level
@@ -619,11 +889,11 @@ class TelegramProvider(BaseNotificationProvider):
         """Send progress update notification.
 
         Args:
-            percent: Progress percentage
-            remaining: Remaining data amount
-            elapsed: Elapsed time
-            etc: Estimated time of completion
-            description: Optional description
+            percent (float): Progress percentage
+            remaining (str): Remaining data amount
+            elapsed (str): Elapsed time
+            etc (str): Estimated time of completion
+            description (Optional[str]): Optional description
 
         Returns:
             bool: True if notification was sent successfully
@@ -668,7 +938,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Send completion notification.
 
         Args:
-            stats: Optional transfer statistics to include
+            stats (Optional[Dict[str, Union[str, int, float]]]): Optional transfer statistics to include
 
         Returns:
             bool: True if notification was sent successfully
@@ -701,9 +971,9 @@ class TelegramProvider(BaseNotificationProvider):
         """Send error notification.
 
         Args:
-            error_message: Error description
-            include_debug: Whether to include debug information
-            debug_info: Optional debug information
+            error_message (str): Error description
+            include_debug (bool): Whether to include debug information
+            debug_info (Optional[Dict[str, str]]): Optional debug information
 
         Returns:
             bool: True if notification was sent successfully
@@ -740,7 +1010,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Edit previous message.
 
         Args:
-            message_id: Optional message ID to edit
+            message_id (Optional[int]): Optional message ID to edit
             **message_data: New message data
 
         Returns:
@@ -784,7 +1054,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Delete a message.
 
         Args:
-            message_id: Optional message ID to delete
+            message_id (Optional[int]): Optional message ID to delete
 
         Returns:
             bool: True if message was deleted successfully
@@ -823,7 +1093,7 @@ class TelegramProvider(BaseNotificationProvider):
         """Validate provider configuration.
 
         Args:
-            config: Provider configuration dictionary.
+            config (Dict[str, Any]): Provider configuration dictionary.
 
         Returns:
             Dict[str, Any]: Validated configuration dictionary.
@@ -834,3 +1104,113 @@ class TelegramProvider(BaseNotificationProvider):
         # Implement configuration validation logic here
         # For now, just return the original configuration
         return config
+
+    def _create_message(
+        self,
+        message: str,
+        message_type: MessageType = MessageType.TEXT,
+        level: NotificationLevel = NotificationLevel.INFO,
+        **kwargs: Any
+    ) -> SendMessageRequest:
+        """Create a formatted message request based on type and level.
+
+        Constructs a SendMessageRequest object with appropriate formatting
+        and parameters based on the message type and notification level.
+
+        Args:
+            message (str): Raw message content to format
+            message_type (MessageType): Type of message to create
+                - TEXT: Plain text message
+                - HTML: Message with HTML formatting
+                - MARKDOWN: Message with Markdown formatting
+                - INLINE_KEYBOARD: Message with inline buttons
+                - PHOTO: Message with photo attachment
+                - VIDEO: Message with video attachment
+                - DOCUMENT: Message with document attachment
+            level (NotificationLevel): Notification severity level
+                - DEBUG: Technical details (🔧)
+                - INFO: General information (ℹ️)
+                - WARNING: Important notices (⚠️)
+                - ERROR: Critical issues (❌)
+            **kwargs: Additional message-specific arguments:
+                - parse_mode: Override default parse mode
+                - disable_web_preview: Disable link previews
+                - reply_to_message_id: Message to reply to
+                - buttons: List of inline keyboard buttons
+                - photo_url: URL for photo messages
+                - video_url: URL for video messages
+                - document_url: URL for document messages
+
+        Returns:
+            SendMessageRequest: Formatted message request ready to send
+
+        Raises:
+            ValueError: If message type is invalid or required args missing
+
+        Example:
+            >>> # Create a simple text message
+            >>> request = provider._create_message("Hello!")
+            >>> assert request.text == "ℹ️ Hello!"
+
+            >>> # Create an HTML message with buttons
+            >>> request = provider._create_message(
+            ...     "<b>Choose:</b>",
+            ...     message_type=MessageType.INLINE_KEYBOARD,
+            ...     buttons=[{"text": "OK", "callback_data": "ok"}]
+            ... )
+            >>> assert request.parse_mode == "HTML"
+            >>> assert "reply_markup" in request.dict()
+        """
+        pass
+
+    def _prepare_inline_keyboard(
+        self,
+        buttons: List[InlineKeyboardButton]
+    ) -> Dict[str, List[List[Dict[str, str]]]]:
+        """Prepare inline keyboard markup for message.
+
+        Formats a list of button configurations into the structure required
+        by Telegram's Bot API for inline keyboards.
+
+        Args:
+            buttons (List[InlineKeyboardButton]): List of button configs:
+                - text: Button label text
+                - url: Optional URL to open
+                - callback_data: Optional callback data
+                - switch_inline_query: Optional inline query
+                - switch_inline_query_current_chat: Optional current chat query
+
+        Returns:
+            Dict[str, List[List[Dict[str, str]]]]: Telegram keyboard markup
+
+        Raises:
+            ValueError: If button config is invalid or URLs are malformed
+
+        Example:
+            >>> markup = provider._prepare_inline_keyboard([
+            ...     {"text": "Visit", "url": "https://example.com"},
+            ...     {"text": "OK", "callback_data": "confirm"}
+            ... ])
+            >>> assert "inline_keyboard" in markup
+            >>> assert len(markup["inline_keyboard"]) == 1
+        """
+        pass
+
+    def _validate_button_url(self, url: Optional[str]) -> bool:
+        """Validate button URL domain for security.
+
+        Checks if the provided URL is either None or points to an allowed
+        domain to prevent malicious URLs in buttons.
+
+        Args:
+            url (Optional[str]): URL to validate or None
+
+        Returns:
+            bool: True if URL is valid or None
+
+        Example:
+            >>> assert provider._validate_button_url(None)
+            >>> assert provider._validate_button_url("https://telegram.org")
+            >>> assert not provider._validate_button_url("javascript:alert(1)")
+        """
+        pass

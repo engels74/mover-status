@@ -2,12 +2,17 @@
 
 """
 Discord-specific configuration models and settings.
-Extends base provider settings with Discord webhook configuration.
 
-Contains:
-    - DiscordSettingsError: Base exception for settings validation
-    - ForumSettings: Configuration for Discord forum channels
-    - DiscordSettings: Main settings class for Discord integration
+This module provides configuration models for Discord webhook integration,
+extending the base provider settings with Discord-specific functionality:
+
+- Webhook configuration (URL, username, avatar)
+- Forum channel integration
+- Thread management
+- Message customization (embeds, colors)
+
+The settings are validated using Pydantic models and include specific
+validation for Discord's API requirements and limitations.
 
 Example:
     >>> from config.providers.discord.settings import DiscordSettings
@@ -103,7 +108,26 @@ class ForumSettings(BaseModel):
 
 
 class WebhookSettings(BaseModel):
-    """Discord webhook configuration settings."""
+    """Discord webhook configuration and validation.
+
+    This model defines the core webhook settings required for Discord integration,
+    including URL validation, username customization, and thread support.
+
+    Attributes:
+        url: Discord webhook URL (must be from discord.com domain)
+        username: Optional custom username for the webhook
+        avatar_url: Optional custom avatar URL (must be from allowed domains)
+        thread_id: Optional Discord thread ID for message routing
+        thread_name: Optional thread name (required if thread_id is set)
+
+    Example:
+        >>> webhook = WebhookSettings(
+        ...     url="https://discord.com/api/webhooks/123/abc",
+        ...     username="Status Bot",
+        ...     thread_id="789",
+        ...     thread_name="Mover Updates"
+        ... )
+    """
     url: str = Field(
         ...,
         title="Webhook URL",
@@ -168,8 +192,33 @@ class WebhookSettings(BaseModel):
 
 
 class DiscordSettings(BaseProviderSettings):
-    """Discord webhook notification settings."""
+    """Discord integration settings with webhook and forum support.
 
+    This model extends BaseProviderSettings with Discord-specific configuration,
+    including webhook setup, forum channel integration, and message customization.
+    It handles validation of Discord's API requirements and provides conversion
+    to provider configuration format.
+
+    Attributes:
+        webhook_url: Discord webhook URL for message delivery
+        username: Optional custom username for webhook messages
+        avatar_url: Optional custom avatar URL for webhook messages
+        thread_id: Optional thread ID for message routing
+        forum: Optional forum channel configuration
+        embed_color: Default color for Discord embeds (0x000000 to 0xFFFFFF)
+
+    Example:
+        >>> settings = DiscordSettings(
+        ...     enabled=True,
+        ...     webhook_url="https://discord.com/api/webhooks/123/abc",
+        ...     username="Mover Bot",
+        ...     forum=ForumSettings(
+        ...         enabled=True,
+        ...         auto_thread=True,
+        ...         default_thread_name="Status Updates"
+        ...     )
+        ... )
+    """
     webhook_url: str = Field(
         ...,
         pattern=r"^https://discord\.com/api/webhooks/\d+/.+$",
