@@ -11,28 +11,35 @@ Example:
     $ python -m mover_status --debug
 """
 
+
 import argparse
 import asyncio
+from datetime import datetime
 import logging
 import signal
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import Dict, List, NoReturn, Optional, Set, Type
+
 
 import structlog
 from structlog.stdlib import LoggerFactory
+from structlog.types import Processor
+
 
 from config.settings import Settings
 from core.monitor import MoverMonitor
 from utils.version import version_checker
 
 # Initialize structured logging
+processors: List[Processor] = [
+    structlog.processors.add_log_level,
+    structlog.processors.TimeStamper(fmt="iso"),
+    structlog.dev.ConsoleRenderer()
+]
+
 structlog.configure(
-    processors=[
-        structlog.processors.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer()
-    ],
+    processors=processors,
     wrapper_class=structlog.stdlib.BoundLogger,
     logger_factory=LoggerFactory(),
     cache_logger_on_first_use=True,
@@ -66,23 +73,70 @@ def parse_args() -> argparse.Namespace:
         help="Run without sending notifications"
     )
     parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Path to log file (enables file logging)",
+        default=None
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show current mover status and exit"
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Send test notifications and exit"
+    )
+    parser.add_argument(
         "--version",
         action="store_true",
         help="Show version information"
     )
     return parser.parse_args()
 
-def setup_logging(debug: bool = False) -> None:
+def setup_logging(debug: bool = False, log_file: Optional[Path] = None) -> None:
     """Configure logging level and format.
 
     Args:
         debug: Enable debug logging if True
+        log_file: Optional path to log file
     """
     log_level = logging.DEBUG if debug else logging.INFO
+
+    # Configure structlog
+    processors = [
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+
+    if log_file:
+        # Add file logging
+        file_handler = logging.FileHandler(str(log_file))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
+        logging.getLogger().addHandler(file_handler)
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        processors.append(structlog.dev.ConsoleRenderer())
+
+    # Configure logging
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    # Configure structlog
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
 
 async def check_version() -> None:
@@ -146,6 +200,46 @@ async def run_monitor(settings: Settings) -> None:
         await monitor.stop()
         sys.exit(1)
 
+async def show_status(settings: Settings) -> None:
+    """Display current mover status and exit.
+
+    Args:
+        settings: Application settings
+    """
+    monitor = MoverMonitor(settings)
+    try:
+        is_running = await monitor._process_manager.is_running()
+        if is_running:
+            print("Mover is currently running")
+            if monitor._calculator.stats:
+                stats = monitor._calculator.stats
+                print(f"Progress: {stats.percent_complete:.1f}%")
+                print(f"Remaining: {stats.remaining_formatted}")
+                print(f"ETC: {stats.etc_formatted}")
+        else:
+            print("Mover is not running")
+    finally:
+        await monitor.stop()
+
+async def test_notifications(settings: Settings) -> None:
+    """Send test notifications and exit.
+
+    Args:
+        settings: Application settings
+    """
+    monitor = MoverMonitor(settings)
+    try:
+        await monitor._setup_providers()
+        await monitor._send_notifications(
+            monitor._calculator.stats,
+            force=True
+        )
+        print("Test notifications sent successfully")
+    except Exception as err:
+        print(f"Failed to send test notifications: {err}")
+    finally:
+        await monitor.stop()
+
 def main() -> NoReturn:
     """Application entry point."""
     args = parse_args()
@@ -156,18 +250,38 @@ def main() -> NoReturn:
         sys.exit(0)
 
     # Setup logging
-    setup_logging(args.debug)
-    logger.info("Starting MoverStatus")
+    setup_logging(args.debug, args.log_file)
+    logger.info(
+        "Starting MoverStatus",
+        version=str(version_checker.current_version),
+        debug=args.debug,
+        dry_run=args.dry_run
+    )
 
     try:
         # Load settings
         settings = Settings()
         if args.config:
-            settings = Settings.from_yaml(args.config)
+            if not args.config.exists():
+                logger.error(f"Config file not found: {args.config}")
+                sys.exit(1)
+            try:
+                settings = Settings.from_yaml(args.config)
+            except Exception as err:
+                logger.error(f"Failed to load config: {err}")
+                sys.exit(1)
 
         # Override settings from command line
         settings.logging.debug_mode = args.debug
         settings.dry_run = args.dry_run
+
+        # Handle special commands
+        if args.status:
+            asyncio.run(show_status(settings))
+            sys.exit(0)
+        elif args.test:
+            asyncio.run(test_notifications(settings))
+            sys.exit(0)
 
         # Run the monitor
         asyncio.run(run_monitor(settings))
