@@ -204,7 +204,7 @@
 18. ~~Update Telegram template documentation~~ ✅
 19. ~~Add timeout configuration to Telegram templates~~ ✅
 20. ~~Update providers to use new progress bar styles~~ ✅
-21. Update providers to use new time formats
+21. ~~Update providers to use new time formats~~ ✅
 22. Add color support to provider messages (should be optional for the user)
  
 **Recent Changes:**

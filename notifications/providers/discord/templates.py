@@ -30,7 +30,12 @@ from shared.providers.discord import (
     WebhookPayload,
     get_progress_color,
 )
-from utils.formatters import format_timestamp
+from utils.formatters import (
+    ProgressStyle,
+    TimeFormat,
+    format_progress,
+    format_timestamp,
+)
 from utils.version import version_checker
 
 
@@ -145,29 +150,43 @@ def create_progress_embed(
     if not 0 <= percent <= 100:
         raise ValueError("Percent must be between 0 and 100")
 
-    # Get dynamic color based on progress
-    color = get_progress_color(percent)
+    # Format progress bar
+    progress_bar = format_progress(percent, style=ProgressStyle.BLOCKS, width=20)
 
-    # Create progress field
-    field = create_progress_field(percent, remaining, elapsed, etc)
+    # Format timestamps for better readability
+    elapsed_time = format_timestamp(
+        datetime.now() - timedelta(seconds=float(elapsed)),
+        format_type=TimeFormat.RELATIVE
+    )
+    completion_time = datetime.strptime(etc, "%H:%M")
+    etc_formatted = format_timestamp(completion_time, format_type=TimeFormat.FRIENDLY)
 
-    # Create embed
-    embed: Embed = {
-        "title": truncate_string(title, ApiLimits.TITLE_LENGTH),
-        "color": color,
-        "fields": [field],
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    embed = Embed(
+        title=title,
+        description=description or "",
+        color=get_progress_color(percent)
+    )
 
-    # Add optional components
-    if description:
-        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
     if author:
-        embed["author"] = author
+        embed.set_author(**author)
 
-    # Validate embed
-    validate_embed_lengths(embed)
+    embed.add_field(
+        name="Progress",
+        value=f"{progress_bar} **{percent:.1f}%**",
+        inline=False
+    )
+
+    embed.add_field(
+        name="Time Info",
+        value=(
+            f"⏱️ Elapsed: {elapsed_time}\n"
+            f"⌛ Remaining: {remaining}\n"
+            f"🏁 ETC: {etc_formatted}"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text=f"Last updated: {format_timestamp(datetime.now(), format_type=TimeFormat.FRIENDLY)}")
     return embed
 
 
@@ -184,26 +203,27 @@ def create_completion_embed(
     Returns:
         Embed: Formatted completion embed
     """
-    embed: Embed = {
-        "title": "Transfer Complete",
-        "description": description or "All data has been successfully moved from cache to array.",
-        "color": DiscordColor.SUCCESS,
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    embed = Embed(
+        title="Transfer Complete",
+        description=description or "The file transfer has been completed successfully!",
+        color=DiscordColor.SUCCESS
+    )
 
     if stats:
-        fields: List[EmbedField] = []
+        formatted_stats = []
         for key, value in stats.items():
-            fields.append({
-                "name": truncate_string(str(key), ApiLimits.FIELD_NAME_LENGTH),
-                "value": truncate_string(str(value), ApiLimits.FIELD_VALUE_LENGTH),
-                "inline": True
-            })
-        if fields:
-            embed["fields"] = fields
+            if isinstance(value, datetime):
+                value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+            formatted_stats.append(f"**{key}:** {value}")
 
-    validate_embed_lengths(embed)
+        if formatted_stats:
+            embed.add_field(
+                name="Transfer Statistics",
+                value="\n".join(formatted_stats),
+                inline=False
+            )
+
+    embed.set_footer(text=f"Completed at {format_timestamp(datetime.now(), format_type=TimeFormat.FRIENDLY)}")
     return embed
 
 

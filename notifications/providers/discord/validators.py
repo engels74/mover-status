@@ -2,6 +2,7 @@
 
 """Discord webhook configuration validator."""
 
+import re
 from typing import Any, Dict, Final, Optional, Union
 from urllib.parse import ParseResult, urlparse
 
@@ -47,6 +48,14 @@ class DiscordValidator(BaseProviderValidator):
     ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
     ALLOWED_AVATAR_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
     DEFAULT_COLOR = DiscordColor.INFO
+
+    # Time format patterns
+    TIME_PATTERNS = {
+        "iso": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+        "friendly": r"^(Today|Yesterday|[A-Z][a-z]{2} \d{1,2}) at \d{1,2}:\d{2} (AM|PM)$",
+        "compact": r"^\d{2}:\d{2}$",
+        "relative": r"^(just now|\d+ (seconds?|minutes?|hours?|days?|months?|years?) (ago|from now))$"
+    }
 
     @classmethod
     def _validate_webhook_path(
@@ -337,6 +346,106 @@ class DiscordValidator(BaseProviderValidator):
             )
 
         return color
+
+    @classmethod
+    def validate_time_format(cls, time_str: str, format_type: str) -> bool:
+        """Validate time string against expected format.
+
+        Args:
+            time_str: Time string to validate
+            format_type: Expected format type (iso, friendly, compact, relative)
+
+        Returns:
+            bool: True if time string matches expected format
+
+        Raises:
+            DiscordValidationError: If format type is invalid or time string doesn't match pattern
+        """
+        if format_type not in cls.TIME_PATTERNS:
+            raise DiscordValidationError(f"Invalid time format type: {format_type}")
+
+        pattern = cls.TIME_PATTERNS[format_type]
+        if not re.match(pattern, time_str):
+            raise DiscordValidationError(
+                f"Invalid time format for {format_type}: {time_str}",
+                field="time_format"
+            )
+        return True
+
+    @classmethod
+    def _validate_timestamp(cls, timestamp: str, field: str) -> None:
+        """Validate a single timestamp string.
+
+        Args:
+            timestamp: Timestamp string to validate
+            field: Field name for error reporting
+
+        Raises:
+            DiscordValidationError: If timestamp is invalid
+        """
+        try:
+            cls.validate_time_format(timestamp, "iso")
+        except DiscordValidationError as e:
+            raise DiscordValidationError(
+                f"Invalid {field} timestamp: {e}",
+                field=field
+            ) from e
+
+    @classmethod
+    def _validate_field_timestamps(cls, field_value: str, field_name: str) -> None:
+        """Validate timestamps in a field value.
+
+        Args:
+            field_value: Field value to check for timestamps
+            field_name: Name of the field for error reporting
+
+        Raises:
+            DiscordValidationError: If any timestamp is invalid
+        """
+        time_matches = {
+            "iso": re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", field_value),
+            "friendly": re.findall(r"(Today|Yesterday|[A-Z][a-z]{2} \d{1,2}) at \d{1,2}:\d{2} (AM|PM)", field_value),
+            "compact": re.findall(r"\d{2}:\d{2}", field_value),
+            "relative": re.findall(r"\d+ (seconds?|minutes?|hours?|days?|months?|years?) (ago|from now)", field_value)
+        }
+
+        for format_type, matches in time_matches.items():
+            for time_str in matches:
+                if isinstance(time_str, tuple):
+                    time_str = " at ".join(time_str)
+                try:
+                    cls.validate_time_format(time_str, format_type)
+                except DiscordValidationError as e:
+                    raise DiscordValidationError(
+                        f"Invalid time format in field '{field_name}': {e}",
+                        field="embed_field"
+                    ) from e
+
+    @classmethod
+    def validate_embed_timestamps(cls, embed: Dict[str, Any]) -> None:
+        """Validate timestamps in embed fields.
+
+        Args:
+            embed: Discord embed to validate
+
+        Raises:
+            DiscordValidationError: If timestamp validation fails
+        """
+        # Check main embed timestamp
+        if timestamp := embed.get("timestamp"):
+            cls._validate_timestamp(timestamp, "timestamp")
+
+        # Check field values for time strings
+        for field in embed.get("fields", []):
+            if value := field.get("value"):
+                if isinstance(value, str):
+                    cls._validate_field_timestamps(value, field.get("name", ""))
+
+        # Check footer timestamp
+        if footer := embed.get("footer"):
+            if isinstance(footer, dict):
+                if text := footer.get("text"):
+                    cls._validate_field_timestamps(text, "footer")
 
     def validate_config(self, config: Dict[str, Any]) -> JsonDict:
         """Validate complete Discord webhook configuration.

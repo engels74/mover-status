@@ -13,7 +13,7 @@ Functions:
     format_template: Format template string with provided values
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Union
 
@@ -37,10 +37,14 @@ class SizeUnit(str, Enum):
 
 class TimeFormat(str, Enum):
     """Time format options."""
-    SHORT = "short"      # 2h 30m
-    MEDIUM = "medium"    # 2 hours 30 minutes
-    LONG = "long"        # 2 hours and 30 minutes
-    PRECISE = "precise"  # 2 hours, 30 minutes, and 15 seconds
+    SHORT = "short"          # 2h 30m
+    MEDIUM = "medium"        # 2 hours 30 minutes
+    LONG = "long"           # 2 hours and 30 minutes
+    PRECISE = "precise"     # 2 hours, 30 minutes, and 15 seconds
+    ISO = "iso"             # 2024-01-01T14:30:00Z
+    RELATIVE = "relative"   # 2 hours ago
+    FRIENDLY = "friendly"   # Today at 2:30 PM
+    COMPACT = "compact"     # 14:30
 
 
 # Progress bar style definitions
@@ -260,7 +264,8 @@ def format_progress(
 def format_timestamp(
     dt: datetime,
     format_str: Optional[str] = None,
-    relative: bool = False
+    relative: bool = False,
+    format_type: TimeFormat = TimeFormat.MEDIUM
 ) -> str:
     """Format datetime object to string.
 
@@ -268,6 +273,7 @@ def format_timestamp(
         dt: Datetime object to format
         format_str: Optional strftime format string
         relative: Whether to return relative time
+        format_type: Time format style to use
 
     Returns:
         str: Formatted datetime string
@@ -279,25 +285,69 @@ def format_timestamp(
         >>> dt = datetime(2024, 1, 1, 12, 0, 0)
         >>> format_timestamp(dt)
         '2024-01-01 12:00:00'
+        >>> format_timestamp(dt, format_type=TimeFormat.FRIENDLY)
+        'Jan 1 at 12:00 PM'
         >>> format_timestamp(dt, relative=True)
         '2 months ago'
     """
-    if not isinstance(dt, datetime):
-        raise ValueError("dt must be a datetime object")
+    if format_str:
+        try:
+            return dt.strftime(format_str)
+        except ValueError as e:
+            raise ValueError(f"Invalid format string: {e}") from e
 
     if relative:
-        delta = datetime.now() - dt
-        if delta.total_seconds() < 0:
-            return format_duration(-delta.total_seconds(), format_type=TimeFormat.MEDIUM) + " from now"
-        return format_duration(delta.total_seconds(), format_type=TimeFormat.MEDIUM) + " ago"
+        return format_relative_time(dt)
 
-    if format_str is None:
-        format_str = "%Y-%m-%d %H:%M:%S"
+    now = datetime.now()
+    today = now.date()
+    dt_date = dt.date()
 
-    try:
-        return dt.strftime(format_str)
-    except ValueError as e:
-        raise ValueError(f"Invalid format string: {e}") from e
+    if format_type == TimeFormat.ISO:
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    elif format_type == TimeFormat.FRIENDLY:
+        if dt_date == today:
+            return f"Today at {dt.strftime('%I:%M %p')}"
+        elif dt_date == today - timedelta(days=1):
+            return f"Yesterday at {dt.strftime('%I:%M %p')}"
+        else:
+            return dt.strftime("%b %d at %I:%M %p")
+    elif format_type == TimeFormat.COMPACT:
+        return dt.strftime("%H:%M")
+    elif format_type == TimeFormat.RELATIVE:
+        return format_relative_time(dt)
+    else:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_relative_time(dt: datetime) -> str:
+    """Format datetime as relative time from now.
+
+    Args:
+        dt: Datetime to format
+
+    Returns:
+        str: Relative time string (e.g., "2 hours ago")
+    """
+    now = datetime.now()
+    diff = now - dt if dt < now else dt - now
+    seconds = int(diff.total_seconds())
+    if seconds < 60:
+        return "just now" if seconds < 10 else f"{seconds} seconds {'ago' if dt < now else 'from now'}"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} {'ago' if dt < now else 'from now'}"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} {'ago' if dt < now else 'from now'}"
+    days = hours // 24
+    if days < 30:
+        return f"{days} day{'s' if days != 1 else ''} {'ago' if dt < now else 'from now'}"
+    months = days // 30
+    if months < 12:
+        return f"{months} month{'s' if months != 1 else ''} {'ago' if dt < now else 'from now'}"
+    years = days // 365
+    return f"{years} year{'s' if years != 1 else ''} {'ago' if dt < now else 'from now'}"
 
 
 def format_eta(

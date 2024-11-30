@@ -28,7 +28,12 @@ from notifications.providers.telegram.types import (
     ParseMode,
     validate_message_length,
 )
-from shared.utils.time import format_timestamp
+from utils.formatters import (
+    ProgressStyle,
+    TimeFormat,
+    format_progress,
+    format_timestamp,
+)
 
 logger = get_logger(__name__)
 
@@ -131,64 +136,47 @@ def create_progress_message(
     if not 0 <= percent <= 100:
         raise ValueError("Percent must be between 0 and 100")
 
-    # Create progress bar
-    bar_length = 20
-    filled = int(bar_length * percent / 100)
-    empty = bar_length - filled
-    progress_bar = "█" * filled + "░" * empty
-
-    # Format message using template
-    message = DEFAULT_TEMPLATES["progress"].format(
-        percent=percent,
-        progress_bar=progress_bar,
-        remaining_data=remaining_data,
-        elapsed_time=elapsed_time,
-        etc=etc
+    # Format progress bar and timestamps
+    progress_bar = format_progress(percent, style=ProgressStyle.BLOCKS, width=20)
+    elapsed = format_timestamp(
+        datetime.now() - timedelta(seconds=float(elapsed_time)),
+        format_type=TimeFormat.RELATIVE
     )
+    completion_time = datetime.strptime(etc, "%H:%M")
+    etc_formatted = format_timestamp(completion_time, format_type=TimeFormat.FRIENDLY)
 
-    # Add description if provided
+    message = f"""📊 <b>Transfer Progress</b>
+
+{progress_bar} <b>{percent:.1f}%</b>
+
+⏱️ Elapsed: {elapsed}
+⌛ Remaining: {remaining_data}
+🏁 ETC: {etc_formatted}"""
+
     if description:
-        message = f"{message}\n\n<i>{description}</i>"
+        message = f"{description}\n\n{message}"
 
-    # Create message data
-    message_data = {
+    data: Dict[str, Any] = {
         "text": message,
         "parse_mode": ParseMode.HTML,
         "priority": priority
     }
 
-    # Add keyboard if requested
     if add_keyboard:
-        message_data["reply_markup"] = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "🔄 Refresh",
-                        "callback_data": "refresh_progress"
-                    },
-                    {
-                        "text": "⏸️ Pause",
-                        "callback_data": "pause_transfer"
-                    },
-                    {
-                        "text": "⏹️ Stop",
-                        "callback_data": "stop_transfer"
-                    }
-                ]
-            ]
-        }
+        data["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Pause", callback_data="pause"),
+             InlineKeyboardButton(text="Cancel", callback_data="cancel")]
+        ])
 
-    # Validate message length
-    validate_message_length(message)
-
-    return message_data
+    validate_message_length(data["text"])
+    return data
 
 
 def create_completion_message(
     stats: Optional[Dict[str, Union[str, int, float]]] = None,
     priority: MessagePriority = MessagePriority.NORMAL,
     include_stats: bool = True
-) -> Dict[str, Union[str, List[MessageEntity]]]:
+) -> Dict[str, Any]:
     """Create completion notification message.
 
     Args:
@@ -202,24 +190,28 @@ def create_completion_message(
     Raises:
         ValueError: If message exceeds length limits
     """
-    # Format statistics if included
-    stats_text = ""
-    if include_stats and stats:
-        stats_text = "\n\nStatistics:"
+    message = "✅ <b>Transfer Complete!</b>\n\nThe file transfer has been successfully completed."
+
+    if stats and include_stats:
+        stats_text = []
         for key, value in stats.items():
-            stats_text += f"\n• {key}: {value}"
+            if isinstance(value, datetime):
+                value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+            stats_text.append(f"<b>{key}:</b> {value}")
 
-    # Format the message using template
-    message = DEFAULT_TEMPLATES["completion"].format(stats=stats_text)
+        if stats_text:
+            message += "\n\n<b>Transfer Statistics:</b>\n" + "\n".join(stats_text)
 
-    # Validate message length
-    message = validate_message_length(message)
+    message += f"\n\nCompleted at {format_timestamp(datetime.now(), format_type=TimeFormat.FRIENDLY)}"
 
-    return {
+    data = {
         "text": message,
         "parse_mode": ParseMode.HTML,
-        "disable_notification": priority == MessagePriority.LOW
+        "priority": priority
     }
+
+    validate_message_length(data["text"])
+    return data
 
 
 def create_error_message(

@@ -42,6 +42,14 @@ class TelegramValidator(BaseProviderValidator):
     MIN_TIMEOUT = 0.1
     MAX_TIMEOUT = 300.0
 
+    # Time format patterns
+    TIME_PATTERNS = {
+        "iso": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+        "friendly": r"^(Today|Yesterday|[A-Z][a-z]{2} \d{1,2}) at \d{1,2}:\d{2} (AM|PM)$",
+        "compact": r"^\d{2}:\d{2}$",
+        "relative": r"^(just now|\d+ (seconds?|minutes?|hours?|days?|months?|years?) (ago|from now))$"
+    }
+
     @classmethod
     def validate_bot_token(
         cls,
@@ -269,6 +277,74 @@ class TelegramValidator(BaseProviderValidator):
             raise ValidationError(f"Message exceeds {max_length} characters (UTF-16)")
 
         return text
+
+    @classmethod
+    def validate_time_format(cls, time_str: str, format_type: str) -> bool:
+        """Validate time string against expected format.
+
+        Args:
+            time_str: Time string to validate
+            format_type: Expected format type (iso, friendly, compact, relative)
+
+        Returns:
+            bool: True if time string matches expected format
+
+        Raises:
+            TelegramValidationError: If format type is invalid or time string doesn't match pattern
+        """
+        if format_type not in cls.TIME_PATTERNS:
+            raise TelegramValidationError(f"Invalid time format type: {format_type}")
+
+        pattern = cls.TIME_PATTERNS[format_type]
+        if not re.match(pattern, time_str):
+            raise TelegramValidationError(
+                f"Invalid time format for {format_type}: {time_str}",
+                field="time_format"
+            )
+        return True
+
+    @classmethod
+    def validate_message_content(cls, content: Dict[str, Any]) -> None:
+        """Validate message content including time formats.
+
+        Args:
+            content: Message content to validate
+
+        Raises:
+            TelegramValidationError: If content validation fails
+        """
+        if not content or not isinstance(content, dict):
+            raise TelegramValidationError("Invalid message content")
+
+        text = content.get("text", "")
+        if not text or not isinstance(text, str):
+            raise TelegramValidationError("Message text is required")
+
+        # Validate message length
+        if len(text) > MessageLimit.MAX_LENGTH:
+            raise TelegramValidationError(
+                f"Message exceeds maximum length of {MessageLimit.MAX_LENGTH} characters"
+            )
+
+        # Extract and validate time strings in message
+        time_matches = {
+            "iso": re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", text),
+            "friendly": re.findall(r"(Today|Yesterday|[A-Z][a-z]{2} \d{1,2}) at \d{1,2}:\d{2} (AM|PM)", text),
+            "compact": re.findall(r"\d{2}:\d{2}", text),
+            "relative": re.findall(r"\d+ (seconds?|minutes?|hours?|days?|months?|years?) (ago|from now)", text)
+        }
+
+        for format_type, matches in time_matches.items():
+            for time_str in matches:
+                if isinstance(time_str, tuple):
+                    time_str = " at ".join(time_str)
+                try:
+                    cls.validate_time_format(time_str, format_type)
+                except TelegramValidationError as e:
+                    raise TelegramValidationError(
+                        f"Invalid time format in message: {e}",
+                        field="message_content"
+                    ) from e
 
     def validate_config(self, config: Dict[str, Any]) -> JsonDict:
         """Validate complete Telegram bot configuration.
