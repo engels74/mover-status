@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Final, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import DiscordSchemaError, WebhookConfigSchema
