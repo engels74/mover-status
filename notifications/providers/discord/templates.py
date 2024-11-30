@@ -129,6 +129,7 @@ def create_progress_embed(
     title: str = "Mover Status",
     description: Optional[str] = None,
     author: Optional[EmbedAuthor] = None,
+    use_native_timestamps: bool = True
 ) -> Embed:
     """Create a complete progress update embed.
 
@@ -140,6 +141,7 @@ def create_progress_embed(
         title: Optional embed title
         description: Optional description
         author: Optional author information
+        use_native_timestamps: Whether to use Discord's native timestamps
 
     Returns:
         Embed: Formatted Discord embed
@@ -153,13 +155,16 @@ def create_progress_embed(
     # Format progress bar
     progress_bar = format_progress(percent, style=ProgressStyle.BLOCKS, width=20)
 
-    # Format timestamps for better readability
-    elapsed_time = format_timestamp(
-        datetime.now() - timedelta(seconds=float(elapsed)),
-        format_type=TimeFormat.RELATIVE
-    )
+    # Format timestamps based on preference
+    elapsed_dt = datetime.now() - timedelta(seconds=float(elapsed))
     completion_time = datetime.strptime(etc, "%H:%M")
-    etc_formatted = format_timestamp(completion_time, format_type=TimeFormat.FRIENDLY)
+
+    if use_native_timestamps:
+        elapsed_time = format_discord_timestamp(elapsed_dt, "R")
+        etc_formatted = format_discord_timestamp(completion_time, "t")
+    else:
+        elapsed_time = format_timestamp(elapsed_dt, format_type=TimeFormat.RELATIVE)
+        etc_formatted = format_timestamp(completion_time, format_type=TimeFormat.FRIENDLY)
 
     embed = Embed(
         title=title,
@@ -186,26 +191,28 @@ def create_progress_embed(
         inline=False
     )
 
-    embed.set_footer(text=f"Last updated: {format_timestamp(datetime.now(), format_type=TimeFormat.FRIENDLY)}")
+    embed.set_footer(text=f"Last updated: {format_discord_timestamp(datetime.now(), 'R')}")
     return embed
 
 
 def create_completion_embed(
     description: Optional[str] = None,
-    stats: Optional[Dict[str, Union[str, int, float]]] = None
+    stats: Optional[Dict[str, Union[str, int, float]]] = None,
+    use_native_timestamps: bool = True
 ) -> Embed:
     """Create embed for transfer completion notification.
 
     Args:
         description: Optional custom description
         stats: Optional transfer statistics to include
+        use_native_timestamps: Whether to use Discord's native timestamps
 
     Returns:
         Embed: Formatted completion embed
     """
     embed = Embed(
         title="Transfer Complete",
-        description=description or "The file transfer has been completed successfully!",
+        description=description or "The transfer has been completed successfully.",
         color=DiscordColor.SUCCESS
     )
 
@@ -213,7 +220,10 @@ def create_completion_embed(
         formatted_stats = []
         for key, value in stats.items():
             if isinstance(value, datetime):
-                value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+                if use_native_timestamps:
+                    value = format_discord_timestamp(value, "f")
+                else:
+                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
             formatted_stats.append(f"**{key}:** {value}")
 
         if formatted_stats:
@@ -223,14 +233,17 @@ def create_completion_embed(
                 inline=False
             )
 
-    embed.set_footer(text=f"Completed at {format_timestamp(datetime.now(), format_type=TimeFormat.FRIENDLY)}")
+    current_time = datetime.now()
+    completion_text = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
+    embed.set_footer(text=f"Completed at {completion_text}")
     return embed
 
 
 def create_error_embed(
     error_message: str,
     error_code: Optional[int] = None,
-    error_details: Optional[Dict[str, str]] = None
+    error_details: Optional[Dict[str, str]] = None,
+    use_native_timestamps: bool = True
 ) -> Embed:
     """Create embed for error notification.
 
@@ -238,6 +251,7 @@ def create_error_embed(
         error_message: Error description
         error_code: Optional error code
         error_details: Optional error details
+        use_native_timestamps: Whether to use Discord's native timestamps
 
     Returns:
         Embed: Formatted error embed
@@ -245,40 +259,50 @@ def create_error_embed(
     Raises:
         ValueError: If error_message is empty
     """
-    if not error_message.strip():
+    if not error_message:
         raise ValueError("Error message cannot be empty")
 
-    description = error_message
-    if error_code:
-        description = f"Error {error_code}: {description}"
+    embed = Embed(
+        title="Error",
+        description=error_message,
+        color=DiscordColor.ERROR
+    )
 
-    embed: Embed = {
-        "title": "Transfer Error",
-        "description": truncate_string(description, ApiLimits.DESCRIPTION_LENGTH),
-        "color": DiscordColor.ERROR,
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    if error_code:
+        embed.add_field(
+            name="Error Code",
+            value=str(error_code),
+            inline=True
+        )
 
     if error_details:
-        fields: List[EmbedField] = []
+        formatted_details = []
         for key, value in error_details.items():
-            fields.append({
-                "name": truncate_string(key, ApiLimits.FIELD_NAME_LENGTH),
-                "value": truncate_string(value, ApiLimits.FIELD_VALUE_LENGTH),
-                "inline": True
-            })
-        if fields:
-            embed["fields"] = fields
+            if isinstance(value, datetime):
+                if use_native_timestamps:
+                    value = format_discord_timestamp(value, "f")
+                else:
+                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+            formatted_details.append(f"**{key}:** {value}")
 
-    validate_embed_lengths(embed)
+        if formatted_details:
+            embed.add_field(
+                name="Error Details",
+                value="\n".join(formatted_details),
+                inline=False
+            )
+
+    current_time = datetime.now()
+    error_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
+    embed.set_footer(text=f"Error occurred at {error_time}")
     return embed
 
 
 def create_warning_embed(
     warning_message: str,
     warning_details: Optional[Dict[str, str]] = None,
-    suggestion: Optional[str] = None
+    suggestion: Optional[str] = None,
+    use_native_timestamps: bool = True
 ) -> Embed:
     """Create embed for warning notification.
 
@@ -286,6 +310,7 @@ def create_warning_embed(
         warning_message: Warning description
         warning_details: Optional warning context details
         suggestion: Optional suggestion for resolution
+        use_native_timestamps: Whether to use Discord's native timestamps
 
     Returns:
         Embed: Formatted warning embed
@@ -296,36 +321,47 @@ def create_warning_embed(
     if not warning_message:
         raise ValueError("Warning message cannot be empty")
 
-    # Create embed with warning color
     embed = Embed(
         title="Warning",
         description=warning_message,
-        color=DiscordColor.WARNING,
-        timestamp=datetime.utcnow().isoformat()
+        color=DiscordColor.WARNING
     )
 
-    # Add warning details if provided
     if warning_details:
-        details_text = "\n".join(f"**{k}:** {v}" for k, v in warning_details.items())
-        embed.fields.append(
-            EmbedField(name="Details", value=details_text, inline=False)
-        )
+        formatted_details = []
+        for key, value in warning_details.items():
+            if isinstance(value, datetime):
+                if use_native_timestamps:
+                    value = format_discord_timestamp(value, "f")
+                else:
+                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+            formatted_details.append(f"**{key}:** {value}")
 
-    # Add suggestion if provided
+        if formatted_details:
+            embed.add_field(
+                name="Warning Details",
+                value="\n".join(formatted_details),
+                inline=False
+            )
+
     if suggestion:
-        embed.fields.append(
-            EmbedField(name="Suggestion", value=suggestion, inline=False)
+        embed.add_field(
+            name="Suggestion",
+            value=suggestion,
+            inline=False
         )
 
-    embed.footer = create_footer()
-    validate_embed_lengths(embed)
+    current_time = datetime.now()
+    warning_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
+    embed.set_footer(text=f"Warning issued at {warning_time}")
     return embed
 
 
 def create_system_embed(
     status: str,
     metrics: Optional[Dict[str, Union[str, int, float]]] = None,
-    issues: Optional[List[str]] = None
+    issues: Optional[List[str]] = None,
+    use_native_timestamps: bool = True
 ) -> Embed:
     """Create embed for system status update.
 
@@ -333,6 +369,7 @@ def create_system_embed(
         status: Current system status
         metrics: Optional system metrics
         issues: Optional list of current issues
+        use_native_timestamps: Whether to use Discord's native timestamps
 
     Returns:
         Embed: Formatted system status embed
@@ -340,24 +377,43 @@ def create_system_embed(
     embed = Embed(
         title="System Status",
         description=status,
-        color=DiscordColor.INFO,
-        timestamp=datetime.utcnow().isoformat()
+        color=DiscordColor.INFO
     )
 
     if metrics:
-        metrics_text = "\n".join(f"**{k}:** {v}" for k, v in metrics.items())
-        embed.fields.append(
-            EmbedField(name="Metrics", value=metrics_text, inline=False)
+        formatted_metrics = []
+        for key, value in metrics.items():
+            if isinstance(value, datetime):
+                if use_native_timestamps:
+                    value = format_discord_timestamp(value, "f")
+                else:
+                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
+            elif isinstance(value, (int, float)) and "time" in key.lower():
+                # Convert numeric time values (assumed to be timestamps)
+                dt = datetime.fromtimestamp(float(value))
+                if use_native_timestamps:
+                    value = format_discord_timestamp(dt, "R")
+                else:
+                    value = format_timestamp(dt, format_type=TimeFormat.RELATIVE)
+            formatted_metrics.append(f"**{key}:** {value}")
+
+        if formatted_metrics:
+            embed.add_field(
+                name="System Metrics",
+                value="\n".join(formatted_metrics),
+                inline=False
+            )
+
+    if issues:
+        embed.add_field(
+            name="Current Issues",
+            value="\n".join(f"• {issue}" for issue in issues),
+            inline=False
         )
 
-    if issues and len(issues) > 0:
-        issues_text = "\n".join(f"• {issue}" for issue in issues)
-        embed.fields.append(
-            EmbedField(name="Current Issues", value=issues_text, inline=False)
-        )
-
-    embed.footer = create_footer()
-    validate_embed_lengths(embed)
+    current_time = datetime.now()
+    status_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
+    embed.set_footer(text=f"Status as of {status_time}")
     return embed
 
 
@@ -817,3 +873,18 @@ def _create_embed_dict(embed: Embed) -> JsonDict:
         ]
 
     return embed_dict
+
+
+def format_discord_timestamp(dt: datetime, style: str = "R") -> str:
+    """Format timestamp using Discord's native format.
+
+    Args:
+        dt: Datetime to format
+        style: Discord timestamp style (t=short time, T=long time, d=short date,
+               D=long date, f=short date/time, F=long date/time, R=relative)
+
+    Returns:
+        str: Discord formatted timestamp
+    """
+    unix_timestamp = int(dt.timestamp())
+    return f"<t:{unix_timestamp}:{style}>"
