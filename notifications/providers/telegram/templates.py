@@ -34,27 +34,29 @@ logger = get_logger(__name__)
 
 # Default message templates with placeholders
 DEFAULT_TEMPLATES = {
-    "progress": """📊 Transfer Progress: {percent}%
+    "progress": """📊 <b>Transfer Progress</b>
 
-⏳ Remaining: {remaining_data}
-⌛ Elapsed: {elapsed_time}
+{progress_bar} <b>{percent:.1f}%</b>
+
+⏱️ Elapsed: {elapsed_time}
+⌛ Remaining: {remaining_data}
 🏁 ETC: {etc}""",
 
-    "completion": """✅ Transfer Complete!
+    "completion": """✅ <b>Transfer Complete!</b>
 
 The file transfer has been successfully completed.
 {stats}""",
 
-    "error": """❌ Error Occurred
+    "error": """❌ <b>Error Occurred</b>
 
 {error_message}
 {debug_info}""",
 
-    "status": """ℹ️ Status Update
+    "status": """ℹ️ <b>Status Update</b>
 
 {status_message}""",
 
-    "warning": """⚠️ Warning
+    "warning": """⚠️ <b>Warning</b>
 
 {warning_message}""",
 }
@@ -108,7 +110,7 @@ def create_progress_message(
     priority: MessagePriority = MessagePriority.NORMAL,
     add_keyboard: bool = True,
     description: Optional[str] = None,
-) -> Dict[str, Union[str, List[MessageEntity], InlineKeyboardMarkup]]:
+) -> Dict[str, Any]:
     """Create formatted progress update message.
 
     Args:
@@ -129,44 +131,57 @@ def create_progress_message(
     if not 0 <= percent <= 100:
         raise ValueError("Percent must be between 0 and 100")
 
-    # Escape special characters based on parse mode
-    parse_mode = ParseMode.HTML
-    escape_func = escape_html if parse_mode == ParseMode.HTML else escape_markdown
-    escaped_values = {
-        "percent": escape_func(f"{percent:.1f}"),
-        "remaining_data": escape_func(remaining_data),
-        "elapsed_time": escape_func(elapsed_time),
-        "etc": escape_func(etc),
+    # Create progress bar
+    bar_length = 20
+    filled = int(bar_length * percent / 100)
+    empty = bar_length - filled
+    progress_bar = "█" * filled + "░" * empty
+
+    # Format message using template
+    message = DEFAULT_TEMPLATES["progress"].format(
+        percent=percent,
+        progress_bar=progress_bar,
+        remaining_data=remaining_data,
+        elapsed_time=elapsed_time,
+        etc=etc
+    )
+
+    # Add description if provided
+    if description:
+        message = f"{message}\n\n<i>{description}</i>"
+
+    # Create message data
+    message_data = {
+        "text": message,
+        "parse_mode": ParseMode.HTML,
+        "priority": priority
     }
 
-    # Format the message using template
-    message = DEFAULT_TEMPLATES["progress"].format(**escaped_values)
-
-    # Add optional description
-    if description:
-        message = f"{escape_func(description)}\n\n{message}"
+    # Add keyboard if requested
+    if add_keyboard:
+        message_data["reply_markup"] = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "🔄 Refresh",
+                        "callback_data": "refresh_progress"
+                    },
+                    {
+                        "text": "⏸️ Pause",
+                        "callback_data": "pause_transfer"
+                    },
+                    {
+                        "text": "⏹️ Stop",
+                        "callback_data": "stop_transfer"
+                    }
+                ]
+            ]
+        }
 
     # Validate message length
-    message = validate_message_length(message)
+    validate_message_length(message)
 
-    # Prepare response data
-    response_data = {
-        "text": message,
-        "parse_mode": parse_mode,
-        "disable_notification": priority == MessagePriority.LOW,
-    }
-
-    # Add inline keyboard if requested
-    if add_keyboard:
-        keyboard = [
-            [{
-                "text": "▓" * round(percent / 10) + "░" * (10 - round(percent / 10)),
-                "callback_data": "progress_bar"
-            }]
-        ]
-        response_data["reply_markup"] = {"inline_keyboard": keyboard}
-
-    return response_data
+    return message_data
 
 
 def create_completion_message(

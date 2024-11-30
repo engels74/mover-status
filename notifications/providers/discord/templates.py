@@ -95,17 +95,23 @@ def create_progress_field(
     if not 0 <= percent <= 100:
         raise ValueError("Percent must be between 0 and 100")
 
+    # Create progress bar
+    bar_length = 20
+    filled = int(bar_length * percent / 100)
+    empty = bar_length - filled
+    progress_bar = "█" * filled + "░" * empty
+
     name = format_timestamp(datetime.now())
     value = (
-        f"Progress: **{percent:.1f}%**\n"
-        f"Remaining: {remaining}\n"
-        f"Elapsed: {elapsed}\n"
-        f"ETC: {etc}"
+        f"```\n{progress_bar} {percent:.1f}%\n```\n"
+        f"⏱️ Elapsed: {elapsed}\n"
+        f"⌛ Remaining: {remaining}\n"
+        f"🏁 ETC: {etc}"
     )
 
     return {
-        "name": truncate_string(name, ApiLimits.FIELD_NAME_LENGTH),
-        "value": truncate_string(value, ApiLimits.FIELD_VALUE_LENGTH),
+        "name": name,
+        "value": value,
         "inline": False
     }
 
@@ -136,34 +142,31 @@ def create_progress_embed(
     Raises:
         ValueError: If percent is out of range or field lengths exceed limits
     """
+    if not 0 <= percent <= 100:
+        raise ValueError("Percent must be between 0 and 100")
+
+    # Get dynamic color based on progress
+    color = get_progress_color(percent)
+
+    # Create progress field
+    field = create_progress_field(percent, remaining, elapsed, etc)
+
+    # Create embed
     embed: Embed = {
         "title": truncate_string(title, ApiLimits.TITLE_LENGTH),
-        "color": get_progress_color(percent),
-        "fields": [
-            create_progress_field(
-                percent=percent,
-                remaining=remaining,
-                elapsed=elapsed,
-                etc=etc
-            )
-        ],
+        "color": color,
+        "fields": [field],
         "footer": create_footer(),
         "timestamp": datetime.utcnow().isoformat()
     }
 
+    # Add optional components
     if description:
-        embed["description"] = truncate_string(
-            description,
-            ApiLimits.DESCRIPTION_LENGTH
-        )
-
+        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
     if author:
-        embed["author"] = {
-            "name": truncate_string(author["name"], ApiLimits.AUTHOR_NAME_LENGTH),
-            "url": author.get("url"),
-            "icon_url": author.get("icon_url")
-        }
+        embed["author"] = author
 
+    # Validate embed
     validate_embed_lengths(embed)
     return embed
 

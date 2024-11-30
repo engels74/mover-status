@@ -25,10 +25,18 @@ class DiscordColor(IntEnum):
     PROGRESS = 0x9B59B6     # Purple
     SYSTEM = 0x95A5A6       # Gray
     DEBUG = 0x34495E        # Dark Blue
-    PROGRESS_LOW = 0xFF6B6B  # Light Red (0-33%)
-    PROGRESS_MID = 0xFFA07A  # Light Orange (34-66%)
-    PROGRESS_HIGH = 0x98FB98  # Light Green (67-100%)
 
+    # Progress gradient colors (from red to green)
+    PROGRESS_0 = 0xFF4136   # Red (0-10%)
+    PROGRESS_10 = 0xFF6B6B  # Light Red (11-20%)
+    PROGRESS_20 = 0xFF9F40  # Orange (21-30%)
+    PROGRESS_30 = 0xFFA07A  # Light Orange (31-40%)
+    PROGRESS_40 = 0xFFD700  # Gold (41-50%)
+    PROGRESS_50 = 0xF1C40F  # Yellow (51-60%)
+    PROGRESS_60 = 0xB8E986  # Light Green (61-70%)
+    PROGRESS_70 = 0x90EE90  # Pale Green (71-80%)
+    PROGRESS_80 = 0x98FB98  # Mint Green (81-90%)
+    PROGRESS_90 = 0x2ECC71  # Green (91-100%)
 
 class ApiLimit(IntEnum):
     """Discord API limits and constraints."""
@@ -167,13 +175,28 @@ def get_progress_color(percent: float) -> int:
         ValueError: If percentage is out of valid range
     """
     if not 0 <= percent <= 100:
-        raise ValueError("Percentage must be between 0 and 100")
+        raise ValueError("Progress percentage must be between 0 and 100")
 
-    if percent < 33.33:
-        return DiscordColor.PROGRESS_LOW
-    elif percent < 66.67:
-        return DiscordColor.PROGRESS_MID
-    return DiscordColor.PROGRESS_HIGH
+    # Define color brackets
+    brackets = [
+        (10, DiscordColor.PROGRESS_0),
+        (20, DiscordColor.PROGRESS_10),
+        (30, DiscordColor.PROGRESS_20),
+        (40, DiscordColor.PROGRESS_30),
+        (50, DiscordColor.PROGRESS_40),
+        (60, DiscordColor.PROGRESS_50),
+        (70, DiscordColor.PROGRESS_60),
+        (80, DiscordColor.PROGRESS_70),
+        (90, DiscordColor.PROGRESS_80),
+        (100, DiscordColor.PROGRESS_90)
+    ]
+
+    # Find appropriate color bracket
+    for threshold, color in brackets:
+        if percent <= threshold:
+            return color
+
+    return DiscordColor.PROGRESS_90  # Fallback for 100%
 
 
 def validate_url(url: str, allowed_domains: DomainSet) -> bool:
