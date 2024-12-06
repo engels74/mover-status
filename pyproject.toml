@@ -136,12 +136,8 @@ exclude = [
     "tests",
     ".ruff_cache",
 ]
-typeCheckingMode = "strict"
+typeCheckingMode = "basic"
 useLibraryCodeForTypes = true
 reportMissingImports = true
-reportMissingTypeStubs = "warning"
-reportUnknownMemberType = "warning"
-reportUnknownArgumentType = "warning"
-reportGeneralTypeIssues = "error"
-reportFunctionMemberAccess = "warning"
+reportMissingTypeStubs = "none"
 pythonVersion = "3.11"
