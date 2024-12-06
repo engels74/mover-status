@@ -14,7 +14,7 @@ from typing import Optional
 import aiohttp
 from structlog import get_logger
 
-from config.constants import TimeConstants, Version
+from config.constants import TimeConstants
 
 logger = get_logger(__name__)
 
@@ -30,8 +30,8 @@ class Version:
     patch: int
     prerelease: Optional[str] = None
 
-    CURRENT = Version.CURRENT
-    GITHUB_API_URL = Version.GITHUB_API_URL
+    CURRENT = "1.0.0"  # Replace with actual current version
+    GITHUB_API_URL = "https://api.github.com/repos/engels74/mover-status/releases/latest"
 
     @classmethod
     def from_string(cls, version_str: str) -> "Version":
@@ -130,50 +130,35 @@ class VersionChecker:
             aiohttp.ClientError: If GitHub API request fails
             ValueError: If GitHub API response is invalid or no releases found
         """
-        # Use cached version if available and not expired
-        if not force_check and self._is_cache_valid():
-            assert self._latest_version is not None
+        if not force_check and self._is_cache_valid() and self._latest_version is not None:
             return self._latest_version
 
+        async with aiohttp.ClientSession() as session:
+            async with session.get(Version.GITHUB_API_URL) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+        if "tag_name" not in data:
+            raise ValueError("Invalid GitHub API response")
+
+        version_str = data["tag_name"].lstrip("v")
+        self._latest_version = Version.from_string(version_str)
+        self._last_check = datetime.now()
+
+        return self._latest_version
+
+    async def check_for_updates(self) -> tuple[bool, str]:
+        """Check if updates are available.
+
+        Returns:
+            tuple[bool, str]: (update_available, latest_version_string)
+        """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(Version.GITHUB_API_URL) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-
-                    if not isinstance(data, list) or not data:
-                        raise ValueError("Invalid or empty GitHub API response")
-
-                    release = data[0]
-                    if not isinstance(release, dict) or "tag_name" not in release:
-                        raise ValueError("Invalid release format in GitHub API response")
-
-                    # Get latest release version
-                    latest_tag = release["tag_name"].lstrip("v")
-                    try:
-                        self._latest_version = Version.from_string(latest_tag)
-                    except ValueError as err:
-                        raise ValueError(f"Invalid version format in GitHub release: {err}") from err
-
-                    self._last_check = datetime.now()
-
-                    logger.debug(
-                        "Version check completed",
-                        current_version=str(self._current),
-                        latest_version=str(self._latest_version),
-                        cache_updated=True,
-                    )
-
-                    return self._latest_version
-
-        except aiohttp.ClientError as err:
-            logger.error(
-                "Failed to check for updates",
-                error=str(err),
-                error_type=type(err).__name__,
-                current_version=str(self._current),
-            )
-            raise
+            latest = await self.get_latest_version()
+            return latest > self.current_version, str(latest)
+        except Exception as e:
+            logger.warning("Failed to check for updates", error=str(e))
+            return False, str(self.current_version)
 
     def _is_cache_valid(self) -> bool:
         """Check if cached version is still valid.
@@ -181,11 +166,10 @@ class VersionChecker:
         Returns:
             bool: True if cache is valid, False otherwise
         """
-        if self._latest_version is None or self._last_check is None:
+        if not self._latest_version or not self._last_check:
             return False
-
         cache_age = datetime.now() - self._last_check
-        return cache_age < timedelta(seconds=TimeConstants.VERSION_CHECK_INTERVAL)
+        return cache_age < timedelta(hours=1)
 
 
 # Global version checker instance

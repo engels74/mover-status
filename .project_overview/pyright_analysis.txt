@@ -1,13 +1,3 @@
-c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py:152:66 - error: Cannot access attribute "check_for_updates" for class "VersionChecker"
-    Attribute "check_for_updates" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py:227:36 - error: Cannot access attribute "stats" for class "TransferCalculator"
-    Attribute "stats" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py:228:45 - error: Cannot access attribute "stats" for class "TransferCalculator"
-    Attribute "stats" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py:247:33 - error: Cannot access attribute "stats" for class "TransferCalculator"
-    Attribute "stats" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\__main__.py:256:15 - error: Function with declared return type "NoReturn" cannot return "None" (reportReturnType)
 c:\Users\DKPML\Documents\GitHub\engels74\mover-status\config\settings.py
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\config\settings.py:173:54 - error: Argument of type "type[DiscordSettings]" cannot be assigned to parameter "default_factory" of type "(() -> _T@Field) | ((dict[str, Any]) -> _T@Field)" in function "Field"
     Type "type[DiscordSettings]" is not assignable to type "(() -> _T@Field) | ((dict[str, Any]) -> _T@Field)"
@@ -162,12 +152,6 @@ c:\Users\DKPML\Documents\GitHub\engels74\mover-status\config\providers\telegram\
       Consider switching from "list" to "Sequence" which is covariant (reportReturnType)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\config\providers\telegram\types.py:244:47 - error: Cannot access attribute "USERNAME_LENGTH" for class "MessageLimit"
     Attribute "USERNAME_LENGTH" is unknown (reportAttributeAccessIssue)
-c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\calculator.py
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\calculator.py:46:30 - error: "Units" is unknown import symbol (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\calculator.py:306:27 - error: Expected class but received "(obj: object, /) -> TypeIs[(...) -> object]" (reportGeneralTypeIssues)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\calculator.py:349:42 - error: "object" is not awaitable
-    "object" is incompatible with protocol "Awaitable[_T_co@Awaitable]"
-      "__await__" is not present (reportGeneralTypeIssues)
 c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:44:5 - error: "Events" is unknown import symbol (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:45:5 - error: "States" is unknown import symbol (reportAttributeAccessIssue)
@@ -191,12 +175,8 @@ c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py
     Attribute "_create_progress_message" is unknown (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:464:36 - error: Cannot access attribute "notify_progress" for class "NotificationProvider[Unknown, Unknown]"
     Attribute "notify_progress" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:466:31 - error: Cannot access attribute "remaining_formatted" for class "TransferStats"
-    Attribute "remaining_formatted" is unknown (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:467:31 - error: Cannot access attribute "elapsed_formatted" for class "TransferStats"
     Attribute "elapsed_formatted" is unknown (reportAttributeAccessIssue)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:468:31 - error: Cannot access attribute "etc_formatted" for class "TransferStats"
-    Attribute "etc_formatted" is unknown (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:490:65 - error: Cannot access attribute "get_state" for class "ProcessManager"
     Attribute "get_state" is unknown (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\core\monitor.py:497:44 - error: Cannot access attribute "update" for class "TransferCalculator"
@@ -715,10 +695,4 @@ c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\validators.py
     Attribute "MIN_NOTIFICATION_INCREMENT" is unknown (reportAttributeAccessIssue)
   c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\validators.py:432:30 - error: Cannot access attribute "MAX_NOTIFICATION_INCREMENT" for class "type[API]"
     Attribute "MAX_NOTIFICATION_INCREMENT" is unknown (reportAttributeAccessIssue)
-c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\version.py
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\version.py:17:45 - error: Type "type[config.constants.Version]" is not assignable to declared type "type[utils.version.Version]"
-    "config.constants.Version" is not assignable to "utils.version.Version"
-    Type "type[config.constants.Version]" is not assignable to type "type[utils.version.Version]" (reportAssignmentType)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\version.py:33:15 - error: Type alias "CURRENT" cannot use itself in its definition (reportGeneralTypeIssues)
-  c:\Users\DKPML\Documents\GitHub\engels74\mover-status\utils\version.py:34:22 - error: Type alias "GITHUB_API_URL" cannot use itself in its definition (reportGeneralTypeIssues)
-348 errors, 1 warning, 0 notes
+335 errors, 1 warning, 0 notes

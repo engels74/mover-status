@@ -20,6 +20,7 @@ import asyncio
 import logging
 import signal
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List, NoReturn, Optional
 
@@ -28,6 +29,7 @@ from structlog.stdlib import LoggerFactory
 from structlog.types import Processor
 
 from config.settings import Settings
+from core.calculator import TransferStats
 from core.monitor import MoverMonitor
 from utils.version import version_checker
 
@@ -243,10 +245,21 @@ async def test_notifications(settings: Settings) -> None:
     monitor = MoverMonitor(settings)
     try:
         await monitor._setup_providers()
-        await monitor._send_notifications(
-            monitor._calculator.stats,
-            force=True
-        )
+        stats = monitor._calculator.stats
+        if stats is None:
+            # Create dummy stats for testing
+            stats = TransferStats(
+                initial_size=1024 * 1024 * 1024,  # 1GB
+                current_size=512 * 1024 * 1024,   # 512MB
+                bytes_transferred=512 * 1024 * 1024,
+                bytes_remaining=512 * 1024 * 1024,
+                percent_complete=50.0,
+                transfer_rate=10 * 1024 * 1024,  # 10MB/s
+                elapsed_time=60.0,
+                remaining_time=60.0,
+                start_time=datetime.now(),
+            )
+        await monitor._send_notifications(stats, force=True)
         print("Test notifications sent successfully")
     except Exception as err:
         print(f"Failed to send test notifications: {err}")
@@ -312,6 +325,7 @@ def main() -> NoReturn:
 
         # Run the monitor
         asyncio.run(run_monitor(settings))
+        sys.exit(0)  # Should never reach here due to infinite loop in run_monitor
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         sys.exit(0)
