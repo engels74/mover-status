@@ -126,3 +126,13 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 show_error_codes = true
+
+[tool.pyright]
+include = ["mover_status"]
+exclude = ["**/node_modules", "**/__pycache__", "**/.*"]
+strict = ["mover_status"]
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.11"

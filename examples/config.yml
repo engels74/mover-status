@@ -1,0 +1,112 @@
+# Example Mover Status Configuration File
+# Place this file in your preferred location and modify the values according to your needs
+
+# File system monitoring settings
+filesystem:
+  # Path to the cache directory to monitor
+  cache_path: "/mnt/cache"  # Change this to your actual cache path
+  # Set of paths to exclude from monitoring (optional)
+  excluded_paths: []
+
+# Logging configuration
+logging:
+  # Directory for log files
+  log_dir: "logs"
+  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  log_level: "INFO"
+  # Enable debug mode for additional logging
+  debug_mode: false
+
+# Monitoring behavior configuration
+monitoring:
+  # Interval in seconds between monitoring checks (0.1-60.0)
+  polling_interval: 1.0
+
+# Global notification settings
+notifications:
+  # Default template for notification messages
+  default_template: "New file: {filename}"
+  # Default priority for notifications (LOW, NORMAL, HIGH)
+  default_priority: "NORMAL"
+  # Percentage increment between progress notifications (1-100)
+  notification_increment: 25
+
+# Discord notification settings
+discord:
+  # Enable Discord notifications
+  enabled: false
+  # Discord webhook URL (required if enabled)
+  webhook_url: ""
+  # Custom username for webhook messages (optional, 1-80 characters)
+  username: null
+  # Custom avatar URL for webhook messages (optional, must be HTTPS)
+  avatar_url: null
+  # Thread ID to send messages to (optional)
+  thread_id: null
+  # Forum channel settings (optional)
+  forum:
+    # Enable forum channel integration
+    enabled: false
+    # Automatically create threads for messages
+    auto_thread: false
+    # Default name for auto-created threads (optional)
+    default_thread_name: null
+    # Thread auto-archive duration in minutes (60-10080, default: 1440)
+    archive_duration: 1440
+  # Default color for Discord embeds (hex color code, 0x000000 to 0xFFFFFF)
+  embed_color: null
+  # Rate limiting settings
+  rate_limit:
+    rate_limit: 30  # Max requests
+    rate_period: 60  # Time period in seconds
+    retry_attempts: 3
+    retry_delay: 5
+  # API settings
+  api_settings:
+    timeout: 30
+    headers:
+      User-Agent: "MoverStatus/1.0"
+  # Message customization
+  message_template: "{percent}% complete - {remaining_data} remaining ({etc})"
+  message_priority: "normal"
+  notification_increment: 25
+  tags: ["status", "mover"]
+
+# Telegram notification settings
+telegram:
+  # Enable Telegram notifications
+  enabled: false
+  # Bot configuration (required if enabled)
+  bot_token: ""  # Your Telegram bot token
+  chat_id: ""    # Your chat ID (group, channel, or user)
+  # Message settings
+  parse_mode: "HTML"  # Message parsing mode for formatting (HTML, Markdown, MarkdownV2)
+  disable_notifications: false  # Send messages silently
+  protect_content: false  # Prevent message forwarding/saving
+  message_thread_id: null  # Optional thread ID for forum/topic messages
+  # Chat settings
+  chat_type: null  # Type of chat (private, group, supergroup, channel)
+  # API settings
+  api_base_url: "https://api.telegram.org"  # Telegram API endpoint URL
+  max_message_length: 4096  # Maximum message length in characters
+  timeout: 10.0  # API request timeout in seconds (0.1-300.0)
+  # Rate limiting settings
+  rate_limit:
+    rate_limit: 30  # Max requests per minute
+    rate_period: 60  # Time period in seconds
+    retry_attempts: 3  # Number of retry attempts
+    retry_delay: 5  # Delay between retries in seconds
+  # API settings
+  api_settings:
+    timeout: 30  # Request timeout in seconds
+    headers:
+      User-Agent: "MoverStatus/1.0"
+  # Message customization
+  message_template: "{percent}% complete - {remaining_data} remaining ({etc})"
+  message_priority: "normal"  # Priority level for notifications (low, normal, high)
+  notification_increment: 25  # Percentage increment between notifications
+  tags: ["status", "mover"]  # Message tags for filtering/routing
+
+# Global settings
+dry_run: false  # Run without sending notifications
+check_version: true  # Enable version checking
