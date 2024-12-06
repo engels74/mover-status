@@ -128,11 +128,20 @@ warn_unreachable = true
 show_error_codes = true
 
 [tool.pyright]
-include = ["mover_status"]
-exclude = ["**/node_modules", "**/__pycache__", "**/.*"]
-strict = ["mover_status"]
-typeCheckingMode = "basic"
+include = ["."]
+exclude = [
+    "**/__pycache__",
+    ".venv",
+    ".git",
+    "tests",
+    ".ruff_cache",
+]
+typeCheckingMode = "strict"
 useLibraryCodeForTypes = true
 reportMissingImports = true
-reportMissingTypeStubs = false
+reportMissingTypeStubs = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownArgumentType = "warning"
+reportGeneralTypeIssues = "error"
+reportFunctionMemberAccess = "warning"
 pythonVersion = "3.11"
