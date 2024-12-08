@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
 
     # Provider settings
-    discord: DiscordSettings = Field(default_factory=DiscordSettings)
+    discord: DiscordSettings = Field(default_factory=lambda: DiscordSettings())
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     # Application behavior

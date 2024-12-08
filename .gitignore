@@ -170,3 +170,4 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 .project_overview/pyright_analysis.txt
+.project_overview/pyright_analysis.txt

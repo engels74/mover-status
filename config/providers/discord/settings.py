@@ -219,8 +219,8 @@ class DiscordSettings(BaseProviderSettings):
         ...     )
         ... )
     """
-    webhook_url: str = Field(
-        ...,
+    webhook_url: Optional[str] = Field(
+        default=None,
         pattern=r"^https://discord\.com/api/webhooks/\d+/.+$",
         description="Discord webhook URL"
     )
@@ -255,6 +255,31 @@ class DiscordSettings(BaseProviderSettings):
         le=0xFFFFFF,  # 16777215
         description="Default color for Discord embeds (hex color code)"
     )
+
+    @field_validator("webhook_url")
+    @classmethod
+    def validate_webhook_url(cls, v: Optional[str], info: Any) -> Optional[str]:
+        """Validate webhook URL when Discord is enabled.
+
+        Args:
+            v: Webhook URL to validate
+            info: Validation context information
+
+        Returns:
+            Optional[str]: Validated webhook URL
+
+        Raises:
+            ValueError: If webhook URL is missing when enabled
+        """
+        enabled = info.data.get("enabled", False)
+
+        if enabled and not v:
+            raise ValueError("webhook_url is required when Discord is enabled")
+
+        if v and not v.startswith("https://discord.com/api/webhooks/"):
+            raise ValueError("webhook_url must be a valid Discord webhook URL")
+
+        return v
 
     def to_provider_config(self) -> Dict[str, Any]:
         """Convert settings to Discord provider configuration.
