@@ -692,72 +692,72 @@ class DiscordProvider(NotificationProvider):
     ) -> Embed:
         """Create appropriate embed based on message type."""
         if message_type == MessageType.WARNING:
-            return create_warning_embed(
+            return cast(Embed, create_warning_embed(
                 message=message,
                 title="Warning",
                 color=self._get_level_color(level),
                 use_native_timestamps=kwargs.get("use_native_timestamps", True)
-            )
+            ))
 
         elif message_type == MessageType.SYSTEM:
-            return create_system_embed(
+            return cast(Embed, create_system_embed(
                 message=message,
                 title="System Status",
                 color=self._get_level_color(level),
                 use_native_timestamps=kwargs.get("use_native_timestamps", True)
-            )
+            ))
 
         elif message_type == MessageType.PROGRESS:
-            return create_progress_embed(
+            return cast(Embed, create_progress_embed(
                 percent=kwargs.get("percent", 0),
                 remaining=kwargs.get("remaining", "Unknown"),
                 elapsed=kwargs.get("elapsed", "Unknown"),
                 etc=kwargs.get("etc", "Unknown"),
                 description=message
-            )
+            ))
 
         elif message_type == MessageType.COMPLETION:
-            return create_completion_embed(
+            return cast(Embed, create_completion_embed(
                 description=message,
                 stats=kwargs.get("stats")
-            )
+            ))
 
         elif message_type == MessageType.ERROR:
-            return create_error_embed(
+            return cast(Embed, create_error_embed(
                 error_message=message,
                 error_code=kwargs.get("error_code"),
                 error_details=kwargs.get("error_details")
-            )
+            ))
 
         elif message_type == MessageType.BATCH:
-            return create_batch_embed(
+            return cast(Embed, create_batch_embed(
                 operation=kwargs.get("operation", "Operation"),
                 items=kwargs.get("items", []),
                 summary=message
-            )
+            ))
 
         elif message_type == MessageType.INTERACTIVE:
-            return create_interactive_embed(
+            return cast(Embed, create_interactive_embed(
                 title=kwargs.get("title", "Interactive Message"),
                 description=message,
                 actions=kwargs.get("actions", []),
                 expires_in=kwargs.get("expires_in")
-            )
+            ))
 
         elif message_type == MessageType.DEBUG:
-            return create_debug_embed(
+            return cast(Embed, create_debug_embed(
                 message=message,
                 context=kwargs.get("context"),
                 stack_trace=kwargs.get("stack_trace")
-            )
+            ))
 
         # Default to custom message type
-        return {
+        return cast(Embed, {
             "title": kwargs.get("title", "Notification"),
             "description": message,
             "color": self._get_level_color(level),
             "timestamp": datetime.utcnow().isoformat()
-        }  # type: ignore
+        })
 
     def _get_level_color(self, level: NotificationLevel) -> Optional[int]:
         """Get Discord color based on notification level.
@@ -874,9 +874,8 @@ class DiscordProvider(NotificationProvider):
         footer_text: str
     ) -> Embed:
         """Create an embed that strictly matches Embed TypedDict."""
-        from typing import Literal
         return {
-            'type': typing.cast(Literal['rich'], 'rich'),  # Explicit literal type
+            'type': cast(Literal['rich'], 'rich'),  # Using already imported cast
             'title': title,
             'description': description,
             'color': color,
@@ -884,82 +883,76 @@ class DiscordProvider(NotificationProvider):
             'footer': {'text': footer_text}  # Matches EmbedFooter definition
         }
 
+
     def _create_status_embed(self, status: str, color: int) -> Embed:
         """Create a status embed with standard format."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Status Update",
             description=status,
             color=color,
             footer_text="MoverStatus Bot"
-        )
-        return embed
+        ))
 
     def _create_progress_embed(self, progress: float, message: str) -> Embed:
         """Create a progress update embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Progress Update",
             description=message,
             color=get_progress_color(progress),
             footer_text=f"{progress:.1f}% Complete"
-        )
-        return embed
+        ))
 
     def _create_error_embed(self, error: str) -> Embed:
         """Create an error notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Error",
             description=error,
             color=DiscordColor.ERROR,
             footer_text="Error Report"
-        )
-        return embed
+        ))
 
     def _create_warning_embed(self, warning: str) -> Embed:
         """Create a warning notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Warning",
             description=warning,
             color=DiscordColor.WARNING,
             footer_text="Warning Notice"
-        )
-        return embed
+        ))
 
     def _create_info_embed(self, info: str) -> Embed:
         """Create an informational notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Information",
             description=info,
             color=DiscordColor.INFO,
             footer_text="Info Update"
-        )
-        return embed
+        ))
 
     def _create_debug_embed(self, debug: str) -> Embed:
         """Create a debug notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Debug",
             description=debug,
             color=DiscordColor.DEBUG,
             footer_text="Debug Info"
-        )
-        return embed
+        ))
 
     def _create_system_embed(self, message: str) -> Embed:
         """Create a system notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="System Message",
             description=message,
             color=DiscordColor.SYSTEM,
             footer_text="System Notification"
-        )
-        return embed
+        ))
 
     def _create_completion_embed(self, message: str) -> Embed:
         """Create a completion notification embed."""
-        embed: Embed = self._create_embed(
+        return cast(Embed, self._create_embed(
             title="Task Complete",
             description=message,
             color=DiscordColor.SUCCESS,
             footer_text="Completion Notice"
-        )
-        return embed
+        ))
+

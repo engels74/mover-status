@@ -16,11 +16,11 @@ from shared.providers.discord import (
     ApiLimit,
     AssetDomains,
     DiscordColor,
-    DomainSet,
     Embed,
     WebhookDomains,
     WebhookPayload,
 )
+
 
 
 class ForumConfig(TypedDict, total=False):
@@ -127,7 +127,7 @@ __all__ = [
     'DiscordColor',
     'Embed',
     'WebhookPayload',
-    'DomainSet',
     'WebhookDomains',
     'AssetDomains',
+
 ]

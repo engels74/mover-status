@@ -12,31 +12,28 @@ Example:
     ...     await provider.notify_progress(75.5, "1.2 GB", "2 hours", "15:30")
 """
 
-from typing import TYPE_CHECKING
-
 from notifications.providers.discord.config import DiscordConfig
 from notifications.providers.discord.provider import (
     DiscordProvider,
     DiscordWebhookError,
 )
 from notifications.providers.discord.types import DiscordColor
+from shared.providers.discord.types import (
+    Embed,
+    EmbedAuthor,
+    EmbedField,
+    EmbedFooter,
+    EmbedImage,
+    EmbedThumbnail,
+    WebhookPayload,
+)
+from notifications.providers.discord.templates import (
+    create_completion_embed,
+    create_error_embed,
+    create_progress_embed,
+    create_webhook_payload,
+)
 
-if TYPE_CHECKING:
-    from notifications.providers.discord.templates import (
-        create_completion_embed,
-        create_error_embed,
-        create_progress_embed,
-        create_webhook_data,
-    )
-    from notifications.providers.discord.types import (
-        Embed,
-        EmbedAuthor,
-        EmbedField,
-        EmbedFooter,
-        EmbedImage,
-        EmbedThumbnail,
-        WebhookPayload,
-    )
 
 __all__ = [
     # Main classes
@@ -50,7 +47,7 @@ __all__ = [
     "create_completion_embed",
     "create_error_embed",
     "create_progress_embed",
-    "create_webhook_data",
+    "create_webhook_payload",
     # Type definitions
     "Embed",
     "EmbedAuthor",
