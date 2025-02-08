@@ -17,6 +17,12 @@ from notifications.providers.discord.provider import (
     DiscordProvider,
     DiscordWebhookError,
 )
+from notifications.providers.discord.templates import (
+    create_completion_embed,
+    create_error_embed,
+    create_progress_embed,
+    create_webhook_payload,
+)
 from notifications.providers.discord.types import DiscordColor
 from shared.providers.discord.types import (
     Embed,
@@ -27,13 +33,6 @@ from shared.providers.discord.types import (
     EmbedThumbnail,
     WebhookPayload,
 )
-from notifications.providers.discord.templates import (
-    create_completion_embed,
-    create_error_embed,
-    create_progress_embed,
-    create_webhook_payload,
-)
-
 
 __all__ = [
     # Main classes

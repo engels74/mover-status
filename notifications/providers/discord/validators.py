@@ -9,13 +9,13 @@ from pydantic import HttpUrl
 from config.constants import JsonDict
 from config.providers.discord.settings import (
     ALLOWED_IMAGE_EXTENSIONS,
+    ASSET_DOMAINS,
     MAX_URL_LENGTH,
     THREAD_NAME_PATTERN,
     USERNAME_PATTERN,
+    WEBHOOK_DOMAINS,
     WEBHOOK_PATH_PREFIX,
     WEBHOOK_TOKEN_PATTERN,
-    ASSET_DOMAINS,
-    WEBHOOK_DOMAINS,
 )
 from config.providers.discord.types import (
     ApiLimit,

@@ -84,7 +84,6 @@ from config.constants import (
     Notification,
     NotificationLevel,
 )
-from shared.providers.telegram import TelegramError
 
 logger = get_logger(__name__)
 

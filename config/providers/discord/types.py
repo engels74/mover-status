@@ -22,7 +22,6 @@ from shared.providers.discord import (
 )
 
 
-
 class ForumConfig(TypedDict, total=False):
     """Configuration for Discord forum channel integration."""
     enabled: bool

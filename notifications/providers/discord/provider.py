@@ -5,13 +5,12 @@
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypedDict, cast, Literal
-from typing_extensions import NotRequired
+from typing import Any, Dict, List, Literal, Optional, TypedDict, cast
 
 import aiohttp
-from aiohttp import ClientTimeout
 from pydantic import HttpUrl
 from structlog import get_logger
+from typing_extensions import NotRequired
 
 from config.constants import (
     API,
@@ -19,7 +18,7 @@ from config.constants import (
     MessageType,
     NotificationLevel,
 )
-from config.providers.discord.types import ForumConfig, WebhookConfig
+from config.providers.discord.types import WebhookConfig
 from notifications.base import (
     NotificationProvider,
 )
@@ -41,7 +40,6 @@ from shared.providers.discord import (
     DiscordColor,
     DiscordWebhookError,
     Embed,
-    EmbedFooter,
     get_progress_color,
     validate_url,
 )

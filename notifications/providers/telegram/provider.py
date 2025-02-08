@@ -266,13 +266,13 @@ class TelegramProvider(NotificationProvider):
             await self.connect()
             if not self._session:  # Double check after connect
                 raise TelegramError("Failed to establish session")
-        
+
         try:
             async with self._session.post(url, json=data, timeout=ClientTimeout(total=self.timeout)) as response:
                 response_data = await response.json()
                 return response, response_data
         except AttributeError as e:
-            raise TelegramError("Failed to execute request: " + str(e))
+            raise TelegramError("Failed to execute request: " + str(e)) from e
 
     async def _send_api_request(
         self,
