@@ -173,4 +173,6 @@ pyrightconfig.json
 .project_overview/pyright_analysis.txt
 
 # AI IDE
+.aiderules
+.clinerules
 .windsurfrules
