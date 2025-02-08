@@ -10,9 +10,10 @@ performance monitoring.
 
 Key Features:
     - Provider Registration: Dynamic registration of notification providers with optional validators
-    - Priority Management: Three-tier priority system (LOW, NORMAL, HIGH) with configurable settings
-    - Performance Optimization: Caching system for validators with automatic TTL management
-    - Statistics Tracking: Comprehensive tracking of message priorities and validation performance
+    - Configuration Management: Validation and caching of provider configurations
+    - Priority Handling: Support for LOW, NORMAL, and HIGH priority messages
+    - Performance Monitoring: Tracking of validation times and message statistics
+    - Validator Caching: Optimization of validation performance with TTL-based caching
     - Thread Safety: Async-safe operations with proper locking mechanisms
 
 Priority Levels:
@@ -86,24 +87,35 @@ Note:
 
 import asyncio
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
     Dict,
+    Generic,
+    Iterator,
     List,
     Optional,
-    Set,
+    Protocol,
     Tuple,
     Type,
     TypeVar,
     Union,
+    cast,
+    runtime_checkable,
 )
 
 from structlog import get_logger
 
-from config.constants import MessagePriority
-from config.constants import NotificationProvider as ProviderType
+from config.constants import (
+    API,
+    MessagePriority,
+)
+from config.constants import (
+    NotificationProvider as ProviderType,
+)
 from notifications.base import NotificationError, NotificationProvider
 from utils.validators import BaseProviderValidator
 
@@ -113,6 +125,22 @@ logger = get_logger(__name__)
 T_Config = TypeVar('T_Config', bound=Dict[str, Any])
 T_Provider = TypeVar('T_Provider', bound=NotificationProvider)
 T_Validator = TypeVar('T_Validator', bound=BaseProviderValidator)
+
+@runtime_checkable
+class ValidatorProtocol(Protocol):
+    """Protocol defining the validator interface."""
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, Any]: ...
+
+    @classmethod
+    def validate_priority_config(cls, config: Dict[str, Any], priority: MessagePriority) -> Dict[str, Any]: ...
+
+@runtime_checkable
+class ProviderProtocol(Protocol):
+    """Protocol defining the provider interface."""
+    async def connect(self) -> None: ...
+    async def disconnect(self) -> None: ...
+    def __init__(self, rate_limit: int = API.DEFAULT_RATE_LIMIT): ...
 
 @dataclass
 class ValidationContext:
@@ -141,45 +169,18 @@ class ValidationContext:
     validation_time: float = 0.0
 
 @dataclass
-class ValidatorCacheEntry:
-    """Cache entry for storing and managing validator instances.
-
-    Maintains metadata about validator usage and performance, including creation time,
-    usage statistics, and priority-based validation counts. This helps in optimizing
-    validator lifecycle and identifying performance patterns.
-
-    Attributes:
-        validator (BaseProviderValidator): The cached validator instance
-        created_at (float): Timestamp when the validator was created
-        last_used (float): Timestamp of last validator usage
-        validation_count (int): Total number of validations performed
-        total_validation_time (float): Cumulative time spent in validation
-        priority_validation_counts (Dict[MessagePriority, int]): Validation counts per priority
-
-    Example:
-        >>> entry = ValidatorCacheEntry(
-        ...     validator=DiscordValidator(),
-        ...     created_at=time.time(),
-        ...     last_used=time.time()
-        ... )
-        >>> entry.validation_count += 1
-        >>> entry.total_validation_time += 0.5
-        >>> entry.priority_validation_counts[MessagePriority.HIGH] += 1
-    """
-    validator: BaseProviderValidator
-    created_at: float
-    last_used: float
+class ValidatorMetrics:
+    """Metrics for tracking validator usage."""
     validation_count: int = 0
     total_validation_time: float = 0.0
-    priority_validation_counts: Dict[MessagePriority, int] = None
 
-    def __post_init__(self):
-        if self.priority_validation_counts is None:
-            self.priority_validation_counts = {
-                MessagePriority.LOW: 0,
-                MessagePriority.NORMAL: 0,
-                MessagePriority.HIGH: 0
-            }
+@dataclass
+class ValidatorCacheEntry:
+    """Cache entry for validator instances."""
+    validator: ValidatorProtocol
+    metrics: ValidatorMetrics
+    created_at: float
+    last_used: float
 
 class ProviderError(NotificationError):
     """Base exception for provider-related errors in the notification system.
@@ -244,7 +245,7 @@ class ProviderConfigError(ProviderError):
     pass
 
 
-class NotificationFactory:
+class NotificationFactory(Generic[T_Provider]):
     """Factory for creating and managing notification providers with advanced lifecycle management.
 
     This factory class serves as the central hub for notification provider management,
@@ -340,7 +341,7 @@ class NotificationFactory:
         MessagePriority.HIGH: 2.0     # 200% of base rate
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize a new NotificationFactory instance.
 
         Creates a new factory instance with empty provider and validator caches,
@@ -353,22 +354,23 @@ class NotificationFactory:
                 Currently active provider instances
             _validator_cache (Dict[str, ValidatorCacheEntry]):
                 Cache of validator instances with usage statistics
+            _validator_metrics (Dict[str, ValidatorMetrics]):
+                Metrics for validator usage
             _registered_configs (Dict[str, Dict[str, Any]]):
                 Registered configurations for providers
-            _active_tasks (Set[asyncio.Task]):
-                Set of active asynchronous tasks
-            _lock (asyncio.Lock):
-                Lock for thread-safe operations
             _priority_stats (Dict[str, Dict[MessagePriority, int]]):
                 Statistics tracking for message priorities per provider
         """
-        self._providers: Dict[str, Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]] = {}
-        self._active_providers: Dict[str, NotificationProvider] = {}
+        self._registered_providers: Dict[str, Type[T_Provider]] = {}
+        self._registered_validators: Dict[str, Type[ValidatorProtocol]] = {}
+        self._active_providers: Dict[str, T_Provider] = {}
         self._validator_cache: Dict[str, ValidatorCacheEntry] = {}
+        self._validator_metrics: Dict[str, ValidatorMetrics] = {}
         self._registered_configs: Dict[str, Dict[str, Any]] = {}
-        self._active_tasks: Set[asyncio.Task] = set()
+        self._priority_stats: Dict[str, Dict[MessagePriority, int]] = defaultdict(
+            lambda: {priority: 0 for priority in MessagePriority}
+        )
         self._lock = asyncio.Lock()
-        self._priority_stats: Dict[str, Dict[MessagePriority, int]] = {}
 
     def _update_priority_stats(self, provider_id: str, priority: MessagePriority) -> None:
         """Update usage statistics for message priorities.
@@ -401,7 +403,7 @@ class NotificationFactory:
         self._priority_stats[provider_id][priority] += 1
 
     @contextmanager
-    def _validation_context(self, provider_id: str, operation: str) -> 'ValidationContext':
+    def _validation_context(self, provider_id: str, operation: str) -> Iterator[ValidationContext]:
         """Create a context manager for tracking validation operations.
 
         Provides performance monitoring and logging for validation operations,
@@ -420,9 +422,10 @@ class NotificationFactory:
 
         Example:
             >>> with factory._validation_context("discord", "config_validation") as ctx:
+            ...     # Perform validation
             ...     result = validator.validate(config)
-            ...     if ctx.validation_time >= SLOW_VALIDATION_THRESHOLD:
-            ...         logger.warning("Slow validation detected")
+            ...     # Context automatically tracks timing
+            >>> print(f"Validation took {ctx.validation_time:.2f} seconds")
         """
         context = ValidationContext(provider_id=provider_id, operation=operation)
         context.start_time = time.time()
@@ -432,12 +435,6 @@ class NotificationFactory:
         finally:
             end_time = time.time()
             context.validation_time = end_time - context.start_time
-
-            # Update cache statistics if applicable
-            if provider_id in self._validator_cache:
-                entry = self._validator_cache[provider_id]
-                entry.validation_count += 1
-                entry.total_validation_time += context.validation_time
 
             # Log performance metrics
             if context.validation_time >= self.VERY_SLOW_VALIDATION_THRESHOLD:
@@ -465,8 +462,8 @@ class NotificationFactory:
     def _get_cached_validator(
         self,
         provider_id: str,
-        validator_class: Type[BaseProviderValidator]
-    ) -> Optional[BaseProviderValidator]:
+        validator_class: Type[ValidatorProtocol]
+    ) -> Optional[ValidatorProtocol]:
         """Retrieve a cached validator instance if it exists and is valid.
 
         Manages the validator cache with TTL-based expiration and usage tracking.
@@ -474,10 +471,10 @@ class NotificationFactory:
 
         Args:
             provider_id (str): Unique identifier of the provider
-            validator_class (Type[BaseProviderValidator]): Class type of the validator
+            validator_class (Type[ValidatorProtocol]): Class type of the validator
 
         Returns:
-            Optional[BaseProviderValidator]: Cached validator instance if valid, None otherwise
+            Optional[ValidatorProtocol]: Cached validator instance if valid, None otherwise
 
         Cache Management:
             - TTL (Time-To-Live): VALIDATOR_CACHE_TTL (default: 1800 seconds)
@@ -492,37 +489,21 @@ class NotificationFactory:
             ...     validator = DiscordValidator()
             ...     factory._cache_validator("discord", validator)
         """
-        now = time.time()
         cache_entry = self._validator_cache.get(provider_id)
-
-        if cache_entry:
-            # Check if cache entry is still valid
+        if cache_entry and isinstance(cache_entry.validator, validator_class):
+            now = time.time()
             if now - cache_entry.created_at <= self.VALIDATOR_CACHE_TTL:
                 cache_entry.last_used = now
-                logger.debug(
-                    "Using cached validator",
-                    provider_id=provider_id,
-                    validator_class=validator_class.__name__,
-                    cache_age=now - cache_entry.created_at,
-                    validation_count=cache_entry.validation_count,
-                )
                 return cache_entry.validator
-
             # Remove expired cache entry
-            logger.debug(
-                "Removing expired validator from cache",
-                provider_id=provider_id,
-                validator_class=validator_class.__name__,
-                cache_age=now - cache_entry.created_at,
-            )
             del self._validator_cache[provider_id]
-
+            del self._validator_metrics[provider_id]
         return None
 
     def _cache_validator(
         self,
         provider_id: str,
-        validator: BaseProviderValidator
+        validator: ValidatorProtocol
     ) -> None:
         """Cache a validator instance for future use.
 
@@ -532,7 +513,7 @@ class NotificationFactory:
 
         Args:
             provider_id (str): Unique identifier of the provider
-            validator (BaseProviderValidator): Validator instance to cache
+            validator (ValidatorProtocol): Validator instance to cache
 
         Cache Entry Attributes:
             - created_at: Timestamp when the validator was cached
@@ -548,25 +529,21 @@ class NotificationFactory:
             >>> assert cached is validator
         """
         now = time.time()
+        metrics = ValidatorMetrics()
+        self._validator_metrics[provider_id] = metrics
         self._validator_cache[provider_id] = ValidatorCacheEntry(
             validator=validator,
+            metrics=metrics,
             created_at=now,
-            last_used=now,
-            validation_count=0,
-            total_validation_time=0.0
-        )
-        logger.debug(
-            "Cached new validator instance",
-            provider_id=provider_id,
-            validator_class=validator.__class__.__name__,
+            last_used=now
         )
 
     @classmethod
     def register(
         cls,
         provider_id: str,
-        validator_class: Optional[Type[T_Validator]] = None
-    ) -> callable:
+        validator_class: Optional[Type[ValidatorProtocol]] = None
+    ) -> Callable[[Type[T_Provider]], Type[T_Provider]]:
         """Register a new notification provider with optional validator.
 
         This decorator registers a provider class with its associated validator class.
@@ -574,7 +551,7 @@ class NotificationFactory:
 
         Args:
             provider_id (str): Unique identifier for the provider
-            validator_class (Optional[Type[T_Validator]]): Optional validator class for the provider
+            validator_class (Optional[Type[ValidatorProtocol]]): Optional validator class for the provider
 
         Returns:
             callable: Decorator function for provider registration
@@ -606,46 +583,63 @@ class NotificationFactory:
                 )
 
             # If no validator class is provided, use the provider's validate_config method
-            actual_validator = validator_class or provider_class
+            actual_validator = validator_class or cast(Type[ValidatorProtocol], provider_class)
 
             # Register provider using singleton instance
             factory = cls()
-            with factory._lock:
-                if provider_id in factory._providers:
-                    raise ProviderRegistrationError(f"Provider {provider_id} already registered")
 
-                factory._providers[provider_id] = (provider_class, actual_validator)
-                logger.info(
-                    "Registered notification provider",
-                    provider_id=provider_id,
-                    provider_class=provider_class.__name__,
-                    validator_class=actual_validator.__name__,
-                )
+            # Use a new event loop for synchronous registration
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(factory._register_provider(provider_id, provider_class, actual_validator))
+            finally:
+                loop.close()
 
             return provider_class
 
         return decorator
 
-    def _validate_provider_exists(self, provider_id: str) -> Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]:
+    async def _register_provider(
+        self,
+        provider_id: str,
+        provider_class: Type[T_Provider],
+        validator_class: Type[ValidatorProtocol]
+    ) -> None:
+        """Internal method to register a provider with async lock."""
+        async with self._lock:
+            if provider_id in self._registered_providers:
+                raise ProviderRegistrationError(f"Provider {provider_id} already registered")
+
+            self._registered_providers[provider_id] = provider_class
+            self._registered_validators[provider_id] = validator_class
+            logger.info(
+                "Registered notification provider",
+                provider_id=provider_id,
+                provider_class=provider_class.__name__,
+                validator_class=validator_class.__name__,
+            )
+
+    def _validate_provider_exists(self, provider_id: str) -> Tuple[Type[NotificationProvider], Type[ValidatorProtocol]]:
         """Validate that a provider exists and return its class and validator.
 
         Args:
             provider_id (str): Provider identifier
 
         Returns:
-            Tuple[Type[NotificationProvider], Type[BaseProviderValidator]]: Provider and validator classes
+            Tuple[Type[NotificationProvider], Type[ValidatorProtocol]]: Provider and validator classes
 
         Raises:
             ProviderNotFoundError: If provider is not registered
         """
-        provider_tuple = self._providers.get(provider_id)
-        if not provider_tuple:
+        provider_class = self._registered_providers.get(provider_id)
+        validator_class = self._registered_validators.get(provider_id)
+        if not provider_class or not validator_class:
             logger.warning(
                 "Attempted to create unregistered provider",
                 provider_id=provider_id,
             )
             raise ProviderNotFoundError(f"Provider {provider_id} not registered")
-        return provider_tuple
+        return provider_class, validator_class
 
     def _get_config(self, provider_id: str, config: Optional[T_Config]) -> Dict[str, Any]:
         """Get configuration for a provider.
@@ -668,7 +662,7 @@ class NotificationFactory:
     async def _validate_config(
         self,
         provider_id: str,
-        validator_class: Type[BaseProviderValidator],
+        validator_class: Type[ValidatorProtocol],
         config: Dict[str, Any],
         priority_config: Optional[Dict[MessagePriority, Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
@@ -680,7 +674,7 @@ class NotificationFactory:
 
         Args:
             provider_id (str): Provider identifier
-            validator_class (Type[BaseProviderValidator]): Validator class
+            validator_class (Type[ValidatorProtocol]): Validator class
             config (Dict[str, Any]): Provider configuration
             priority_config (Optional[Dict[MessagePriority, Dict[str, Any]]]): Optional priority-specific configuration overrides
 
@@ -700,29 +694,29 @@ class NotificationFactory:
             ... )
         """
         validator = self._get_cached_validator(provider_id, validator_class)
-        if not validator and callable(validator_class):
+        if not validator:
             validator = validator_class()
             self._cache_validator(provider_id, validator)
 
-        with self._validation_context(provider_id, "create_provider"):
-            if validator and hasattr(validator, 'validate_config'):
-                config = validator.validate_config(config)
-            else:
-                config = validator_class.validate_config(config)
-
+        metrics = self._validator_metrics[provider_id]
+        start_time = time.time()
+        try:
+            config = validator.validate_config(config)
             if priority_config:
-                for _priority, override in priority_config.items():
-                    if validator and hasattr(validator, 'validate_priority_config'):
-                        validator.validate_priority_config(override, _priority)
-                    else:
-                        validator_class.validate_priority_config(override, _priority)
+                for priority, override in priority_config.items():
+                    override = validator.validate_priority_config(override, priority)
+                    config = self._merge_configs(config, override)
+        finally:
+            validation_time = time.time() - start_time
+            metrics.validation_count += 1
+            metrics.total_validation_time += validation_time
 
         return config
 
     async def create_provider(
         self,
         provider_id: Union[str, ProviderType],
-        config: Optional[T_Config] = None,
+        config: Optional[Dict[str, Any]] = None,
         validate: bool = True,
         priority_config: Optional[Dict[MessagePriority, Dict[str, Any]]] = None
     ) -> T_Provider:
@@ -735,7 +729,8 @@ class NotificationFactory:
 
         Args:
             provider_id (Union[str, ProviderType]): Provider identifier
-            config (Optional[T_Config]): Optional provider configuration
+            config (Optional[Dict[str, Any]], optional): Provider configuration.
+                                                       Defaults to None.
             validate (bool): Whether to validate configuration
             priority_config (Optional[Dict[MessagePriority, Dict[str, Any]]]): Optional priority-specific configuration overrides.
                            Can include settings for each MessagePriority level.
@@ -759,7 +754,6 @@ class NotificationFactory:
             ... )
         """
         provider_id = str(provider_id)
-
         async with self._lock:
             # Return existing instance if available
             if provider_id in self._active_providers:
@@ -779,25 +773,33 @@ class NotificationFactory:
                     priority_config
                 )
 
-            # Apply priority-specific configuration overrides
-            if priority_config:
-                for _priority, override in priority_config.items():
-                    provider_config = self._merge_configs(provider_config, override)
-
             try:
-                # Initialize provider
-                provider = provider_class(provider_config)
-                if hasattr(provider, 'connect'):
+                # Initialize provider with validated config
+                rate_limit = provider_config.get('rate_limit')
+                if isinstance(rate_limit, dict):
+                    provider_config['rate_limit'] = rate_limit.get('value', API.DEFAULT_RATE_LIMIT)
+                elif rate_limit is None:
+                    provider_config['rate_limit'] = API.DEFAULT_RATE_LIMIT
+
+                # Create provider instance
+                provider = provider_class(rate_limit=provider_config['rate_limit'])
+
+                # Set additional config after initialization
+                for key, value in provider_config.items():
+                    if key != 'rate_limit' and hasattr(provider, key):
+                        setattr(provider, key, value)
+
+                if isinstance(provider, ProviderProtocol):
                     logger.debug("Connecting provider", provider_id=provider_id)
                     await provider.connect()
 
-                self._active_providers[provider_id] = provider
+                self._active_providers[provider_id] = cast(T_Provider, provider)
                 logger.info(
                     "Created provider instance",
                     provider_id=provider_id,
                     provider_class=provider_class.__name__
                 )
-                return provider
+                return cast(T_Provider, provider)
 
             except NotificationError:
                 logger.error(
@@ -915,7 +917,7 @@ class NotificationFactory:
             >>> if "discord" in providers:
             ...     provider = await factory.create_provider("discord")
         """
-        return list(self._providers.keys())
+        return list(self._registered_providers.keys())
 
     async def get_provider(
         self,
@@ -938,7 +940,7 @@ class NotificationFactory:
 
         Example:
             >>> # Get or create with specific config
-            >>> config = {"webhook_url": "https://discord.com/webhooks/123/abc"}
+            >>> config = {"webhook_url": "https://discord.com/api/webhooks/123/abc"}
             >>> provider = await factory.get_provider("discord", config)
             >>>
             >>> # Get existing or use registered config
@@ -958,95 +960,21 @@ class NotificationFactory:
             )
             return None
 
-    async def cleanup(self, timeout: float = 30.0) -> None:
-        """Clean up all active provider instances and resources.
-
-        Performs an orderly shutdown of all active provider instances, ensuring
-        that resources are properly released and connections are closed. This
-        method should be called when shutting down the application.
-
-        Args:
-            timeout (float, optional): Maximum time in seconds to wait for cleanup.
-                                     Defaults to 30.0.
-
-        Note:
-            - Providers are cleaned up concurrently for efficiency
-            - Each provider's cleanup is logged for monitoring
-            - Failed cleanups are logged but don't prevent other cleanups
-
-        Example:
-            >>> try:
-            ...     # Application shutdown
-            ...     await factory.cleanup(timeout=60.0)
-            ... except Exception as e:
-            ...     logger.error("Cleanup failed", error=str(e))
-        """
-        async with self._lock:
-            cleanup_tasks = []
-            for provider_id, provider in self._active_providers.items():
-                task = asyncio.create_task(
-                    self._cleanup_provider(provider_id, provider)
+    async def cleanup(self) -> None:
+        """Cleanup active providers."""
+        for provider_id, provider in self._active_providers.items():
+            try:
+                if isinstance(provider, ProviderProtocol):
+                    await provider.disconnect()
+            except Exception as e:
+                logger.error(
+                    "Error disconnecting provider",
+                    provider_id=provider_id,
+                    error=str(e)
                 )
-                cleanup_tasks.append(task)
 
-            if cleanup_tasks:
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*cleanup_tasks),
-                        timeout=timeout
-                    )
-                except asyncio.TimeoutError:
-                    logger.error(
-                        "Provider cleanup timed out",
-                        timeout=timeout
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Provider cleanup failed",
-                        error=str(e)
-                    )
-
-            self._active_providers.clear()
-            self._validator_cache.clear()
-            self._active_tasks.clear()
-
-    async def _cleanup_provider(
-        self,
-        provider_id: str,
-        provider: NotificationProvider
-    ) -> None:
-        """Clean up a single provider instance and its resources.
-
-        Performs cleanup operations for a specific provider instance, including
-        disconnecting from services, closing connections, and releasing resources.
-
-        Args:
-            provider_id (str): Unique identifier of the provider
-            provider (NotificationProvider): Provider instance to clean up
-
-        Note:
-            - Failed cleanups are logged but don't raise exceptions
-            - Provider state is tracked for monitoring purposes
-            - Resources are released even if disconnect fails
-
-        Example:
-            >>> provider = await factory.create_provider("discord", config)
-            >>> # Later during cleanup
-            >>> await factory._cleanup_provider("discord", provider)
-        """
-        try:
-            await provider.disconnect()
-            logger.info(
-                "Provider cleaned up successfully",
-                provider_id=provider_id
-            )
-        except Exception as e:
-            logger.error(
-                "Provider cleanup failed",
-                provider_id=provider_id,
-                error=str(e)
-            )
-
+        self._active_providers.clear()
+        self._validator_cache.clear()
 
 # Global factory instance
 notification_factory = NotificationFactory()

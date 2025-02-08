@@ -50,12 +50,23 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, TypedDict, Union
 
-from config.constants import ErrorMessages, MessagePriority
+from config.constants import MessagePriority
 from shared.providers.telegram import (
     MessageEntity,
     MessageLimit,
     ParseMode,
 )
+
+
+class ErrorMessages:
+    """Error message templates for Telegram notifications.
+
+    Contains standardized error message templates for various validation
+    and runtime errors that may occur during Telegram bot operations.
+    """
+    INVALID_PERCENTAGE = "Progress percentage {value} must be between 0 and 100"
+    EMPTY_MESSAGE = "Message text cannot be empty"
+    MESSAGE_TOO_LONG = "Message length {length} exceeds limit of {limit}"
 
 
 @dataclass

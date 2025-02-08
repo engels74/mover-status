@@ -20,7 +20,7 @@ Example:
     >>> max_size = ByteSizes.GB * 2  # 2 GB in bytes
 """
 
-from enum import IntEnum, StrEnum, Enum
+from enum import Enum, IntEnum, StrEnum
 from pathlib import Path
 from typing import Dict, List, TypeAlias, Union
 
@@ -164,6 +164,9 @@ class API(IntEnum):
     DEFAULT_RATE_PERIOD = 60
     MIN_RATE_PERIOD = 30
     MAX_RATE_PERIOD = 3600
+    DEFAULT_RATE_LIMIT = 60  # Maximum notifications per rate period
+    MIN_NOTIFICATION_INTERVAL = 1  # Minimum interval between notifications in seconds
+    DEFAULT_RETRY_ATTEMPTS = 3  # Default number of retry attempts for notifications
 
 class APIEndpoints:
     """API endpoint constants."""
@@ -287,10 +290,46 @@ class MonitorEvent(str, Enum):
     MONITOR_ERROR = "monitor_error"
     VERSION_CHECK = "version_check"
 
+class ProcessState(StrEnum):
+    """Process state enumeration.
+
+    Defines the possible states of a monitored process.
+
+    States:
+        UNKNOWN: Initial state or when process state cannot be determined
+        RUNNING: Process is currently running
+        STOPPED: Process has been stopped
+        SLEEPING: Process is in sleep state
+        ZOMBIE: Process is in zombie state
+        DEAD: Process is dead/terminated
+    """
+    UNKNOWN = "unknown"
+    RUNNING = "running"
+    STOPPED = "stopped"
+    SLEEPING = "sleeping"
+    ZOMBIE = "zombie"
+    DEAD = "dead"
+
+class Process:
+    """Process-related constants.
+
+    Constants:
+        CHECK_INTERVAL: Interval in seconds between process status checks
+        EXECUTABLE: Name of the mover executable
+    """
+    CHECK_INTERVAL = 10  # seconds
+    EXECUTABLE = "mover"
+
+class Notification(IntEnum):
+    """Notification-related constants."""
+    MAX_HISTORY_SIZE = 1000  # Maximum number of notifications to keep in history
+
 # Export commonly used constants
 __all__ = [
     'ByteSizes',
     'TimeConstants',
+    'ProcessState',
+    'Process',
     'NotificationProvider',
     'LogLevel',
     'NotificationLevel',
@@ -305,5 +344,6 @@ __all__ = [
     'ErrorMessages',
     'SuccessMessages',
     'MonitorState',
-    'MonitorEvent'
+    'MonitorEvent',
+    'Notification'
 ]

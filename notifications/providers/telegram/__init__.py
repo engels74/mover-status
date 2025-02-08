@@ -25,18 +25,17 @@ from notifications.providers.telegram.types import ParseMode
 if TYPE_CHECKING:
     from notifications.providers.telegram.templates import (
         create_completion_message,
-        create_custom_message,
         create_error_message,
         create_progress_message,
     )
     from notifications.providers.telegram.types import (
-        ChatType,
         InlineKeyboardButton,
         InlineKeyboardMarkup,
         MessageEntity,
         MessageLimit,
         SendMessageRequest,
     )
+    from shared.providers.telegram.types import ChatType
 
 __all__ = [
     # Main classes
@@ -51,7 +50,6 @@ __all__ = [
     "create_completion_message",
     "create_error_message",
     "create_progress_message",
-    "create_custom_message",
     # Type definitions
     "MessageEntity",
     "MessageLimit",

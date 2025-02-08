@@ -84,6 +84,7 @@ from config.constants import (
     Notification,
     NotificationLevel,
 )
+from shared.providers.telegram import TelegramError
 
 logger = get_logger(__name__)
 
@@ -129,11 +130,15 @@ class NotificationState(BaseModel):
 
     Attributes:
         last_notification (Optional[datetime]): Timestamp of most recent notification
-        last_error (Optional[str]): Description of last error encountered
+        last_error (Optional[Exception]): Description of last error encountered
+        last_error_time (Optional[datetime]): Timestamp of last error
         error_count (int): Total number of failed notifications
         notification_count (int): Total notifications attempted
         success_count (int): Total successful notifications
         history (List[Dict[str, Any]]): Recent notification records
+        rate_limited (bool): Whether the provider is currently rate limited
+        rate_limit_until (Optional[float]): Timestamp when rate limit expires
+        disabled (bool): Whether the provider is disabled
         _priority_counts (Dict[MessagePriority, int]): Counts by priority level
         _type_counts (Dict[MessageType, int]): Counts by message type
         _last_by_type (Dict[MessageType, datetime]): Last timestamp by type
@@ -147,25 +152,28 @@ class NotificationState(BaseModel):
         ...     print(f"{msg['timestamp']}: {msg['message']}")
     """
 
-    def __init__(self):
-        self.last_notification: Optional[datetime] = None
-        self.last_error: Optional[str] = None
-        self.error_count: int = 0
-        self.notification_count: int = 0
-        self.success_count: int = 0
-        self.history: List[Dict[str, Any]] = []
-        self._priority_counts: Dict[MessagePriority, int] = {
-            MessagePriority.LOW: 0,
-            MessagePriority.NORMAL: 0,
-            MessagePriority.HIGH: 0
-        }
-        self._type_counts: Dict[MessageType, int] = {
-            message_type: 0 for message_type in MessageType
-        }
-        self._last_by_type: Dict[MessageType, Optional[datetime]] = {
-            message_type: None for message_type in MessageType
-        }
-        self._lock = asyncio.Lock()
+    last_notification: Optional[datetime] = None
+    last_error: Optional[Exception] = None
+    last_error_time: Optional[datetime] = None
+    error_count: int = 0
+    notification_count: int = 0
+    success_count: int = 0
+    history: List[Dict[str, Any]] = []
+    rate_limited: bool = False
+    rate_limit_until: Optional[float] = None
+    disabled: bool = False
+    _priority_counts: Dict[MessagePriority, int] = {
+        MessagePriority.LOW: 0,
+        MessagePriority.NORMAL: 0,
+        MessagePriority.HIGH: 0
+    }
+    _type_counts: Dict[MessageType, int] = {
+        message_type: 0 for message_type in MessageType
+    }
+    _last_by_type: Dict[MessageType, Optional[datetime]] = {
+        message_type: None for message_type in MessageType
+    }
+    _lock: asyncio.Lock = asyncio.Lock()
 
     async def add_notification(
         self,

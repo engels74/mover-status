@@ -13,7 +13,8 @@ Example:
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypeVar, Union
 from urllib.parse import urlparse
@@ -21,11 +22,11 @@ from urllib.parse import urlparse
 from pydantic import HttpUrl
 
 from config.constants import (
-    API,
-    PathLike,
+    Monitoring,
 )
 
 ConfigT = TypeVar("ConfigT", bound=Dict[str, Any])
+PathLike = Union[str, Path]  # Define PathLike type alias
 
 
 @dataclass
@@ -34,7 +35,7 @@ class ValidationContext:
     provider: str
     field: str
     parent: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: Dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 @dataclass
@@ -428,8 +429,8 @@ class BaseProviderValidator(ABC):
     def validate_notification_increment(
         cls,
         value: int,
-        min_value: int = API.MIN_NOTIFICATION_INCREMENT,
-        max_value: int = API.MAX_NOTIFICATION_INCREMENT,
+        min_value: int = Monitoring.MIN_INCREMENT,
+        max_value: int = Monitoring.MAX_INCREMENT,
         context: Optional[ValidationContext] = None
     ) -> int:
         """Validate notification increment percentage.

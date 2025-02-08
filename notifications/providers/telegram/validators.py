@@ -321,9 +321,9 @@ class TelegramValidator(BaseProviderValidator):
             raise TelegramValidationError("Message text is required")
 
         # Validate message length
-        if len(text) > MessageLimit.MAX_LENGTH:
+        if len(text) > MessageLimit.MESSAGE_TEXT:
             raise TelegramValidationError(
-                f"Message exceeds maximum length of {MessageLimit.MAX_LENGTH} characters"
+                f"Message exceeds maximum length of {MessageLimit.MESSAGE_TEXT} characters"
             )
 
         # Extract and validate time strings in message

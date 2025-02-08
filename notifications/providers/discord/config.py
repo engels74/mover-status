@@ -13,14 +13,15 @@ Example:
     >>> provider_config = config.to_provider_config()
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from pydantic import Field, HttpUrl, field_validator
 
 from config.providers.base import BaseProviderSettings
-from notifications.providers.discord.schemas import WebhookConfigSchema
+from config.providers.discord.schemas import WebhookConfigSchema
 from notifications.providers.discord.validators import DiscordValidator
-from shared.providers.discord import ApiLimits, DiscordColor
+from shared.providers.discord.types import ApiLimit as ApiLimits
+from shared.providers.discord.types import DiscordColor
 
 
 class DiscordConfig(BaseProviderSettings):
@@ -132,15 +133,15 @@ class DiscordConfig(BaseProviderSettings):
 
             # Validate complete webhook configuration
             try:
-                self._validator.validate_config(webhook_config)
+                self._validator.validate_config(cast(Dict[str, Any], webhook_config))
             except Exception as err:
                 raise ValueError(f"Invalid webhook configuration: {err}") from err
 
         # Add Discord-specific configuration
-        config.update({
+        config.update(cast(Dict[str, Any], {
             "webhook_config": webhook_config,
             "embed_color": self.embed_color or DiscordColor.INFO
-        })
+        }))
 
         return config
 

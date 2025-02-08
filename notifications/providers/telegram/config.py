@@ -16,10 +16,10 @@ Example:
 
 from typing import Any, Dict, Optional, Union
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import Field, field_validator
 
 from config.providers.base import BaseProviderSettings
-from notifications.providers.telegram.schemas import BotConfigSchema
+from config.providers.telegram.schemas import BotConfigSchema
 from notifications.providers.telegram.validators import TelegramValidator
 from shared.providers.telegram import (
     ChatType,
@@ -64,7 +64,7 @@ class TelegramConfig(BaseProviderSettings):
         description="Optional thread ID for forum/topic messages"
     )
 
-    api_base_url: HttpUrl = Field(
+    api_base_url: str = Field(
         default="https://api.telegram.org",
         description="Telegram API base URL"
     )
@@ -135,20 +135,20 @@ class TelegramConfig(BaseProviderSettings):
 
     @field_validator("api_base_url")
     @classmethod
-    def validate_api_url(cls, v: HttpUrl) -> HttpUrl:
+    def validate_api_url(cls, v: str) -> str:
         """Validate API base URL.
 
         Args:
             v: API URL to validate
 
         Returns:
-            HttpUrl: Validated API URL
+            str: Validated API URL
 
         Raises:
             ValueError: If URL is invalid
         """
         try:
-            cls._validator.validate_api_url(str(v))
+            cls._validator.validate_api_url(v)
             return v
         except Exception as err:
             raise ValueError(str(err)) from err
@@ -196,12 +196,14 @@ class TelegramConfig(BaseProviderSettings):
                     bot_token=self.bot_token,
                     chat_id=self.chat_id,
                     parse_mode=self.parse_mode,
-                    disable_notifications=self.disable_notifications,
+                    disable_notification=self.disable_notifications,
                     protect_content=self.protect_content,
                     message_thread_id=self.message_thread_id,
-                    api_base_url=str(self.api_base_url),
-                    max_message_length=self.max_message_length
+                    api_base_url=self.api_base_url,
                 ).model_dump()
+
+                # Add max_message_length to the config after schema validation
+                bot_config["max_message_length"] = self.max_message_length
 
                 # Validate complete bot configuration
                 self._validator.validate_config(bot_config)

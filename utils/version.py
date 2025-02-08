@@ -14,8 +14,6 @@ from typing import Optional
 import aiohttp
 from structlog import get_logger
 
-from config.constants import TimeConstants
-
 logger = get_logger(__name__)
 
 @total_ordering
@@ -116,6 +114,14 @@ class VersionChecker:
     def current_version(self) -> Version:
         """Get current version."""
         return self._current
+
+    def get_version(self) -> str:
+        """Get the current version string.
+
+        Returns:
+            str: Current version string
+        """
+        return str(self._current)
 
     async def get_latest_version(self, force_check: bool = False) -> Version:
         """Get latest version from GitHub releases.

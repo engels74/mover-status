@@ -21,8 +21,6 @@ Example:
     ...     # color_enabled is inherited from BaseProviderSettings
 """
 
-from enum import StrEnum
-from pathlib import Path
 from typing import Dict, List, Optional, Set, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator

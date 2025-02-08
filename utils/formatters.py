@@ -152,9 +152,9 @@ def format_duration(  # noqa: C901
 
     seconds = float(seconds)
     intervals = [
-        (TimeConstants.SECONDS_PER_DAY, "d", "day"),
-        (TimeConstants.SECONDS_PER_HOUR, "h", "hour"),
-        (TimeConstants.SECONDS_PER_MINUTE, "m", "minute"),
+        (TimeConstants.DAY, "d", "day"),
+        (TimeConstants.HOUR, "h", "hour"),
+        (TimeConstants.MINUTE, "m", "minute"),
         (1, "s", "second")
     ]
 

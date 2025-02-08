@@ -21,15 +21,15 @@ Example:
     ... )
 """
 
-from typing import List, Optional, Union, Dict, Any
 from enum import IntEnum, StrEnum
+from typing import List, Optional, Union
 
 from pydantic import (
     BaseModel,
     Field,
     HttpUrl,
-    model_validator,
     ValidationInfo,
+    model_validator,
 )
 
 from config.providers.base import BaseProviderSettings
@@ -353,21 +353,21 @@ class BotConfigSchema(BaseProviderSettings):
     def validate_entity_bounds(self, text: str, entities: List[MessageEntity]) -> None:
         """Validate entity offsets and lengths."""
         text_length = len(text)
-        
+
         for entity in entities:
             # Safely access TypedDict fields with get()
             offset = entity.get("offset")
             length = entity.get("length")
-            
+
             if offset is None or length is None:
                 raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
                     field="offset or length",
                     context="for entities"
                 ))
-                
+
             if offset < 0 or offset >= text_length:
                 raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET)
-                
+
             if length <= 0 or offset + length > text_length:
                 raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH)
 
@@ -401,16 +401,16 @@ def validate_message_content(
         # Safely access TypedDict fields with get()
         offset = entity.get("offset")
         length = entity.get("length")
-        
+
         if offset is None or length is None:
             raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
                 field="offset or length",
                 context="for entities"
             ))
-            
+
         if offset < 0 or offset >= len(text):
             raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET)
-            
+
         if length <= 0 or offset + length > len(text):
             raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH)
 

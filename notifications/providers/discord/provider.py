@@ -1,77 +1,28 @@
 # notifications/providers/discord/provider.py
 
-"""Discord webhook notification provider implementation.
-
-This module implements a Discord webhook-based notification provider that sends
-messages, progress updates, and error notifications to Discord channels.
-
-Configuration:
-    The provider requires a Discord webhook URL and supports optional settings:
-    - username: Custom webhook username
-    - avatar_url: Custom webhook avatar URL
-    - thread_name: Target thread for messages
-    - color_enabled: Enable/disable message colors
-    - embed_color: Default embed color
-    - timeout: Request timeout in seconds
-    - rate_limit: Maximum requests per period
-    - rate_period: Rate limit period in seconds
-    - retry_attempts: Maximum retry attempts
-    - retry_delay: Initial retry delay in seconds
-
-Key Features:
-    - Message types: text, embeds, progress bars, error reports
-    - Rate limiting and retry handling
-    - Thread-safe async operations
-    - Configurable timeouts and retries
-    - Custom webhook appearance
-
-Example:
-    >>> from notifications.providers.discord import DiscordProvider
-    >>>
-    >>> # Basic configuration
-    >>> config = {
-    ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
-    ...     "username": "Status Bot",
-    ...     "timeout": 30.0,
-    ...     "color_enabled": True
-    ... }
-    >>>
-    >>> async with DiscordProvider(config) as provider:
-    ...     # Send basic notification
-    ...     await provider.notify("Transfer complete!")
-    ...
-    ...     # Send progress update
-    ...     await provider.notify_progress(
-    ...         percent=50,
-    ...         remaining="500MB",
-    ...         elapsed="1m 30s",
-    ...         etc="3m 0s"
-    ...     )
-    ...
-    ...     # Send error notification
-    ...     await provider.notify_error(
-    ...         "Connection failed",
-    ...         error_code=404,
-    ...         error_details={"host": "example.com"}
-    ...     )
-
-Note:
-    This provider implements Discord's webhook rate limits and backoff
-    requirements. For details, see:
-    https://discord.com/developers/docs/topics/rate-limits
-"""
+"""Discord webhook notification provider implementation."""
 
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, Dict, Final, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, cast, Literal
+from typing_extensions import NotRequired
 
 import aiohttp
+from aiohttp import ClientTimeout
 from pydantic import HttpUrl
 from structlog import get_logger
 
-from config.constants import MessagePriority, MessageType, NotificationLevel
-from notifications.base import NotificationProvider
+from config.constants import (
+    API,
+    MessagePriority,
+    MessageType,
+    NotificationLevel,
+)
+from config.providers.discord.types import ForumConfig, WebhookConfig
+from notifications.base import (
+    NotificationProvider,
+)
 from notifications.providers.discord.templates import (
     create_batch_embed,
     create_completion_embed,
@@ -81,206 +32,139 @@ from notifications.providers.discord.templates import (
     create_progress_embed,
     create_system_embed,
     create_warning_embed,
-    create_webhook_data,
+    create_webhook_payload,
 )
-from notifications.providers.discord.types import NotificationState
 from notifications.providers.discord.validators import DiscordValidator
 from shared.providers.discord import (
     ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
-    AssetDomains,
     DiscordColor,
     DiscordWebhookError,
     Embed,
-    WebhookDomains,
+    EmbedFooter,
+    get_progress_color,
     validate_url,
 )
 
 logger = get_logger(__name__)
 
-# Default timeout settings
-DEFAULT_TIMEOUT = 10.0  # seconds
-RETRY_LIMIT: Final[int] = 3
-BACKOFF_BASE: Final[float] = 2.0
-
-class DiscordConfig(TypedDict, total=False):
-    """Discord webhook provider configuration type definition.
-
-    This TypedDict defines the structure and types for Discord provider configuration,
-    supporting both required and optional parameters for webhook customization.
-
-    Required Parameters:
-        webhook_url (str): Discord webhook URL for message delivery
-            Format: https://discord.com/api/webhooks/{webhook.id}/{webhook.token}
-
-    Optional Parameters:
-        username (Optional[str]): Custom username for the webhook
-        avatar_url (Optional[str]): Custom avatar URL for the webhook
-        thread_name (Optional[str]): Name of thread to create/use
-        color_enabled (Optional[bool]): Enable/disable embed colors
-
-    Example:
-        >>> config: DiscordConfig = {
-        ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
-        ...     "username": "Status Bot",
-        ...     "color_enabled": True
-        ... }
-        >>> provider = DiscordProvider(config)
-    """
+class DiscordConfig(TypedDict):
+    """Discord webhook provider configuration."""
     webhook_url: str
-    username: Optional[str]
-    avatar_url: Optional[str]
-    thread_name: Optional[str]
-    color_enabled: Optional[bool]
+    username: NotRequired[str]
+    avatar_url: NotRequired[str]
+    thread_name: NotRequired[str]
+    color_enabled: NotRequired[bool]
+    embed_color: NotRequired[int]
+    timeout: NotRequired[float]
+    rate_limit: NotRequired[int]
+    rate_period: NotRequired[float]
+    retry_attempts: NotRequired[int]
+    retry_delay: NotRequired[float]
 
 class DiscordProvider(NotificationProvider):
-    """Discord webhook notification provider with advanced message formatting and delivery.
+    """Discord webhook notification provider with advanced message formatting and delivery."""
 
-    This provider implements Discord webhook integration with support for rich message
-    formatting, rate limiting, and error handling. It extends the base NotificationProvider
-    with Discord-specific functionality and robust error recovery mechanisms.
+    ALLOWED_DOMAINS = WEBHOOK_DOMAINS
+    ALLOWED_ASSET_DOMAINS = ASSET_DOMAINS
 
-    Features:
-        - Rich Message Formatting:
-            * Customizable embeds with dynamic colors
-            * Progress bar visualization
-            * Support for system, error, warning, and debug messages
-            * Thread support for organized discussions
-
-        - Reliability & Performance:
-            * Automatic rate limit handling
-            * Configurable retry logic
-            * Connection pooling
-            * Thread-safe operations
-
-        - Monitoring & Error Handling:
-            * Comprehensive error tracking
-            * Rate limit monitoring
-            * Message delivery statistics
-            * Structured logging
-
-    Configuration:
-        The provider is configured through a DiscordConfig dictionary containing
-        webhook settings and customization options. See DiscordConfig for details.
-
-    Rate Limiting:
-        - Implements Discord's rate limit guidelines
-        - Automatic backoff on rate limit errors
-        - Configurable rate limit parameters
-        - State tracking for rate limit headers
-
-    Thread Safety:
-        All operations are protected by appropriate locks:
-        - _session_lock: Protects session lifecycle
-        - _state_lock: Protects provider state
-        - _message_lock: Ensures sequential message sending
-        - _rate_limit_lock: Manages rate limit state
-
-    Example:
-        >>> config = {
-        ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
-        ...     "username": "Status Bot",
-        ...     "rate_limit": 30,  # messages per minute
-        ...     "retry_attempts": 3
-        ... }
-        >>>
-        >>> async with DiscordProvider(config) as provider:
-        ...     # Send system notification
-        ...     await provider.notify(
-        ...         "Backup started",
-        ...         type=MessageType.SYSTEM,
-        ...         level=NotificationLevel.INFO
-        ...     )
-        ...
-        ...     # Send progress update
-        ...     await provider.notify(
-        ...         "Processing files",
-        ...         type=MessageType.PROGRESS,
-        ...         progress=50,
-        ...         total=100
-        ...     )
-        ...
-        ...     # Send completion notification
-        ...     await provider.notify(
-        ...         "Backup completed",
-        ...         type=MessageType.COMPLETION,
-        ...         level=NotificationLevel.SUCCESS
-        ...     )
-
-    Note:
-        - Always use the provider as an async context manager for proper resource cleanup
-        - Configure appropriate timeouts for your use case
-        - Monitor rate limit state for optimal performance
-        - Use structured error handling for production deployments
-    """
-
-    ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
-    ALLOWED_ASSET_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
-
-    def __init__(self, config: DiscordConfig):
-        """Initialize a new Discord webhook provider instance.
-
-        Creates a new provider instance with the specified configuration, setting up
-        connection management, rate limiting, and thread safety mechanisms.
+    def __init__(self, config: WebhookConfig) -> None:
+        """Initialize Discord webhook provider.
 
         Args:
-            config (DiscordConfig): Provider configuration containing:
-                - webhook_url: Discord webhook URL
-                - username: Optional custom username
-                - avatar_url: Optional custom avatar URL
-                - thread_name: Optional thread to post in
-                - color_enabled: Optional color support flag
-                - embed_color: Optional default embed color
-                - timeout: Optional request timeout (default: 10.0s)
-                - rate_limit: Optional rate limit (requests/period)
-                - rate_period: Optional rate limit period in seconds
-                - retry_attempts: Optional max retry attempts
-                - retry_delay: Optional initial retry delay
-
-        Raises:
-            ValueError: If configuration validation fails
-            DiscordWebhookError: If webhook URL is invalid
-
-        Example:
-            >>> config = {
-            ...     "webhook_url": "https://discord.com/api/webhooks/123/abc",
-            ...     "username": "Status Bot",
-            ...     "timeout": 30.0,
-            ...     "rate_limit": 30
-            ... }
-            >>> provider = DiscordProvider(config)
+            config: Provider configuration
         """
         # Validate configuration using dedicated validator
         validator = DiscordValidator()
-        self._config = validator.validate_config(config)
+        self._config = validator.validate_config(cast(Dict[str, Any], config))
 
+        # Extract rate limiting and retry settings with proper type conversion
+        rate_limit = self._config.get("rate_limit")
+        rate_period = self._config.get("rate_period")
+        retry_attempts = self._config.get("retry_attempts")
+        retry_delay = self._config.get("retry_delay")
+
+        # Convert values with proper type safety
+        try:
+            # First convert everything to float, then to int where needed
+            rate_limit_float = float(str(rate_limit)) if rate_limit is not None else float(API.DEFAULT_RATE_LIMIT)
+            rate_period_float = float(str(rate_period)) if rate_period is not None else float(API.DEFAULT_RATE_PERIOD)
+            retry_attempts_float = float(str(retry_attempts)) if retry_attempts is not None else float(API.DEFAULT_RETRY_ATTEMPTS)
+            retry_delay_val = float(str(retry_delay)) if retry_delay is not None else API.DEFAULT_RETRY_DELAY
+
+            # Convert to int where needed, ensuring we're passing ints not floats
+            rate_limit_val = int(rate_limit_float)
+            rate_period_val = int(rate_period_float)
+            retry_attempts_val = int(retry_attempts_float)
+
+            # Validate ranges
+            if rate_limit_val < 1:
+                rate_limit_val = API.DEFAULT_RATE_LIMIT
+            if rate_period_val < 1:
+                rate_period_val = API.DEFAULT_RATE_PERIOD
+            if retry_attempts_val < 0:
+                retry_attempts_val = API.DEFAULT_RETRY_ATTEMPTS
+            if retry_delay_val < 0.1:
+                retry_delay_val = API.DEFAULT_RETRY_DELAY
+
+        except (TypeError, ValueError) as e:
+            logger.warning("Invalid config values, using defaults", error=str(e))
+            rate_limit_val = API.DEFAULT_RATE_LIMIT
+            rate_period_val = API.DEFAULT_RATE_PERIOD
+            retry_attempts_val = API.DEFAULT_RETRY_ATTEMPTS
+            retry_delay_val = API.DEFAULT_RETRY_DELAY
+
+        # Initialize base class with validated integer values
         super().__init__(
-            rate_limit=self._config["rate_limit"],
-            rate_period=self._config["rate_period"],
-            retry_attempts=self._config["retry_attempts"],
-            retry_delay=self._config["retry_delay"],
+            rate_limit=int(rate_limit_val),  # Ensure int
+            rate_period=int(rate_period_val),  # Ensure int
+            retry_attempts=int(retry_attempts_val),  # Ensure int
+            retry_delay=float(retry_delay_val),
         )
 
         # Validate and extract webhook URL
-        webhook_url = self._config["webhook_url"]
+        webhook_url = str(self._config["webhook_url"])
         if not webhook_url or not validate_url(webhook_url, WEBHOOK_DOMAINS):
             raise DiscordWebhookError(
                 f"Invalid webhook URL: {webhook_url}. Must be a valid Discord webhook URL.",
                 context={"endpoint": webhook_url}
             )
 
-        # Extract validated configuration
+        # Extract validated configuration with proper type conversion
         self._webhook_url: str = webhook_url
-        self._username: Optional[str] = self._config["username"]
-        self._avatar_url: Optional[HttpUrl] = self._config.get("avatar_url")
-        self._thread_name: Optional[str] = self._config.get("thread_name")
-        self._color_enabled: bool = self._config.get("color_enabled", True)
-        self._embed_color: DiscordColor = self._config.get("embed_color", DiscordColor.INFO)
+
+        # Handle optional string fields
+        username = self._config.get("username")
+        self._username: Optional[str] = str(username) if username is not None else None
+
+        # Handle avatar URL with proper type conversion
+        avatar_url = self._config.get("avatar_url")
+        self._avatar_url: Optional[HttpUrl] = HttpUrl(str(avatar_url)) if avatar_url is not None else None
+
+        # Handle thread name
+        thread_name = self._config.get("thread_name")
+        self._thread_name: Optional[str] = str(thread_name) if thread_name is not None else None
+
+        # Handle boolean and color settings
+        color_enabled = self._config.get("color_enabled")
+        self._color_enabled: bool = bool(color_enabled) if color_enabled is not None else True
+
+        # Handle embed color with proper type conversion
+        embed_color = self._config.get("embed_color")
+        if embed_color is not None:
+            try:
+                color_float = float(str(embed_color))
+                self._embed_color = DiscordColor(int(color_float))
+            except (TypeError, ValueError):
+                logger.warning("Invalid embed color value, using default", value=embed_color)
+                self._embed_color = DiscordColor.INFO
+        else:
+            self._embed_color = DiscordColor.INFO
+
         self._last_message_id: Optional[str] = None
         self._last_rate_limit: Optional[datetime] = None
         self._current_backoff: float = self._retry_delay
-        self._state = NotificationState()
-        self._consecutive_errors = 0
+        self._state = self._state  # Initialize state from instance, not class
 
         # Thread safety locks
         self._session_lock = asyncio.Lock()
@@ -289,14 +173,14 @@ class DiscordProvider(NotificationProvider):
         self._rate_limit_lock = asyncio.Lock()
 
         # Request timeout configuration
-        timeout = self._config.get("timeout", DEFAULT_TIMEOUT)
+        timeout = self._config.get("timeout", API.DEFAULT_TIMEOUT)
         if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > 300:
             logger.warning(
                 "Invalid timeout value, using default",
                 timeout=timeout,
-                default=DEFAULT_TIMEOUT
+                default=API.DEFAULT_TIMEOUT
             )
-            timeout = DEFAULT_TIMEOUT
+            timeout = API.DEFAULT_TIMEOUT
         self._timeout: float = float(timeout)
 
         # Session and rate limit management
@@ -481,88 +365,29 @@ class DiscordProvider(NotificationProvider):
             await self._update_error_state(error)
             raise error
 
-    async def send_webhook(
-        self,
-        data: Dict[str, Any],
-        max_retries: int = 3
-    ) -> bool:
-        """Send webhook request with retries.
+    async def send_webhook(self, data: Dict[str, Any]) -> bool:
+        """Send data to Discord webhook."""
+        try:
+            if not self._session:
+                await self.connect()
+                if not self._session:  # Double check after connect
+                    raise DiscordWebhookError("Failed to create session")
 
-        Args:
-            data (Dict[str, Any]): Webhook payload to send
-            max_retries (int): Maximum number of retries (default: 3)
+            timeout = aiohttp.ClientTimeout(total=self._timeout)
+            async with self._session.post(
+                self._webhook_url,
+                json=data,
+                timeout=timeout
+            ) as response:
+                await self._update_rate_limit_state(response)
+                response_data = await response.json()
+                await self._handle_send_webhook_response(response, response_data)
+                return True
 
-        Returns:
-            bool: True if request succeeded
-
-        Raises:
-            DiscordWebhookError: If request fails after retries
-
-        Example:
-            >>> data = {"content": "Hello, Discord!"}
-            >>> await provider.send_webhook(data)
-        """
-        attempt = 0
-        last_error = None
-
-        while attempt <= max_retries:
-            try:
-                # Ensure session is connected
-                if not self._session or self._session.closed:
-                    await self.connect()
-
-                # Send request
-                async with self._session.post(
-                    self._webhook_url,
-                    json=data,
-                    timeout=self._timeout
-                ) as response:
-                    # Handle response
-                    await self._handle_send_webhook_response(response, data)
-
-                    # Update rate limit state
-                    await self._update_rate_limit_state(response)
-
-                    # Reset error state on success
-                    async with self._state_lock:
-                        self._consecutive_errors = 0
-                        self._current_backoff = self._retry_delay
-                        self._state.last_success = datetime.now()
-                        self._state.total_retries = 0
-
-                    return True
-
-            except DiscordWebhookError as err:
-                last_error = err
-                attempt += 1
-
-                if attempt <= max_retries:
-                    # Calculate backoff delay
-                    delay = self._calculate_backoff(attempt)
-                    await asyncio.sleep(delay)
-                    continue
-
-                raise DiscordWebhookError(
-                    f"Max retries ({max_retries}) exceeded",
-                    context={
-                        "attempts": attempt,
-                        "max_retries": max_retries,
-                        "last_error": str(last_error)
-                    }
-                ) from err
-
-            except asyncio.TimeoutError as err:
-                last_error = DiscordWebhookError(
-                    "Request timed out",
-                    context={"timeout": self._timeout}
-                )
-                await self._update_error_state(last_error)
-                raise last_error from err
-
-            except Exception as err:
-                error = self._handle_request_error(err, "send_webhook")
-                await self._update_error_state(error)
-                raise error from err
+        except Exception as e:
+            error = self._handle_request_error(e, "send_webhook")
+            await self._update_error_state(error)
+            raise error from e
 
     async def send_notification(
         self,
@@ -572,49 +397,269 @@ class DiscordProvider(NotificationProvider):
         message_type: MessageType = MessageType.CUSTOM,
         **kwargs: Any
     ) -> bool:
-        """Send notification via Discord webhook.
+        """Send notification via Discord webhook."""
+        try:
+            embed = self._create_typed_embed(message, message_type, level, **kwargs)
 
-        Args:
-            message (str): Message content
-            level (NotificationLevel): Notification level (default: INFO)
-            priority (MessagePriority): Message priority (default: NORMAL)
-            message_type (MessageType): Type of message (default: CUSTOM)
-            **kwargs: Additional message parameters
+            # Create embed dictionary with proper typing
+            embed_dict: Dict[str, Any] = {
+                "title": embed.get("title"),
+                "description": embed.get("description"),
+                "color": embed.get("color"),
+                "fields": embed.get("fields", []),
+                "footer": embed.get("footer"),
+                "timestamp": embed.get("timestamp")
+            }
 
-        Returns:
-            bool: True if message was sent successfully
+            # Create forum config with proper typing
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
 
-        Raises:
-            DiscordError: If sending fails
+            # Create webhook payload with proper typing
+            payload = create_webhook_payload(
+                embeds=[embed_dict],  # Now properly typed as List[Dict[str, Any]]
+                username=str(self._username) if self._username else "Mover Bot",
+                avatar_url=str(self._avatar_url) if self._avatar_url else None,
+                forum_config=forum_config  # Now properly typed as Optional[Dict[str, str]]
+            )
 
-        Example:
-            >>> await provider.send_notification("Hello, Discord!")
-        """
-        async with self._message_lock:
-            try:
-                # Create webhook payload
-                payload = await self._create_webhook_payload(
-                    message, level, message_type, **kwargs
-                )
+            return await self.send_webhook(cast(Dict[str, Any], payload))
+        except Exception as err:
+            error = self._handle_request_error(err, "send_notification")
+            async with self._state_lock:
+                self._state.last_error = error
+                self._state.last_error_time = datetime.now()
+            return False
 
-                # Send webhook request
-                async with self._session_lock:
-                    if not self._session or self._session.closed:
-                        await self.connect()
+    async def notify_progress(
+        self,
+        percent: float,
+        message: str,
+        **kwargs: Any
+    ) -> bool:
+        """Send progress notification."""
+        try:
+            # Create forum config with thread name if present
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
 
-                    response = await self._send_webhook_request(payload)
+            return await self.notify(
+                message,
+                level=NotificationLevel.INFO,
+                message_type=MessageType.PROGRESS,
+                percent=percent,
+                forum_config=forum_config,
+                **kwargs
+            )
+        except Exception as err:
+            error = self._handle_request_error(err, "notify_progress")
+            async with self._state_lock:
+                self._state.last_error = error
+                self._state.last_error_time = datetime.now()
+            return False
 
-                    # Update rate limit state
-                    await self._update_rate_limit_state(response)
+    async def notify_completion(
+        self,
+        message: str,
+        **kwargs: Any
+    ) -> bool:
+        """Send completion notification."""
+        try:
+            # Create forum config with thread name if present
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
 
-                    return True
+            return await self.notify(
+                message,
+                level=NotificationLevel.INFO,
+                message_type=MessageType.COMPLETION,
+                forum_config=forum_config,
+                **kwargs
+            )
+        except Exception as err:
+            error = self._handle_request_error(err, "notify_completion")
+            async with self._state_lock:
+                self._state.last_error = error
+                self._state.last_error_time = datetime.now()
+            return False
 
-            except Exception as err:
-                error = self._handle_request_error(err, "send_notification")
-                async with self._state_lock:
-                    self._state.last_error = error
-                    self._state.last_error_time = datetime.now()
-                raise error from err
+    async def notify_batch(
+        self,
+        message: str,
+        **kwargs: Any
+    ) -> bool:
+        """Send batch notification."""
+        try:
+            # Create forum config with thread name if present
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
+
+            return await self.notify(
+                message,
+                level=NotificationLevel.INFO,
+                message_type=MessageType.BATCH,
+                forum_config=forum_config,
+                **kwargs
+            )
+        except Exception as err:
+            error = self._handle_request_error(err, "notify_batch")
+            async with self._state_lock:
+                self._state.last_error = error
+                self._state.last_error_time = datetime.now()
+            return False
+
+    async def notify_error(
+        self,
+        message: str,
+        error: Optional[Exception] = None,
+        **kwargs: Any
+    ) -> bool:
+        """Send error notification."""
+        try:
+            # Create forum config with thread name if present
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
+
+            return await self.notify(
+                message,
+                level=NotificationLevel.ERROR,
+                message_type=MessageType.ERROR,
+                error=error,
+                forum_config=forum_config,
+                **kwargs
+            )
+        except Exception as err:
+            error = self._handle_request_error(err, "notify_error")
+            async with self._state_lock:
+                self._state.last_error = error
+                self._state.last_error_time = datetime.now()
+            return False
+
+    async def notify_warning(
+        self,
+        warning_message: str,
+        warning_details: Optional[Dict[str, Any]] = None,
+        suggestion: Optional[str] = None,
+        use_native_timestamps: bool = True
+    ) -> None:
+        """Send a warning notification."""
+        # Create warning message
+        message = warning_message
+        if warning_details:
+            details = "\n".join(f"**{k}:** {v}" for k, v in warning_details.items())
+            message = f"{message}\n\n**Details:**\n{details}"
+        if suggestion:
+            message = f"{message}\n\n**Suggestion:**\n{suggestion}"
+
+        embed = create_warning_embed(
+            message=message,
+            title="Warning",
+            color=DiscordColor.WARNING,
+            use_native_timestamps=use_native_timestamps
+        )
+
+        await self.send_webhook(cast(Dict[str, Any], create_webhook_payload([embed])))
+
+    async def notify_system(
+        self,
+        status: str,
+        metrics: Optional[Dict[str, Any]] = None,
+        issues: Optional[List[str]] = None,
+        use_native_timestamps: bool = True
+    ) -> None:
+        """Send a system status notification."""
+        # Create status message
+        message = status
+        if metrics:
+            metrics_text = "\n".join(f"**{k}:** {v}" for k, v in metrics.items())
+            message = f"{message}\n\n**Metrics:**\n{metrics_text}"
+        if issues:
+            issues_text = "\n".join(f"• {issue}" for issue in issues)
+            message = f"{message}\n\n**Issues:**\n{issues_text}"
+
+        embed = create_system_embed(
+            message=message,
+            title="System Status",
+            color=DiscordColor.SYSTEM,
+            use_native_timestamps=use_native_timestamps
+        )
+
+        await self.send_webhook(cast(Dict[str, Any], create_webhook_payload([embed])))
+
+    async def notify_interactive(self, message: str, **kwargs: Any) -> None:
+        """Send interactive notification."""
+        try:
+            # Create forum config with proper typing
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
+
+            embed = create_interactive_embed(message, **kwargs)
+            payload = create_webhook_payload(
+                embeds=[embed],
+                username=str(self._username) if self._username else "Mover Bot",
+                avatar_url=str(self._avatar_url) if self._avatar_url else None,
+                forum_config=forum_config
+            )
+
+            await self.send_webhook(cast(Dict[str, Any], payload))
+        except Exception as e:
+            logger.error("Failed to send interactive notification", error=str(e))
+            raise
+
+    async def notify_debug(self, message: str, **kwargs: Any) -> None:
+        """Send debug notification."""
+        try:
+            # Create forum config with proper typing
+            forum_config: Optional[Dict[str, str]] = None
+            if self._thread_name:
+                forum_config = {
+                    "enabled": "true",
+                    "channel_id": "",  # Required by ForumConfig but not used in this context
+                    "thread_title": self._thread_name
+                }
+
+            embed = create_debug_embed(message, **kwargs)
+            payload = create_webhook_payload(
+                embeds=[embed],
+                username=str(self._username) if self._username else "Mover Bot",
+                avatar_url=str(self._avatar_url) if self._avatar_url else None,
+                forum_config=forum_config
+            )
+
+            await self.send_webhook(cast(Dict[str, Any], payload))
+        except Exception as e:
+            logger.error("Failed to send debug notification", error=str(e))
+            raise
 
     def _calculate_backoff(self, attempt: int) -> float:
         """Calculate exponential backoff delay.
@@ -629,167 +674,40 @@ class DiscordProvider(NotificationProvider):
         max_backoff = min(self._retry_delay * (2 ** attempt), 30)  # Cap at 30 seconds
         return random.uniform(0, max_backoff)
 
-    async def notify_progress(
-        self,
-        percent: float,
-        remaining: str,
-        elapsed: str,
-        etc: str,
-        description: Optional[str] = None
-    ) -> bool:
-        """Send progress update notification.
-
-        Args:
-            percent (float): Progress percentage
-            remaining (str): Remaining data amount
-            elapsed (str): Elapsed time
-            etc (str): Estimated time of completion
-            description (Optional[str]): Optional description
+    def _get_retry_delay(self) -> float:
+        """Calculate retry delay with jitter.
 
         Returns:
-            bool: True if notification was sent successfully
-
-        Raises:
-            DiscordWebhookError: If notification fails
-
-        Example:
-            >>> await provider.notify_progress(50, "10MB", "10s", "10s")
+            float: Delay in seconds
         """
-        try:
-            embed = create_progress_embed(
-                percent=percent,
-                remaining=remaining,
-                elapsed=elapsed,
-                etc=etc,
-                description=description
-            )
-
-            webhook_data = create_webhook_data(
-                embeds=[embed],
-                username=self._username,
-                avatar_url=self._avatar_url,
-                thread_name=self._thread_name
-            )
-
-            await self.send_webhook(webhook_data)
-            return True
-
-        except Exception as err:
-            error = self._handle_request_error(err, "notify_progress")
-            async with self._state_lock:
-                self._state.last_error = error
-                self._state.last_error_time = datetime.now()
-            raise error from err
-
-    async def notify_completion(
-        self,
-        stats: Optional[Dict[str, Union[str, int, float]]] = None
-    ) -> bool:
-        """Send completion notification.
-
-        Args:
-            stats (Optional[Dict[str, Union[str, int, float]]]): Optional transfer statistics to include
-
-        Returns:
-            bool: True if notification was sent successfully
-
-        Raises:
-            DiscordWebhookError: If notification fails
-
-        Example:
-            >>> await provider.notify_completion({"files": 10, "size": "10MB"})
-        """
-        try:
-            embed = create_completion_embed(
-                stats=stats,
-                color=DiscordColor.SUCCESS
-            )
-            webhook_data = create_webhook_data(
-                embeds=[embed],
-                username=self._username,
-                avatar_url=self._avatar_url,
-                thread_name=self._thread_name
-            )
-
-            await self.send_webhook(webhook_data)
-            return True
-
-        except Exception as err:
-            error = self._handle_request_error(err, "notify_completion")
-            async with self._state_lock:
-                self._state.last_error = error
-                self._state.last_error_time = datetime.now()
-            raise error from err
-
-    async def notify_error(
-        self,
-        error_message: str,
-        error_code: Optional[int] = None,
-        error_details: Optional[Dict[str, str]] = None
-    ) -> bool:
-        """Send error notification.
-
-        Args:
-            error_message (str): Error description
-            error_code (Optional[int]): Optional error code
-            error_details (Optional[Dict[str, str]]): Optional error details
-
-        Returns:
-            bool: True if notification was sent successfully
-
-        Raises:
-            DiscordWebhookError: If notification fails
-
-        Example:
-            >>> await provider.notify_error("Connection failed", 404, {"host": "example.com"})
-        """
-        try:
-            embed = create_error_embed(
-                error_message=error_message,
-                error_code=error_code,
-                error_details=error_details,
-                color=DiscordColor.ERROR
-            )
-
-            webhook_data = create_webhook_data(
-                embeds=[embed],
-                username=self._username,
-                avatar_url=self._avatar_url,
-                thread_name=self._thread_name
-            )
-
-            await self.send_webhook(webhook_data)
-            return True
-
-        except Exception as err:
-            error = self._handle_request_error(err, "notify_error")
-            async with self._state_lock:
-                self._state.last_error = error
-                self._state.last_error_time = datetime.now()
-            raise error from err
+        jitter = random.uniform(0, 0.1)  # Add small random jitter
+        return float(self._retry_delay) + jitter
 
     def _create_typed_embed(
         self,
         message: str,
         message_type: MessageType,
         level: NotificationLevel,
-        **kwargs
+        **kwargs: Any
     ) -> Embed:
-        """Create appropriate embed based on message type.
+        """Create appropriate embed based on message type."""
+        if message_type == MessageType.WARNING:
+            return create_warning_embed(
+                message=message,
+                title="Warning",
+                color=self._get_level_color(level),
+                use_native_timestamps=kwargs.get("use_native_timestamps", True)
+            )
 
-        Args:
-            message (str): Message content
-            message_type (MessageType): Type of message
-            level (NotificationLevel): Notification level
-            **kwargs: Additional message-specific arguments
+        elif message_type == MessageType.SYSTEM:
+            return create_system_embed(
+                message=message,
+                title="System Status",
+                color=self._get_level_color(level),
+                use_native_timestamps=kwargs.get("use_native_timestamps", True)
+            )
 
-        Returns:
-            Embed: Formatted Discord embed
-
-        Example:
-            >>> embed = provider._create_typed_embed("Hello!", MessageType.CUSTOM, NotificationLevel.INFO)
-        """
-        if message_type == MessageType.PROGRESS:
+        elif message_type == MessageType.PROGRESS:
             return create_progress_embed(
                 percent=kwargs.get("percent", 0),
                 remaining=kwargs.get("remaining", "Unknown"),
@@ -809,20 +727,6 @@ class DiscordProvider(NotificationProvider):
                 error_message=message,
                 error_code=kwargs.get("error_code"),
                 error_details=kwargs.get("error_details")
-            )
-
-        elif message_type == MessageType.WARNING:
-            return create_warning_embed(
-                warning_message=message,
-                warning_details=kwargs.get("warning_details"),
-                suggestion=kwargs.get("suggestion")
-            )
-
-        elif message_type == MessageType.SYSTEM:
-            return create_system_embed(
-                status=message,
-                metrics=kwargs.get("metrics"),
-                issues=kwargs.get("issues")
             )
 
         elif message_type == MessageType.BATCH:
@@ -848,12 +752,12 @@ class DiscordProvider(NotificationProvider):
             )
 
         # Default to custom message type
-        return Embed(
-            title=kwargs.get("title", "Notification"),
-            description=message,
-            color=self._get_level_color(level),
-            timestamp=datetime.utcnow().isoformat()
-        )
+        return {
+            "title": kwargs.get("title", "Notification"),
+            "description": message,
+            "color": self._get_level_color(level),
+            "timestamp": datetime.utcnow().isoformat()
+        }  # type: ignore
 
     def _get_level_color(self, level: NotificationLevel) -> Optional[int]:
         """Get Discord color based on notification level.
@@ -949,15 +853,113 @@ class DiscordProvider(NotificationProvider):
         Example:
             >>> delay = await provider._handle_rate_limit(response, data)
         """
-        if response.status == 429:  # Rate limited
-            retry_after = int(data.get("retry_after", 5))
-            self._state.rate_limited = True
-            self._state.rate_limit_until = datetime.now().timestamp() + retry_after
-            logger.warning(
-                "Discord rate limit hit",
-                retry_after=retry_after,
-                endpoint=str(response.url),
-                rate_limited_until=self._state.rate_limit_until
-            )
-            return retry_after
-        return None
+        async with self._rate_limit_lock:
+            # Check rate limit headers
+            remaining = response.headers.get("X-RateLimit-Remaining")
+            reset_after = response.headers.get("X-RateLimit-Reset-After")
+
+            if remaining and reset_after:
+                try:
+                    if int(remaining) == 0:
+                        self._last_rate_limit = datetime.now()
+                        self._current_backoff = float(reset_after)
+                except ValueError:
+                    pass
+
+    def _create_embed(
+        self,
+        title: str,
+        description: str,
+        color: int,
+        footer_text: str
+    ) -> Embed:
+        """Create an embed that strictly matches Embed TypedDict."""
+        from typing import Literal
+        return {
+            'type': typing.cast(Literal['rich'], 'rich'),  # Explicit literal type
+            'title': title,
+            'description': description,
+            'color': color,
+            'timestamp': datetime.now().isoformat(),
+            'footer': {'text': footer_text}  # Matches EmbedFooter definition
+        }
+
+    def _create_status_embed(self, status: str, color: int) -> Embed:
+        """Create a status embed with standard format."""
+        embed: Embed = self._create_embed(
+            title="Status Update",
+            description=status,
+            color=color,
+            footer_text="MoverStatus Bot"
+        )
+        return embed
+
+    def _create_progress_embed(self, progress: float, message: str) -> Embed:
+        """Create a progress update embed."""
+        embed: Embed = self._create_embed(
+            title="Progress Update",
+            description=message,
+            color=get_progress_color(progress),
+            footer_text=f"{progress:.1f}% Complete"
+        )
+        return embed
+
+    def _create_error_embed(self, error: str) -> Embed:
+        """Create an error notification embed."""
+        embed: Embed = self._create_embed(
+            title="Error",
+            description=error,
+            color=DiscordColor.ERROR,
+            footer_text="Error Report"
+        )
+        return embed
+
+    def _create_warning_embed(self, warning: str) -> Embed:
+        """Create a warning notification embed."""
+        embed: Embed = self._create_embed(
+            title="Warning",
+            description=warning,
+            color=DiscordColor.WARNING,
+            footer_text="Warning Notice"
+        )
+        return embed
+
+    def _create_info_embed(self, info: str) -> Embed:
+        """Create an informational notification embed."""
+        embed: Embed = self._create_embed(
+            title="Information",
+            description=info,
+            color=DiscordColor.INFO,
+            footer_text="Info Update"
+        )
+        return embed
+
+    def _create_debug_embed(self, debug: str) -> Embed:
+        """Create a debug notification embed."""
+        embed: Embed = self._create_embed(
+            title="Debug",
+            description=debug,
+            color=DiscordColor.DEBUG,
+            footer_text="Debug Info"
+        )
+        return embed
+
+    def _create_system_embed(self, message: str) -> Embed:
+        """Create a system notification embed."""
+        embed: Embed = self._create_embed(
+            title="System Message",
+            description=message,
+            color=DiscordColor.SYSTEM,
+            footer_text="System Notification"
+        )
+        return embed
+
+    def _create_completion_embed(self, message: str) -> Embed:
+        """Create a completion notification embed."""
+        embed: Embed = self._create_embed(
+            title="Task Complete",
+            description=message,
+            color=DiscordColor.SUCCESS,
+            footer_text="Completion Notice"
+        )
+        return embed

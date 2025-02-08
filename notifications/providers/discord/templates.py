@@ -49,19 +49,11 @@ Note:
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, cast
 
-from config.constants import ErrorMessages, JsonDict, JsonValue
-from shared.providers.discord import (
-    ApiLimits,
-    DiscordColor,
-    DiscordWebhookError,
-    Embed,
-    EmbedAuthor,
+from shared.providers.discord.types import (
     EmbedField,
     EmbedFooter,
-    ForumConfig,
-    WebhookPayload,
     get_progress_color,
 )
 from utils.formatters import (
@@ -99,28 +91,11 @@ def truncate_string(text: str, max_length: int) -> str:
     return text[:max_length - 3] + "..."
 
 
-def create_footer(version_info: Optional[str] = None) -> EmbedFooter:
-    """Create embed footer with version information.
-
-    Creates a standardized footer containing the application version and
-    optional additional version information.
-
-    Args:
-        version_info (Optional[str]): Additional version details to include
-
-    Returns:
-        EmbedFooter: Dictionary containing footer text, truncated if needed
-
-    Example:
-        >>> footer = create_footer("beta")
-        >>> footer["text"]
-        'Mover Status v1.2.3 (beta)'
-    """
-    footer_text = f"Mover Status v{version_checker.current_version}"
-    if version_info:
-        footer_text += f" ({version_info})"
+def create_footer() -> Dict[str, Optional[str]]:
+    """Create footer with version information."""
     return {
-        "text": truncate_string(footer_text, ApiLimits.FOOTER_TEXT_LENGTH)
+        "text": f"v{version_checker.get_version()}",
+        "icon_url": None
     }
 
 
@@ -181,6 +156,103 @@ def create_progress_field(
     }
 
 
+def _process_embed_fields(embed: Dict[str, Any], fields: List[Dict[str, Any]]) -> None:
+    """Process and add fields to the embed."""
+    if fields:
+        embed["fields"] = fields
+
+
+def _process_embed_author(embed: Dict[str, Any], author: Dict[str, Any]) -> None:
+    """Process and add author to the embed."""
+    if author:
+        embed["author"] = author
+
+
+def _process_embed_footer(embed: Dict[str, Any], footer: Dict[str, Any]) -> None:
+    """Process and add footer to the embed."""
+    if footer:
+        embed["footer"] = footer
+
+
+def create_embed(**kwargs) -> Dict[str, Any]:
+    """Create a new Discord embed with the given parameters."""
+    embed: Dict[str, Any] = {}
+
+    # Process basic fields
+    if title := kwargs.get("title"):
+        embed["title"] = str(title)
+
+    if description := kwargs.get("description"):
+        embed["description"] = str(description)
+
+    if url := kwargs.get("url"):
+        embed["url"] = str(url)
+
+    if timestamp := kwargs.get("timestamp"):
+        embed["timestamp"] = timestamp
+
+    if color := kwargs.get("color"):
+        embed["color"] = color
+
+    # Process thumbnail and image
+    if thumbnail_url := kwargs.get("thumbnail_url"):
+        embed["thumbnail"] = {"url": str(thumbnail_url)}
+
+    if image_url := kwargs.get("image_url"):
+        embed["image"] = {"url": str(image_url)}
+
+    # Process complex fields
+    _process_embed_fields(embed, kwargs.get("fields", []))
+    _process_embed_author(embed, kwargs.get("author", {}))
+    _process_embed_footer(embed, kwargs.get("footer", {}))
+
+    return embed
+
+
+def add_field(embed: Dict[str, Any], name: str, value: str, inline: Optional[bool] = False) -> None:
+    """Add a field to an embed."""
+    fields = embed.get("fields", [])
+    if fields is None:
+        fields = []
+        embed["fields"] = fields
+
+    if len(fields) >= 25:
+        raise ValueError("Cannot have more than 25 fields")
+
+    field: EmbedField = {
+        "name": truncate_string(name, 256),
+        "value": truncate_string(value, 1024),
+        "inline": bool(inline)  # Convert Optional[bool] to bool
+    }
+    fields.append(field)
+
+
+def set_footer(embed: Dict[str, Any], text: Optional[str], icon_url: Optional[str] = None) -> None:
+    """Set footer for an embed."""
+    if not text:
+        return
+
+    footer: EmbedFooter = {}
+    footer["text"] = truncate_string(text, 2048)
+    if icon_url:
+        footer["icon_url"] = icon_url
+    embed["footer"] = footer
+
+
+def set_author(embed: Dict[str, Any], name: Optional[str], url: Optional[str] = None, icon_url: Optional[str] = None) -> None:
+    """Set author for an embed."""
+    if not name:
+        return
+
+    author: Dict[str, Any] = {}
+    author["name"] = truncate_string(name, 256)
+    if url:
+        author["url"] = url
+    if icon_url:
+        author["icon_url"] = icon_url
+    embed["author"] = author
+
+
 def create_progress_embed(
     percent: float,
     remaining: str,
@@ -188,488 +260,149 @@ def create_progress_embed(
     etc: str,
     title: str = "Mover Status",
     description: Optional[str] = None,
-    author: Optional[EmbedAuthor] = None,
+    author: Optional[Dict[str, str]] = None,
     use_native_timestamps: bool = True,
     color: Optional[int] = None,
     color_enabled: bool = True
-) -> Embed:
-    """Create a complete progress update embed.
-
-    Generates a rich embed for progress updates, including a visual progress bar,
-    timing information, and optional metadata. The embed automatically handles
-    Discord's length limits and supports native timestamps.
-
-    Args:
-        percent (float): Progress percentage (0-100)
-        remaining (str): Remaining data/time amount (e.g., "1.2 GB")
-        elapsed (str): Elapsed time (e.g., "2 hours")
-        etc (str): Estimated time of completion (e.g., "15:30")
-        title (str, optional): Embed title. Defaults to "Mover Status"
-        description (Optional[str], optional): Additional context. Defaults to None
-        author (Optional[EmbedAuthor], optional): Author information. Defaults to None
-        use_native_timestamps (bool, optional): Use Discord timestamps. Defaults to True
-        color (Optional[int], optional): Override embed color. Defaults to None
-        color_enabled (bool, optional): Enable color support. Defaults to True
-
-    Returns:
-        Embed: Formatted Discord embed with progress information
-
-    Raises:
-        ValueError: If percent is not between 0 and 100
-        ValueError: If any component exceeds Discord's length limits
-
-    Example:
-        >>> # Create a basic progress embed
-        >>> embed = create_progress_embed(
-        ...     percent=50.0,
-        ...     remaining="500MB",
-        ...     elapsed="1h 30m",
-        ...     etc="16:45",
-        ...     description="Transferring files..."
-        ... )
-        >>>
-        >>> # Create a customized progress embed
-        >>> embed = create_progress_embed(
-        ...     percent=75.5,
-        ...     remaining="1.2 GB",
-        ...     elapsed="2h 15m",
-        ...     etc="18:30",
-        ...     title="File Transfer",
-        ...     description="Uploading backup files",
-        ...     author={"name": "Backup Service"},
-        ...     color=0x00ff00
-        ... )
-    """
-    if not 0 <= percent <= 100:
-        raise ValueError("Percent must be between 0 and 100")
-
-    # Create progress field
-    progress_field = create_progress_field(
-        percent=percent,
-        remaining=remaining,
-        elapsed=elapsed,
-        etc=etc
+) -> Dict[str, Any]:
+    """Create a complete progress update embed."""
+    # Create base embed
+    embed = create_embed(
+        title=title,
+        description=description,
+        color=color if color is not None else (
+            get_progress_color(percent) if color_enabled else None
+        ),
+        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
     )
 
-    # Build embed
-    embed: Embed = {
-        "title": truncate_string(title, ApiLimits.TITLE_LENGTH),
-        "fields": [progress_field],
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
-    }
+    # Create and add progress field
+    progress_field = create_progress_field(percent, remaining, elapsed, etc)
+    add_field(
+        embed,
+        name=progress_field["name"],
+        value=progress_field["value"],
+        inline=progress_field.get("inline", False)
+    )
 
-    # Set color if enabled
-    if color_enabled:
-        embed["color"] = color if color is not None else get_progress_color(percent)
+    # Add footer with version
+    footer = create_footer()
+    if "text" in footer:
+        set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
 
-    # Add optional components
-    if description:
-        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
+    # Add author if provided
     if author:
-        embed["author"] = author
+        embed["author"] = cast(Dict[str, Any], author)
 
-    validate_embed_lengths(embed)
     return embed
 
 
 def create_completion_embed(
     description: Optional[str] = None,
-    stats: Optional[Dict[str, Union[str, int, float]]] = None,
-    use_native_timestamps: bool = True,
+    stats: Optional[Dict[str, Any]] = None,
     color: Optional[int] = None,
     color_enabled: bool = True
-) -> Embed:
-    """Create embed for transfer completion notification.
+) -> Dict[str, Any]:
+    """Create embed for transfer completion notification."""
+    embed = create_embed(
+        title="Transfer Complete",
+        description=description,
+        color=color if color is not None else (
+            0x00ff00 if color_enabled else None
+        )
+    )
 
-    Generates a rich embed for completion notifications, optionally including
-    statistics and metrics about the completed operation. Supports both
-    simple completion messages and detailed statistical summaries.
-
-    Args:
-        description (Optional[str], optional): Completion message. Defaults to None
-        stats (Optional[Dict[str, Union[str, int, float]]], optional): Operation
-            statistics to display (e.g., {"files": 100, "size": "1.5 GB"}).
-            Defaults to None
-        use_native_timestamps (bool, optional): Use Discord timestamps. Defaults to True
-        color (Optional[int], optional): Override embed color. Defaults to None
-        color_enabled (bool, optional): Enable color support. Defaults to True
-
-    Returns:
-        Embed: Formatted Discord embed for completion notification
-
-    Example:
-        >>> # Simple completion notification
-        >>> embed = create_completion_embed(
-        ...     description="Backup completed successfully!"
-        ... )
-        >>>
-        >>> # Detailed completion with statistics
-        >>> embed = create_completion_embed(
-        ...     description="File transfer completed",
-        ...     stats={
-        ...         "files": 150,
-        ...         "size": "2.5 GB",
-        ...         "duration": "3h 45m",
-        ...         "speed": "10 MB/s"
-        ...     }
-        ... )
-    """
-    # Build base embed
-    embed: Embed = {
-        "title": "Transfer Complete",
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
-    }
-
-    # Set color if enabled
-    if color_enabled:
-        embed["color"] = color if color is not None else DiscordColor.SUCCESS
-
-    # Add description if provided
-    if description:
-        embed["description"] = truncate_string(description, ApiLimits.DESCRIPTION_LENGTH)
-
-    # Add stats as fields if provided
     if stats:
-        embed["fields"] = []
-        for name, value in stats.items():
-            embed["fields"].append({
-                "name": truncate_string(str(name), ApiLimits.FIELD_NAME_LENGTH),
-                "value": truncate_string(str(value), ApiLimits.FIELD_VALUE_LENGTH),
-                "inline": True
-            })
+        for key, value in stats.items():
+            add_field(
+                embed,
+                name=key.replace('_', ' ').title(),
+                value=str(value),
+                inline=True
+            )
 
-    validate_embed_lengths(embed)
+    footer = create_footer()
+    set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
+
     return embed
 
 
 def create_error_embed(
     error_message: str,
     error_code: Optional[int] = None,
-    error_details: Optional[Dict[str, str]] = None,
-    use_native_timestamps: bool = True,
+    error_details: Optional[Dict[str, Any]] = None,
     color: Optional[int] = None,
     color_enabled: bool = True
-) -> Embed:
-    """Create embed for error notification.
+) -> Dict[str, Any]:
+    """Create embed for error notification."""
+    embed = create_embed(
+        title="Error",
+        description=error_message,
+        color=color if color is not None else (
+            0xff0000 if color_enabled else None
+        )
+    )
 
-    Generates a rich embed for error notifications with support for error codes,
-    detailed error information, and optional stack traces. The embed is formatted
-    to highlight the error and provide relevant debugging information.
-
-    Args:
-        error_message (str): Main error description
-        error_code (Optional[int], optional): Error code for reference. Defaults to None
-        error_details (Optional[Dict[str, str]], optional): Additional error context
-            (e.g., {"file": "data.txt", "reason": "permission denied"}).
-            Defaults to None
-        use_native_timestamps (bool, optional): Use Discord timestamps. Defaults to True
-        color (Optional[int], optional): Override error color. Defaults to None
-        color_enabled (bool, optional): Enable color support. Defaults to True
-
-    Returns:
-        Embed: Formatted Discord embed for error notification
-
-    Raises:
-        ValueError: If error_message is empty or exceeds Discord limits
-
-    Example:
-        >>> # Basic error notification
-        >>> embed = create_error_embed(
-        ...     error_message="Failed to connect to server"
-        ... )
-        >>>
-        >>> # Detailed error with context
-        >>> embed = create_error_embed(
-        ...     error_message="Database connection failed",
-        ...     error_code=500,
-        ...     error_details={
-        ...         "host": "db.example.com",
-        ...         "port": "5432",
-        ...         "reason": "Connection timeout"
-        ...     }
-        ... )
-    """
-    if not error_message:
-        raise ValueError("Error message cannot be empty")
-
-    # Build base embed
-    embed: Embed = {
-        "title": "Error",
-        "description": truncate_string(error_message, ApiLimits.DESCRIPTION_LENGTH),
-        "footer": create_footer(),
-        "timestamp": datetime.utcnow().isoformat() if use_native_timestamps else None,
-    }
-
-    # Set color if enabled
-    if color_enabled:
-        embed["color"] = color if color is not None else DiscordColor.ERROR
-
-    # Add error code if provided
     if error_code is not None:
-        embed["fields"] = [{
-            "name": "Error Code",
-            "value": str(error_code),
-            "inline": True
-        }]
+        add_field(
+            embed,
+            name="Error Code",
+            value=str(error_code),
+            inline=True
+        )
 
-    # Add error details if provided
     if error_details:
-        if "fields" not in embed:
-            embed["fields"] = []
-        for name, value in error_details.items():
-            embed["fields"].append({
-                "name": truncate_string(str(name), ApiLimits.FIELD_NAME_LENGTH),
-                "value": truncate_string(str(value), ApiLimits.FIELD_VALUE_LENGTH),
-                "inline": True
-            })
+        for key, value in error_details.items():
+            add_field(
+                embed,
+                name=key.replace('_', ' ').title(),
+                value=str(value),
+                inline=True
+            )
 
-    validate_embed_lengths(embed)
+    footer = create_footer()
+    set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
+
     return embed
 
 
 def create_warning_embed(
-    warning_message: str,
-    warning_details: Optional[Dict[str, str]] = None,
-    suggestion: Optional[str] = None,
+    message: str,
+    title: str = "Warning",
+    color: Optional[int] = None,
     use_native_timestamps: bool = True
-) -> Embed:
-    """Create embed for warning notification.
-
-    Generates a rich embed for warning notifications with optional context details
-    and suggestions for resolution. The embed is formatted to be noticeable but
-    less severe than error notifications.
-
-    Args:
-        warning_message (str): Main warning description
-        warning_details (Optional[Dict[str, str]], optional): Additional warning
-            context (e.g., {"component": "cache", "status": "degraded"}).
-            Defaults to None
-        suggestion (Optional[str], optional): Suggested action or resolution.
-            Defaults to None
-        use_native_timestamps (bool, optional): Use Discord timestamps. Defaults to True
-
-    Returns:
-        Embed: Formatted Discord embed for warning notification
-
-    Raises:
-        ValueError: If warning_message is empty or exceeds Discord limits
-
-    Example:
-        >>> # Basic warning notification
-        >>> embed = create_warning_embed(
-        ...     warning_message="Low disk space detected"
-        ... )
-        >>>
-        >>> # Warning with details and suggestion
-        >>> embed = create_warning_embed(
-        ...     warning_message="Performance degradation detected",
-        ...     warning_details={
-        ...         "component": "file system",
-        ...         "usage": "95%",
-        ...         "threshold": "90%"
-        ...     },
-        ...     suggestion="Consider cleaning up old log files"
-        ... )
-    """
-    if not warning_message:
-        raise ValueError("Warning message cannot be empty")
-
-    embed = Embed(
-        title="Warning",
-        description=warning_message,
-        color=DiscordColor.WARNING
+) -> Dict[str, Any]:
+    """Create a warning embed."""
+    embed = create_embed(
+        title=title,
+        description=message,
+        color=color if color is not None else 0xffff00,
+        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
     )
-
-    if warning_details:
-        formatted_details = []
-        for key, value in warning_details.items():
-            if isinstance(value, datetime):
-                if use_native_timestamps:
-                    value = format_discord_timestamp(value, "f")
-                else:
-                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
-            formatted_details.append(f"**{key}:** {value}")
-
-        if formatted_details:
-            embed.add_field(
-                name="Warning Details",
-                value="\n".join(formatted_details),
-                inline=False
-            )
-
-    if suggestion:
-        embed.add_field(
-            name="Suggestion",
-            value=suggestion,
-            inline=False
-        )
 
     current_time = datetime.now()
     warning_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
-    embed.set_footer(text=f"Warning issued at {warning_time}")
+    set_footer(embed, text=f"Warning issued at {warning_time}")
     return embed
 
 
 def create_system_embed(
-    status: str,
-    metrics: Optional[Dict[str, Union[str, int, float]]] = None,
-    issues: Optional[List[str]] = None,
+    message: str,
+    title: str = "System Message",
+    color: Optional[int] = None,
     use_native_timestamps: bool = True
-) -> Embed:
-    """Create embed for system status update.
-
-    Generates a rich embed for system status notifications, including optional
-    performance metrics and current issues. Useful for system health monitoring
-    and periodic status reports.
-
-    Args:
-        status (str): Current system status description
-        metrics (Optional[Dict[str, Union[str, int, float]]], optional): System
-            performance metrics (e.g., {"cpu": "45%", "memory": "2.1 GB"}).
-            Defaults to None
-        issues (Optional[List[str]], optional): List of current system issues
-            or warnings. Defaults to None
-        use_native_timestamps (bool, optional): Use Discord timestamps. Defaults to True
-
-    Returns:
-        Embed: Formatted Discord embed for system status
-
-    Example:
-        >>> # Basic system status
-        >>> embed = create_system_embed(
-        ...     status="System running normally"
-        ... )
-        >>>
-        >>> # Detailed system status with metrics
-        >>> embed = create_system_embed(
-        ...     status="System operating at high load",
-        ...     metrics={
-        ...         "cpu_usage": "85%",
-        ...         "memory_used": "7.5 GB",
-        ...         "disk_space": "120 GB free",
-        ...         "active_users": 150
-        ...     },
-        ...     issues=[
-        ...         "High CPU utilization",
-        ...         "Database connections near limit"
-        ...     ]
-        ... )
-    """
-    embed = Embed(
-        title="System Status",
-        description=status,
-        color=DiscordColor.INFO
+) -> Dict[str, Any]:
+    """Create a system message embed."""
+    embed = create_embed(
+        title=title,
+        description=message,
+        color=color if color is not None else 0x0000ff,
+        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
     )
-
-    if metrics:
-        formatted_metrics = []
-        for key, value in metrics.items():
-            if isinstance(value, datetime):
-                if use_native_timestamps:
-                    value = format_discord_timestamp(value, "f")
-                else:
-                    value = format_timestamp(value, format_type=TimeFormat.FRIENDLY)
-            elif isinstance(value, (int, float)) and "time" in key.lower():
-                # Convert numeric time values (assumed to be timestamps)
-                dt = datetime.fromtimestamp(float(value))
-                if use_native_timestamps:
-                    value = format_discord_timestamp(dt, "R")
-                else:
-                    value = format_timestamp(dt, format_type=TimeFormat.RELATIVE)
-            formatted_metrics.append(f"**{key}:** {value}")
-
-        if formatted_metrics:
-            embed.add_field(
-                name="System Metrics",
-                value="\n".join(formatted_metrics),
-                inline=False
-            )
-
-    if issues:
-        embed.add_field(
-            name="Current Issues",
-            value="\n".join(f"• {issue}" for issue in issues),
-            inline=False
-        )
 
     current_time = datetime.now()
     status_time = format_discord_timestamp(current_time, "f") if use_native_timestamps else format_timestamp(current_time, format_type=TimeFormat.FRIENDLY)
-    embed.set_footer(text=f"Status as of {status_time}")
-    return embed
-
-
-def create_batch_embed(
-    operation: str,
-    items: List[Dict[str, Any]],
-    summary: Optional[str] = None
-) -> Embed:
-    """Create embed for batch operation updates.
-
-    Generates a rich embed for batch operation notifications, showing the
-    operation type and affected items. Useful for reporting bulk actions
-    like file processing or data migrations.
-
-    Args:
-        operation (str): Type of batch operation being performed
-        items (List[Dict[str, Any]]): List of items being processed, each item
-            should be a dictionary with relevant details
-        summary (Optional[str], optional): Optional operation summary or
-            additional context. Defaults to None
-
-    Returns:
-        Embed: Formatted Discord embed for batch operation
-
-    Example:
-        >>> # Basic batch operation
-        >>> embed = create_batch_embed(
-        ...     operation="File Processing",
-        ...     items=[
-        ...         {"name": "data.csv", "size": "1.2 MB"},
-        ...         {"name": "config.json", "size": "4 KB"}
-        ...     ]
-        ... )
-        >>>
-        >>> # Detailed batch operation
-        >>> embed = create_batch_embed(
-        ...     operation="Database Migration",
-        ...     items=[
-        ...         {
-        ...             "table": "users",
-        ...             "records": 1000,
-        ...             "status": "completed"
-        ...         },
-        ...         {
-        ...             "table": "orders",
-        ...             "records": 5000,
-        ...             "status": "in_progress"
-        ...         }
-        ...     ],
-        ...     summary="Migrating to new schema v2.0"
-        ... )
-    """
-    embed = Embed(
-        title=f"Batch {operation}",
-        description=summary or f"Processing {len(items)} items",
-        color=DiscordColor.INFO,
-        timestamp=datetime.utcnow().isoformat()
-    )
-
-    # Add items summary
-    items_text = "\n".join(
-        f"• {item.get('name', 'Unknown')}: {item.get('status', 'Pending')}"
-        for item in items[:10]  # Limit to first 10 items
-    )
-    if len(items) > 10:
-        items_text += f"\n... and {len(items) - 10} more items"
-
-    embed.fields.append(
-        EmbedField(name="Items", value=items_text, inline=False)
-    )
-
-    embed.footer = create_footer()
-    validate_embed_lengths(embed)
+    set_footer(embed, text=f"Status as of {status_time}")
     return embed
 
 
@@ -677,75 +410,39 @@ def create_interactive_embed(
     title: str,
     description: str,
     actions: List[Dict[str, str]],
-    expires_in: Optional[int] = None
-) -> Embed:
-    """Create embed for interactive messages.
-
-    Generates a rich embed for interactive messages that require user input
-    or response. Supports action buttons/links and optional expiration time
-    for time-sensitive interactions.
-
-    Args:
-        title (str): Message title
-        description (str): Message description or instructions
-        actions (List[Dict[str, str]]): List of available actions, each action
-            should be a dictionary with 'label' and 'value' keys
-        expires_in (Optional[int], optional): Time in seconds until the
-            interaction expires. Defaults to None
-
-    Returns:
-        Embed: Formatted Discord embed for interactive message
-
-    Example:
-        >>> # Basic interactive message
-        >>> embed = create_interactive_embed(
-        ...     title="Confirm Action",
-        ...     description="Do you want to proceed with the backup?",
-        ...     actions=[
-        ...         {"label": "Yes", "value": "confirm"},
-        ...         {"label": "No", "value": "cancel"}
-        ...     ]
-        ... )
-        >>>
-        >>> # Interactive message with expiration
-        >>> embed = create_interactive_embed(
-        ...     title="Update Available",
-        ...     description="A new version is available. Update now?",
-        ...     actions=[
-        ...         {"label": "Update Now", "value": "update"},
-        ...         {"label": "Remind Later", "value": "remind"},
-        ...         {"label": "Skip", "value": "skip"}
-        ...     ],
-        ...     expires_in=3600  # Expires in 1 hour
-        ... )
-    """
-    embed = Embed(
+    expires_in: Optional[int] = None,
+    use_native_timestamps: bool = True
+) -> Dict[str, Any]:
+    """Create an interactive embed with action buttons."""
+    embed = create_embed(
         title=title,
         description=description,
-        color=DiscordColor.BLURPLE,
-        timestamp=datetime.utcnow().isoformat()
+        color=0x0000ff,
+        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
     )
 
-    # Add available actions
     actions_text = "\n".join(
         f"• **{action['label']}**: {action.get('description', 'No description')}"
         for action in actions
     )
-    embed.fields.append(
-        EmbedField(name="Available Actions", value=actions_text, inline=False)
+    add_field(
+        embed,
+        name="Available Actions",
+        value=actions_text,
+        inline=False
     )
 
     if expires_in:
         expiry_time = datetime.utcnow() + timedelta(seconds=expires_in)
-        embed.fields.append(
-            EmbedField(
-                name="Expires",
-                value=f"<t:{int(expiry_time.timestamp())}:R>",
-                inline=False
-            )
+        add_field(
+            embed,
+            name="Expires",
+            value=f"<t:{int(expiry_time.timestamp())}:R>",
+            inline=False
         )
 
-    embed.footer = create_footer()
+    footer = create_footer()
+    set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
     validate_embed_lengths(embed)
     return embed
 
@@ -753,115 +450,136 @@ def create_interactive_embed(
 def create_debug_embed(
     message: str,
     context: Optional[Dict[str, Any]] = None,
-    stack_trace: Optional[str] = None
-) -> Embed:
-    """Create embed for debug messages.
-
-    Generates a rich embed for debug messages with detailed context and
-    optional stack traces. Useful for development and troubleshooting
-    with comprehensive debugging information.
-
-    Args:
-        message (str): Main debug message
-        context (Optional[Dict[str, Any]], optional): Additional debug context
-            like variables, states, or environment info. Defaults to None
-        stack_trace (Optional[str], optional): Formatted stack trace if
-            available. Defaults to None
-
-    Returns:
-        Embed: Formatted Discord embed for debug information
-
-    Example:
-        >>> # Basic debug message
-        >>> embed = create_debug_embed(
-        ...     message="Cache miss in user service"
-        ... )
-        >>>
-        >>> # Detailed debug with context and stack trace
-        >>> embed = create_debug_embed(
-        ...     message="Unexpected data format in API response",
-        ...     context={
-        ...         "endpoint": "/api/users",
-        ...         "method": "GET",
-        ...         "status_code": 200,
-        ...         "response_type": "application/xml",
-        ...         "expected_type": "application/json"
-        ...     },
-        ...     stack_trace="Traceback (most recent call last):..."
-        ... )
-    """
-    embed = Embed(
+    stack_trace: Optional[str] = None,
+    use_native_timestamps: bool = True
+) -> Dict[str, Any]:
+    """Create a debug information embed."""
+    embed = create_embed(
         title="Debug Information",
         description=message,
-        color=DiscordColor.GREYPLE,
-        timestamp=datetime.utcnow().isoformat()
+        color=0x808080,  # Using DEBUG instead of LIGHT_GREY
+        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
     )
 
     if context:
         context_text = "\n".join(f"**{k}:** {v}" for k, v in context.items())
-        embed.fields.append(
-            EmbedField(name="Context", value=context_text, inline=False)
+        add_field(
+            embed,
+            name="Context",
+            value=context_text,
+            inline=False
         )
 
     if stack_trace:
         # Truncate stack trace if too long
         if len(stack_trace) > 1000:
             stack_trace = stack_trace[:997] + "..."
-        embed.fields.append(
-            EmbedField(name="Stack Trace", value=f"```\n{stack_trace}\n```", inline=False)
+        add_field(
+            embed,
+            name="Stack Trace",
+            value=f"```\n{stack_trace}\n```",
+            inline=False
         )
 
-    embed.footer = create_footer()
+    footer = create_footer()
+    if "text" in footer:
+        set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
     validate_embed_lengths(embed)
     return embed
 
 
-def validate_embed_lengths(embed: Embed) -> None:
-    """Validate embed field lengths against Discord limits.
+def create_batch_embed(
+    operation: str,
+    items: List[Dict[str, Any]],
+    summary: Optional[str] = None
+) -> Dict[str, Any]:
+    """Create embed for batch operation updates."""
+    # Create base embed
+    embed: Dict[str, Any] = {
+        "type": "rich",
+        "title": f"Batch {operation}",
+        "color": 0x0000ff,
+        "fields": []
+    }
 
-    Checks all components of a Discord embed against Discord's API limits
-    to ensure the message can be sent successfully. This includes title,
-    description, fields, footer, and author components.
+    # Add summary if provided
+    if summary:
+        embed["description"] = summary
 
-    Args:
-        embed (Embed): Discord embed to validate
+    # Add items as fields
+    for item in items:
+        field: EmbedField = {
+            "name": item.get("name", "Item"),
+            "value": "\n".join(f"{k}: {v}" for k, v in item.items() if k != "name"),
+            "inline": False
+        }
+        add_field(embed, **field)
 
-    Raises:
-        DiscordWebhookError: If any component exceeds Discord limits:
-            - Title: 256 characters
-            - Description: 4096 characters
-            - Fields: 25 fields
-            - Field name: 256 characters
-            - Field value: 1024 characters
-            - Footer text: 2048 characters
-            - Author name: 256 characters
+    # Add footer with version
+    footer = create_footer()
+    set_footer(embed, text=footer["text"], icon_url=footer.get("icon_url"))
 
-    Example:
-        >>> embed = create_progress_embed(...)
-        >>> try:
-        ...     validate_embed_lengths(embed)
-        ... except DiscordWebhookError as e:
-        ...     print(f"Validation failed: {e}")
-    """
-    try:
-        total_length = 0
-        total_length += validate_title(embed.get("title"))
-        total_length += validate_description(embed.get("description"))
-        total_length += validate_fields(embed.get("fields"))
-        total_length += validate_footer(embed.get("footer"))
-        total_length += validate_author(embed.get("author"))
+    # Validate lengths
+    validate_embed_lengths(embed)
 
-        if total_length > ApiLimits.TOTAL_LENGTH:
-            raise DiscordWebhookError(
-                "Total embed length exceeds Discord limit",
-                context={
-                    "total_length": total_length,
-                    "max_length": ApiLimits.TOTAL_LENGTH
-                }
-            )
+    return embed
 
-    except ValueError as err:
-        raise DiscordWebhookError(str(err), context={"embed": embed}) from err
+
+def _validate_basic_fields(embed: Dict[str, Any]) -> None:
+    """Validate basic embed field lengths."""
+    if "title" in embed and len(embed["title"]) > 256:
+        raise ValueError("Embed title cannot exceed 256 characters")
+    if "description" in embed and len(embed["description"]) > 4096:
+        raise ValueError("Embed description cannot exceed 4096 characters")
+
+
+def _validate_author_fields(embed: Dict[str, Any]) -> None:
+    """Validate author field lengths."""
+    if "author" in embed:
+        if "name" in embed["author"] and len(embed["author"]["name"]) > 256:
+            raise ValueError("Embed author name cannot exceed 256 characters")
+
+
+def _validate_footer_fields(embed: Dict[str, Any]) -> None:
+    """Validate footer field lengths."""
+    if "footer" in embed:
+        if "text" in embed["footer"] and len(embed["footer"]["text"]) > 2048:
+            raise ValueError("Embed footer text cannot exceed 2048 characters")
+
+
+def _validate_field_entries(embed: Dict[str, Any]) -> None:
+    """Validate individual field entries."""
+    if "fields" in embed:
+        for field in embed["fields"]:
+            if len(field["name"]) > 256:
+                raise ValueError("Embed field name cannot exceed 256 characters")
+            if len(field["value"]) > 1024:
+                raise ValueError("Embed field value cannot exceed 1024 characters")
+
+
+def validate_embed_lengths(embed: Dict[str, Any]) -> None:
+    """Validate embed field lengths."""
+    _validate_basic_fields(embed)
+    _validate_author_fields(embed)
+    _validate_footer_fields(embed)
+    _validate_field_entries(embed)
+
+    # Validate total length
+    total_length = 0
+    if "title" in embed:
+        total_length += len(embed["title"])
+    if "description" in embed:
+        total_length += len(embed["description"])
+    if "footer" in embed and "text" in embed["footer"]:
+        total_length += len(embed["footer"]["text"])
+    if "author" in embed and "name" in embed["author"]:
+        total_length += len(embed["author"]["name"])
+    if "fields" in embed:
+        for field in embed["fields"]:
+            total_length += len(field["name"]) + len(field["value"])
+
+    if total_length > 6000:
+        raise ValueError("Total embed length cannot exceed 6000 characters")
 
 
 def validate_title(title: Optional[str]) -> int:
@@ -877,27 +595,21 @@ def validate_title(title: Optional[str]) -> int:
         int: Length of title (0 if None)
 
     Raises:
-        DiscordWebhookError: If title exceeds 256 characters
+        ValueError: If title exceeds 256 characters
 
     Example:
         >>> try:
         ...     length = validate_title("My Title")
         ...     print(f"Title length: {length}")
-        ... except DiscordWebhookError as e:
+        ... except ValueError as e:
         ...     print(f"Title too long: {e}")
     """
     if not title:
         return 0
 
     length = len(title)
-    if length > ApiLimits.TITLE_LENGTH:
-        raise DiscordWebhookError(
-            "Embed title exceeds Discord limit",
-            context={
-                "title_length": length,
-                "max_length": ApiLimits.TITLE_LENGTH
-            }
-        )
+    if length > 256:
+        raise ValueError("Embed title cannot exceed 256 characters")
     return length
 
 
@@ -914,31 +626,25 @@ def validate_description(description: Optional[str]) -> int:
         int: Length of description (0 if None)
 
     Raises:
-        DiscordWebhookError: If description exceeds 4096 characters
+        ValueError: If description exceeds 4096 characters
 
     Example:
         >>> try:
         ...     length = validate_description("Detailed status update...")
         ...     print(f"Description length: {length}")
-        ... except DiscordWebhookError as e:
+        ... except ValueError as e:
         ...     print(f"Description too long: {e}")
     """
     if not description:
         return 0
 
     length = len(description)
-    if length > ApiLimits.DESCRIPTION_LENGTH:
-        raise DiscordWebhookError(
-            "Embed description exceeds Discord limit",
-            context={
-                "description_length": length,
-                "max_length": ApiLimits.DESCRIPTION_LENGTH
-            }
-        )
+    if length > 4096:
+        raise ValueError("Embed description cannot exceed 4096 characters")
     return length
 
 
-def validate_fields(fields: Optional[List[EmbedField]]) -> int:
+def validate_fields(fields: Optional[List[Dict[str, str]]]) -> int:
     """Validate embed fields.
 
     Checks if embed fields meet Discord's requirements:
@@ -948,13 +654,13 @@ def validate_fields(fields: Optional[List[EmbedField]]) -> int:
     - Total characters across all fields
 
     Args:
-        fields (Optional[List[EmbedField]]): List of fields to validate
+        fields (Optional[List[Dict[str, str]]]): List of fields to validate
 
     Returns:
         int: Total length of all fields (0 if None)
 
     Raises:
-        DiscordWebhookError: If fields exceed Discord's limits
+        ValueError: If fields exceed Discord's limits
 
     Example:
         >>> fields = [
@@ -964,45 +670,25 @@ def validate_fields(fields: Optional[List[EmbedField]]) -> int:
         >>> try:
         ...     total_length = validate_fields(fields)
         ...     print(f"Total fields length: {total_length}")
-        ... except DiscordWebhookError as e:
+        ... except ValueError as e:
         ...     print(f"Fields validation failed: {e}")
     """
     if not fields:
         return 0
 
     total_length = 0
-    if len(fields) > ApiLimits.FIELDS_COUNT:
-        raise DiscordWebhookError(
-            "Too many embed fields",
-            context={
-                "field_count": len(fields),
-                "max_fields": ApiLimits.FIELDS_COUNT
-            }
-        )
+    if len(fields) > 25:
+        raise ValueError("Too many embed fields")
 
-    for i, field in enumerate(fields):
+    for field in fields:
         name_len = len(field["name"])
         value_len = len(field["value"])
 
-        if name_len > ApiLimits.FIELD_NAME_LENGTH:
-            raise DiscordWebhookError(
-                "Field name exceeds Discord limit",
-                context={
-                    "field_index": i,
-                    "name_length": name_len,
-                    "max_length": ApiLimits.FIELD_NAME_LENGTH
-                }
-            )
+        if name_len > 256:
+            raise ValueError("Field name exceeds Discord limit")
 
-        if value_len > ApiLimits.FIELD_VALUE_LENGTH:
-            raise DiscordWebhookError(
-                "Field value exceeds Discord limit",
-                context={
-                    "field_index": i,
-                    "value_length": value_len,
-                    "max_length": ApiLimits.FIELD_VALUE_LENGTH
-                }
-            )
+        if value_len > 1024:
+            raise ValueError("Field value exceeds Discord limit")
 
         total_length += name_len + value_len
 
@@ -1023,27 +709,21 @@ def validate_footer(footer: Optional[Dict[str, str]]) -> int:
         int: Length of footer text (0 if None)
 
     Raises:
-        DiscordWebhookError: If footer text exceeds 2048 characters
+        ValueError: If footer text exceeds 2048 characters
 
     Example:
         >>> try:
         ...     length = validate_footer({"text": "Footer text"})
         ...     print(f"Footer length: {length}")
-        ... except DiscordWebhookError as e:
+        ... except ValueError as e:
         ...     print(f"Footer too long: {e}")
     """
     if not footer or "text" not in footer:
         return 0
 
     length = len(footer["text"])
-    if length > ApiLimits.FOOTER_LENGTH:
-        raise DiscordWebhookError(
-            "Footer text exceeds Discord limit",
-            context={
-                "footer_length": length,
-                "max_length": ApiLimits.FOOTER_LENGTH
-            }
-        )
+    if length > 2048:
+        raise ValueError("Footer text exceeds Discord limit")
     return length
 
 
@@ -1061,27 +741,21 @@ def validate_author(author: Optional[Dict[str, str]]) -> int:
         int: Length of author name (0 if None)
 
     Raises:
-        DiscordWebhookError: If author name exceeds 256 characters
+        ValueError: If author name exceeds 256 characters
 
     Example:
         >>> try:
         ...     length = validate_author({"name": "Author Name"})
         ...     print(f"Author length: {length}")
-        ... except DiscordWebhookError as e:
+        ... except ValueError as e:
         ...     print(f"Author too long: {e}")
     """
     if not author or "name" not in author:
         return 0
 
     length = len(author["name"])
-    if length > ApiLimits.AUTHOR_NAME_LENGTH:
-        raise DiscordWebhookError(
-            "Author name exceeds Discord limit",
-            context={
-                "author_length": length,
-                "max_length": ApiLimits.AUTHOR_NAME_LENGTH
-            }
-        )
+    if length > 256:
+        raise ValueError("Author name exceeds Discord limit")
     return length
 
 
@@ -1130,170 +804,121 @@ def validate_nesting_depth(data: Any, current_depth: int = 0, max_depth: int = 2
     return True
 
 
-def create_webhook_payload(
-    embeds: List[Embed],
-    username: str = "Mover Bot",
-    avatar_url: Optional[str] = None,
-    forum_config: Optional[ForumConfig] = None,
-    require_embeds: bool = True
-) -> WebhookPayload:
-    """Create complete webhook payload with optional forum support.
-
-    Assembles a complete Discord webhook payload with embeds, username,
-    avatar, and optional forum thread configuration. Validates all
-    components against Discord's API limits.
+def format_discord_timestamp(dt: datetime, style: str = "R") -> str:
+    """Format timestamp using Discord's native format.
 
     Args:
-        embeds (List[Embed]): List of embeds to include
-        username (str, optional): Bot username to display. Defaults to "Mover Bot"
-        avatar_url (Optional[str], optional): URL for bot avatar. Defaults to None
-        forum_config (Optional[ForumConfig], optional): Forum thread configuration.
-            Defaults to None
-        require_embeds (bool, optional): If True, at least one embed is required.
-            Defaults to True
-
-    Returns:
-        WebhookPayload: Complete webhook payload ready for sending
-
-    Raises:
-        ValueError: If payload exceeds Discord limits or nesting depth
-        ValueError: If embeds are required but not provided
-
-    Example:
-        >>> # Basic webhook payload
-        >>> embeds = [create_progress_embed(...)]
-        >>> payload = create_webhook_payload(
-        ...     embeds=embeds,
-        ...     username="Status Bot"
-        ... )
-        >>>
-        >>> # Forum thread payload
-        >>> forum_config = {
-        ...     "name": "Status Updates",
-        ...     "message": "New status thread"
-        ... }
-        >>> payload = create_webhook_payload(
-        ...     embeds=embeds,
-        ...     username="Forum Bot",
-        ...     forum_config=forum_config
-        ... )
+        dt: Datetime to format
+        style: Discord timestamp style (R=relative, t=short time, T=long time, d=short date, D=long date, f=short datetime, F=long datetime)
     """
-    # Validate username length
-    if len(username) > ApiLimits.USERNAME_LENGTH:
-        raise ValueError(ErrorMessages.FIELD_TOO_LONG.format(
-            field="username",
-            max_length=ApiLimits.USERNAME_LENGTH
-        ))
+    unix_timestamp = int(dt.timestamp())
+    return f"<t:{unix_timestamp}:{style}>"
 
-    # Validate embeds
-    if not embeds and require_embeds:
-        raise ValueError("At least one embed is required when require_embeds is True")
 
+def _process_basic_embed_fields(embed: Dict[str, Any]) -> Dict[str, Any]:
+    """Process basic embed fields."""
+    result = {}
+    for field in ["title", "description", "url", "timestamp", "color"]:
+        if field in embed:
+            result[field] = embed[field]
+    return result
+
+def _process_media_fields(embed: Dict[str, Any]) -> Dict[str, Any]:
+    """Process media-related embed fields."""
+    result = {}
+    for field in ["image", "thumbnail", "video", "provider"]:
+        if field in embed:
+            result[field] = embed[field]
+    return result
+
+def _process_complex_fields(embed: Dict[str, Any]) -> Dict[str, Any]:
+    """Process complex embed fields."""
+    result = {}
+    if "author" in embed:
+        result["author"] = embed["author"]
+    if "footer" in embed:
+        result["footer"] = embed["footer"]
+    if "fields" in embed:
+        result["fields"] = embed["fields"]
+    return result
+
+def _create_embed_dict(embed: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Embed object to dictionary format."""
+    result = {"type": "rich"}  # Only "rich" is supported for webhook embeds
+    result.update(_process_basic_embed_fields(embed))
+    result.update(_process_media_fields(embed))
+    result.update(_process_complex_fields(embed))
+    return result
+
+
+def create_webhook_payload(
+    embeds: List[Dict[str, Any]],
+    username: str = "Mover Bot",
+    avatar_url: Optional[str] = None,
+    forum_config: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Create Discord webhook payload."""
     # Create base payload
-    payload: JsonDict = {"username": username, "embeds": []}
+    payload: Dict[str, Any] = {
+        "username": username,
+        "embeds": embeds
+    }
 
     # Add optional fields
     if avatar_url:
         payload["avatar_url"] = avatar_url
 
-    # Convert and validate embeds
-    payload["embeds"] = []
+    # Add forum config if provided
+    if forum_config and "thread_title" in forum_config:
+        thread_title = forum_config["thread_title"]
+        if thread_title:
+            payload["thread_name"] = thread_title
+
+    # Validate payload
+    if len(embeds) > 10:
+        raise ValueError("Cannot have more than 10 embeds per message")
+
+    # Validate each embed
     for embed in embeds:
-        # Validate embed before adding
         validate_embed_lengths(embed)
-        embed_dict = _create_embed_dict(embed)
-        # Validate nesting depth of embed
-        validate_nesting_depth(embed_dict)
-        payload["embeds"].append(embed_dict)
-
-    # Add forum configuration if provided
-    if forum_config:
-        if not isinstance(forum_config, dict):
-            raise ValueError("Forum configuration must be a dictionary")
-        validate_nesting_depth(forum_config)
-        payload["thread_name"] = forum_config.get("thread_name")
-
-    # Validate final payload nesting depth
-    validate_nesting_depth(payload)
-
     return payload
 
 
-def _create_embed_dict(embed: Embed) -> JsonDict:
-    """Convert Embed object to JsonDict format.
+def _copy_basic_fields(embed: Dict[str, Any], new_embed: Dict[str, Any]) -> None:
+    """Copy basic embed fields."""
+    for field in ["title", "description", "url", "timestamp", "color"]:
+        if field in embed:
+            new_embed[field] = embed[field]
 
-    Args:
-        embed (Embed): Discord embed to convert
+def _copy_media_fields(embed: Dict[str, Any], new_embed: Dict[str, Any]) -> None:
+    """Copy media-related embed fields."""
+    for field in ["image", "thumbnail", "video", "provider"]:
+        if field in embed:
+            new_embed[field] = dict(embed[field])
 
-    Returns:
-        JsonDict: Formatted embed dictionary
-    """
-    embed_dict: JsonDict = {}
+def _copy_author(embed: Dict[str, Any], new_embed: Dict[str, Any]) -> None:
+    """Copy author field."""
+    if "author" in embed:
+        new_embed["author"] = dict(embed["author"])
 
-    # Add basic fields
-    if embed.title:
-        embed_dict["title"] = embed.title
-    if embed.description:
-        embed_dict["description"] = embed.description
-    if embed.color:
-        embed_dict["color"] = embed.color
+def _copy_footer(embed: Dict[str, Any], new_embed: Dict[str, Any]) -> None:
+    """Copy footer field."""
+    if "footer" in embed:
+        new_embed["footer"] = dict(embed["footer"])
 
-    # Add nested structures
-    if embed.author:
-        author_dict: Dict[str, JsonValue] = {"name": embed.author.name}
-        if embed.author.url:
-            author_dict["url"] = embed.author.url
-        if embed.author.icon_url:
-            author_dict["icon_url"] = embed.author.icon_url
-        embed_dict["author"] = author_dict
+def _copy_fields(embed: Dict[str, Any], new_embed: Dict[str, Any]) -> None:
+    """Copy fields array."""
+    if "fields" in embed:
+        new_embed["fields"] = [dict(field) for field in embed["fields"]]
 
-    if embed.footer:
-        footer_dict: Dict[str, JsonValue] = {"text": embed.footer.text}
-        if embed.footer.icon_url:
-            footer_dict["icon_url"] = embed.footer.icon_url
-        embed_dict["footer"] = footer_dict
+def copy_embed(embed: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a deep copy of an embed."""
+    new_embed: Dict[str, Any] = {}
 
-    if embed.fields:
-        embed_dict["fields"] = [
-            {
-                "name": field.name,
-                "value": field.value,
-                **({"inline": field.inline} if field.inline is not None else {})
-            }
-            for field in embed.fields
-        ]
+    _copy_basic_fields(embed, new_embed)
+    _copy_media_fields(embed, new_embed)
+    _copy_author(embed, new_embed)
+    _copy_footer(embed, new_embed)
+    _copy_fields(embed, new_embed)
 
-    return embed_dict
-
-
-def format_discord_timestamp(dt: datetime, style: str = "R") -> str:
-    """Format timestamp using Discord's native format.
-
-    Formats a datetime object using Discord's timestamp syntax for automatic
-    localization and formatting in messages. Supports various display styles.
-
-    Args:
-        dt (datetime): Datetime to format
-        style (str, optional): Discord timestamp style:
-            - t: Short time (e.g., "16:20")
-            - T: Long time (e.g., "16:20:30")
-            - d: Short date (e.g., "20/04/2023")
-            - D: Long date (e.g., "20 April 2023")
-            - f: Short date/time (e.g., "20 April 2023 16:20")
-            - F: Long date/time (e.g., "Wednesday, 20 April 2023 16:20")
-            - R: Relative time (e.g., "2 hours ago")
-            Defaults to "R"
-
-    Returns:
-        str: Discord formatted timestamp
-
-    Example:
-        >>> now = datetime.now()
-        >>> # Relative time
-        >>> ts = format_discord_timestamp(now)  # "<t:1234567890:R>"
-        >>>
-        >>> # Full date and time
-        >>> ts = format_discord_timestamp(now, "F")  # "<t:1234567890:F>"
-    """
-    unix_timestamp = int(dt.timestamp())
-    return f"<t:{unix_timestamp}:{style}>"
+    return new_embed

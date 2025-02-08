@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional, Union
 
 from pydantic import Field, HttpUrl, field_validator
 
-from config.constants import API, ErrorMessages, APIEndpoints
+from config.constants import API, APIEndpoints, ErrorMessages
 from config.providers.base import BaseProviderSettings
 from config.providers.telegram.schemas import BotConfigSchema
 from config.providers.telegram.types import validate_chat_id

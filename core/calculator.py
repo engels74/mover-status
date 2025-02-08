@@ -39,7 +39,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Awaitable, Callable, Deque, Optional, TypeGuard
+from typing import Awaitable, Callable, Deque, Optional
 
 from structlog import get_logger
 

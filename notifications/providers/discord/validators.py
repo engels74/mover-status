@@ -1,30 +1,49 @@
-# notifications/providers/discord/validators.py
-
 """Discord webhook configuration validator."""
 
 import re
-from typing import Any, Dict, Final, Optional, Union
+from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import ParseResult, urlparse
 
 from pydantic import HttpUrl
 
 from config.constants import JsonDict
-from shared.providers.discord import (
+from config.providers.discord.settings import (
     ALLOWED_IMAGE_EXTENSIONS,
-    ASSET_DOMAINS,
     MAX_URL_LENGTH,
     THREAD_NAME_PATTERN,
     USERNAME_PATTERN,
-    WEBHOOK_DOMAINS,
     WEBHOOK_PATH_PREFIX,
     WEBHOOK_TOKEN_PATTERN,
-    ApiLimits,
-    AssetDomains,
+    ASSET_DOMAINS,
+    WEBHOOK_DOMAINS,
+)
+from config.providers.discord.types import (
+    ApiLimit,
     DiscordColor,
-    WebhookDomains,
-    validate_url,
 )
 from utils.validators import BaseProviderValidator, ValidationError
+
+# Compile regex patterns
+USERNAME_RE = re.compile(USERNAME_PATTERN)
+THREAD_NAME_RE = re.compile(THREAD_NAME_PATTERN)
+WEBHOOK_TOKEN_RE = re.compile(WEBHOOK_TOKEN_PATTERN)
+
+
+def validate_url(url: str, allowed_domains: set[str]) -> bool:
+    """Validate URL against allowed domains.
+
+    Args:
+        url: URL to validate
+        allowed_domains: Set of allowed domain names
+
+    Returns:
+        bool: True if URL is valid and from allowed domain
+    """
+    try:
+        parsed = urlparse(url)
+        return bool(parsed.scheme and parsed.netloc in allowed_domains)
+    except Exception:
+        return False
 
 
 class DiscordValidationError(Exception):
@@ -45,8 +64,8 @@ class DiscordValidator(BaseProviderValidator):
     """Validates Discord webhook configurations and message content."""
 
     # Use shared constants for domains
-    ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
-    ALLOWED_AVATAR_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
+    ALLOWED_DOMAINS: set[str] = cast(set[str], WEBHOOK_DOMAINS)
+    ALLOWED_AVATAR_DOMAINS: set[str] = cast(set[str], ASSET_DOMAINS)
     DEFAULT_COLOR = DiscordColor.INFO
 
     # Time format patterns
@@ -92,7 +111,7 @@ class DiscordValidator(BaseProviderValidator):
                 field="webhook_url"
             )
 
-        if not WEBHOOK_TOKEN_PATTERN.match(token):
+        if not WEBHOOK_TOKEN_RE.match(token):
             raise DiscordValidationError(
                 "Invalid webhook token",
                 field="webhook_url"
@@ -125,7 +144,7 @@ class DiscordValidator(BaseProviderValidator):
                 field="webhook_url"
             )
 
-        if parsed.netloc not in cls.ALLOWED_DOMAINS:
+        if parsed.netloc not in frozenset(cls.ALLOWED_DOMAINS):
             raise DiscordValidationError(
                 "Invalid webhook domain",
                 field="webhook_url"
@@ -195,11 +214,14 @@ class DiscordValidator(BaseProviderValidator):
         Raises:
             DiscordValidationError: If avatar URL is invalid
         """
-        if not url:
+        if url is None:
             return None
 
+        # Convert HttpUrl to string if needed
+        url_str = str(url)
+
         try:
-            parsed = urlparse(url)
+            parsed = urlparse(url_str)
             if not all([parsed.scheme, parsed.netloc, parsed.path]):
                 raise DiscordValidationError(
                     "Invalid avatar URL format",
@@ -212,14 +234,14 @@ class DiscordValidator(BaseProviderValidator):
                     field="avatar_url"
                 )
 
-            if parsed.netloc not in cls.ALLOWED_AVATAR_DOMAINS:
+            if parsed.netloc not in frozenset(cls.ALLOWED_AVATAR_DOMAINS):
                 raise DiscordValidationError(
                     "Invalid avatar domain",
                     field="avatar_url"
                 )
 
             # Check URL length
-            if len(url) > MAX_URL_LENGTH:
+            if len(url_str) > MAX_URL_LENGTH:
                 raise DiscordValidationError(
                     "Avatar URL exceeds maximum length",
                     field="avatar_url"
@@ -232,7 +254,7 @@ class DiscordValidator(BaseProviderValidator):
                     field="avatar_url"
                 )
 
-            return url
+            return url_str
 
         except Exception as err:
             raise DiscordValidationError(
@@ -261,13 +283,13 @@ class DiscordValidator(BaseProviderValidator):
         if not username:
             return default
 
-        if len(username) > ApiLimits.USERNAME_LENGTH:
+        if len(username) > ApiLimit.USERNAME_LENGTH:
             raise DiscordValidationError(
                 "Username exceeds maximum length",
                 field="username"
             )
 
-        if not USERNAME_PATTERN.match(username):
+        if not USERNAME_RE.match(username):
             raise DiscordValidationError(
                 "Invalid username format",
                 field="username"
@@ -294,7 +316,7 @@ class DiscordValidator(BaseProviderValidator):
         if not name:
             return None
 
-        if len(name) > ApiLimits.CHANNEL_NAME_LENGTH:
+        if len(name) > ApiLimit.CHANNEL_NAME_LENGTH:
             raise DiscordValidationError(
                 "Thread name exceeds maximum length",
                 field="thread_name"
@@ -306,7 +328,7 @@ class DiscordValidator(BaseProviderValidator):
                 field="thread_name"
             )
 
-        if not THREAD_NAME_PATTERN.match(name):
+        if not THREAD_NAME_RE.match(name):
             raise DiscordValidationError(
                 "Invalid thread name format",
                 field="thread_name"
@@ -520,17 +542,18 @@ class DiscordValidator(BaseProviderValidator):
                 field="rate_period"
             )
 
-        if rate_limit > ApiLimits.RATE_LIMIT_PER_SEC * rate_period:
+        if rate_limit > ApiLimit.RATE_LIMIT_PER_SEC * rate_period:
             raise DiscordValidationError(
                 "Rate limit exceeds Discord's maximum",
                 field="rate_limit"
             )
 
+
 class WebhookValidator:
     """Discord webhook URL and payload validator."""
 
-    ALLOWED_DOMAINS: Final[WebhookDomains] = WEBHOOK_DOMAINS
-    ALLOWED_ASSET_DOMAINS: Final[AssetDomains] = ASSET_DOMAINS
+    ALLOWED_DOMAINS: set[str] = cast(set[str], WEBHOOK_DOMAINS)
+    ALLOWED_ASSET_DOMAINS: set[str] = cast(set[str], ASSET_DOMAINS)
 
     @classmethod
     def validate_webhook_url(cls, url: str) -> bool:
@@ -554,6 +577,6 @@ class WebhookValidator:
         Returns:
             bool: True if URL is valid avatar URL or None
         """
-        if url is None:
+        if not url:
             return True
         return validate_url(url, cls.ALLOWED_ASSET_DOMAINS)

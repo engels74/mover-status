@@ -12,7 +12,7 @@ Example:
 """
 
 from enum import IntEnum, StrEnum
-from typing import Dict, Final, List, Optional, TypedDict, Union
+from typing import Dict, List, Optional, TypedDict, Union
 
 
 class ParseMode(StrEnum):
@@ -52,26 +52,26 @@ class MessageEntityType(StrEnum):
 
 class MessageLimit(IntEnum):
     """Telegram API message limits."""
-    MESSAGE_TEXT: Final = 4096        # UTF-16 code units
-    CAPTION_TEXT: Final = 1024        # UTF-16 code units
-    ENTITIES: Final = 100            # Maximum entities per message
-    BUTTONS_PER_ROW: Final = 8       # Maximum inline keyboard buttons per row
-    KEYBOARD_ROWS: Final = 10        # Maximum rows in inline keyboard
-    CALLBACK_DATA: Final = 64        # Maximum callback data length
-    BUTTON_TEXT: Final = 64          # Maximum button text length
-    MESSAGES_PER_MINUTE: Final = 30  # Rate limit per chat
-    MESSAGES_PER_SECOND: Final = 30  # Global rate limit
-    MEDIA_GROUP_SIZE: Final = 10     # Maximum media items in group
+    MESSAGE_TEXT = 4096        # UTF-16 code units
+    CAPTION_TEXT = 1024        # UTF-16 code units
+    ENTITIES = 100            # Maximum entities per message
+    BUTTONS_PER_ROW = 8       # Maximum inline keyboard buttons per row
+    KEYBOARD_ROWS = 10        # Maximum rows in inline keyboard
+    CALLBACK_DATA = 64        # Maximum callback data length
+    BUTTON_TEXT = 64          # Maximum button text length
+    MESSAGES_PER_MINUTE = 30  # Rate limit per chat
+    MESSAGES_PER_SECOND = 30  # Global rate limit
+    MEDIA_GROUP_SIZE = 10     # Maximum media items in group
 
 
 class ApiLimit(IntEnum):
     """Telegram Bot API limits."""
-    FILE_SIZE: Final = 50 * 1024 * 1024  # 50 MB
-    CAPTION_LENGTH: Final = 1024
-    MEDIA_GROUP_SIZE: Final = 10
-    POLL_OPTIONS: Final = 10
-    DEEP_LINK_LENGTH: Final = 64
-    USERNAME_LENGTH: Final = 32
+    FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+    CAPTION_LENGTH = 1024
+    MEDIA_GROUP_SIZE = 10
+    POLL_OPTIONS = 10
+    DEEP_LINK_LENGTH = 64
+    USERNAME_LENGTH = 32
 
 
 class User(TypedDict, total=False):
@@ -165,7 +165,7 @@ def calculate_utf16_length(text: str) -> int:
 
 def validate_message_length(
     text: str,
-    limit: MessageLimit = MessageLimit.MESSAGE_TEXT,
+    limit: int = MessageLimit.MESSAGE_TEXT,
     truncate: bool = False,
 ) -> str:
     """Validate message length against Telegram limits.

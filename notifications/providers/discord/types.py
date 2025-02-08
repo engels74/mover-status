@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import List, Optional, TypedDict
 
 from shared.providers.discord import (
-    ApiLimits,
+    ApiLimit,
     DiscordColor,
     DiscordWebhookError,
     Embed,
@@ -156,7 +156,7 @@ __all__ = [
     'NotificationResponse',
     'RateLimitInfo',
     'ForumThreadInfo',
-    'ApiLimits',
+    'ApiLimit',
     'DiscordColor',
     'Embed',
     'WebhookPayload',

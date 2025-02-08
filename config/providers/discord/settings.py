@@ -25,10 +25,10 @@ Example:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Final, Optional
 
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import DiscordSchemaError, WebhookConfigSchema
@@ -39,36 +39,43 @@ from shared.providers.discord import (
     DiscordColor,
     validate_url,
 )
-from config.constants import JsonDict, JsonValue
-from typing import cast
-import re
 
-# Thread name validation pattern
-THREAD_NAME_PATTERN: Final = re.compile(r"^[\w\-\s]{1,100}$")
+# Discord webhook constants
+WEBHOOK_PATH_PREFIX: Final[str] = "/api/webhooks/"
+WEBHOOK_TOKEN_PATTERN: Final[str] = r"^[A-Za-z0-9_-]+$"
+USERNAME_PATTERN: Final[str] = r"^[\w\s-]{2,32}$"
+THREAD_NAME_PATTERN: Final[str] = r"^[\w\s-]{1,100}$"
+MAX_URL_LENGTH: Final[int] = 2048
+ALLOWED_IMAGE_EXTENSIONS: Final[tuple[str, ...]] = (
+    ".jpg", ".jpeg", ".png", ".gif", ".webp"
+)
+
+# Compile regex patterns
+USERNAME_RE = re.compile(USERNAME_PATTERN)
+THREAD_NAME_RE = re.compile(THREAD_NAME_PATTERN)
+WEBHOOK_TOKEN_RE = re.compile(WEBHOOK_TOKEN_PATTERN)
+
 
 def validate_thread_name(name: str, field: Optional[str] = None) -> bool:
     """Validate thread name format.
-    
+
     Args:
         name: Thread name to validate
         field: Optional field name for error context
-        
+
     Returns:
         bool: True if thread name is valid
-        
+
     Raises:
         ValueError: If thread name is invalid
     """
-    if not name or not name.strip():
-        raise ValueError(f"Thread name cannot be empty{f' ({field})' if field else ''}")
-    
-    if not THREAD_NAME_PATTERN.match(name):
-        raise ValueError(
-            f"Thread name must be 1-100 characters and contain only letters, numbers, "
-            f"hyphens, and spaces{f' ({field})' if field else ''}"
-        )
-    
+    if not THREAD_NAME_RE.match(name):
+        msg = "Invalid thread name format"
+        if field:
+            msg = f"{msg} for {field}"
+        raise ValueError(msg)
     return True
+
 
 """Discord webhook settings and configuration."""
 
@@ -129,7 +136,7 @@ class ForumSettings(BaseModel):
         """
         if v is None:
             return None
-            
+
         try:
             validate_thread_name(v, "forum.default_thread_name")
         except ValueError as e:
@@ -206,11 +213,11 @@ class WebhookSettings(BaseModel):
         """Validate thread name format."""
         if v is None:
             return None
-            
+
         try:
             validate_thread_name(v)
         except ValueError as e:
-            raise ValueError(str(e))
+            raise ValueError(str(e)) from e
         return v
 
     @field_validator("thread_id", "thread_name")

@@ -24,15 +24,16 @@ Example:
 from enum import IntEnum
 from typing import List, TypedDict, Union
 
-from config.constants import JsonDict
+from shared.providers.telegram import (
+    ApiLimit,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from shared.providers.telegram import (
     ChatType as SharedChatType,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
 )
 from shared.providers.telegram import (
     MessageLimit as SharedMessageLimit,
-    ApiLimit,
 )
 
 # Use shared types to avoid duplication

@@ -12,7 +12,7 @@ Example:
 """
 
 from enum import IntEnum
-from typing import Final, List, Literal, Optional, TypedDict
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 from urllib.parse import urlparse
 
 
@@ -41,26 +41,26 @@ class DiscordColor(IntEnum):
 class ApiLimit(IntEnum):
     """Discord API limits and constraints."""
     # Message Limits
-    CONTENT_LENGTH: Final = 2000      # Maximum message content length
-    EMBEDS_PER_MESSAGE: Final = 10    # Maximum embeds per message
-    TOTAL_LENGTH: Final = 6000        # Maximum combined length across all embeds
-    COMPONENTS_PER_ROW: Final = 5     # Maximum buttons/components per row
-    ROWS_PER_MESSAGE: Final = 5       # Maximum component rows per message
+    CONTENT_LENGTH = 2000      # Maximum message content length
+    EMBEDS_PER_MESSAGE = 10    # Maximum embeds per message
+    TOTAL_LENGTH = 6000        # Maximum combined length across all embeds
+    COMPONENTS_PER_ROW = 5     # Maximum buttons/components per row
+    ROWS_PER_MESSAGE = 5       # Maximum component rows per message
 
     # Embed Limits
-    TITLE_LENGTH: Final = 256         # Maximum embed title length
-    DESCRIPTION_LENGTH: Final = 4096   # Maximum embed description length
-    FIELDS_COUNT: Final = 25          # Maximum number of fields
-    FIELD_NAME_LENGTH: Final = 256    # Maximum field name length
-    FIELD_VALUE_LENGTH: Final = 1024   # Maximum field value length
-    FOOTER_LENGTH: Final = 2048       # Maximum footer text length
-    AUTHOR_NAME_LENGTH: Final = 256   # Maximum author name length
+    TITLE_LENGTH = 256         # Maximum embed title length
+    DESCRIPTION_LENGTH = 4096   # Maximum embed description length
+    FIELDS_COUNT = 25          # Maximum number of fields
+    FIELD_NAME_LENGTH = 256    # Maximum field name length
+    FIELD_VALUE_LENGTH = 1024   # Maximum field value length
+    FOOTER_LENGTH = 2048       # Maximum footer text length
+    AUTHOR_NAME_LENGTH = 256   # Maximum author name length
 
     # Webhook Limits
-    USERNAME_LENGTH: Final = 80       # Maximum webhook username length
-    WEBHOOK_NAME_LENGTH: Final = 32   # Maximum webhook name length
-    CHANNEL_NAME_LENGTH: Final = 100   # Maximum channel name length
-    RATE_LIMIT_PER_SEC: Final = 30    # Maximum webhook requests per second
+    USERNAME_LENGTH = 80       # Maximum webhook username length
+    WEBHOOK_NAME_LENGTH = 32   # Maximum webhook name length
+    CHANNEL_NAME_LENGTH = 100   # Maximum channel name length
+    RATE_LIMIT_PER_SEC = 30    # Maximum webhook requests per second
 
 
 class EmbedFooter(TypedDict, total=False):
@@ -143,16 +143,61 @@ class WebhookPayload(TypedDict, total=False):
     flags: Optional[int]
     thread_name: Optional[str]
 
+
+class DiscordWebhookError(Exception):
+    """Exception raised for Discord webhook errors.
+
+    This exception is raised when a webhook request fails, providing context
+    about the error and any rate limiting information.
+
+    Args:
+        message (str): Error description
+        code (Optional[int]): HTTP status code if applicable
+        context (Optional[Dict[str, Any]]): Additional error context
+        retry_after (Optional[float]): Seconds to wait before retry if rate limited
+
+    Example:
+        >>> raise DiscordWebhookError(
+        ...     "Rate limit exceeded",
+        ...     code=429,
+        ...     context={"bucket": "global"},
+        ...     retry_after=5.0
+        ... )
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: Optional[int] = None,
+        context: Optional[Dict[str, Any]] = None,
+        retry_after: Optional[float] = None
+    ):
+        super().__init__(message)
+        self.code = code
+        self.context = context or {}
+        self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        """Format error message with context."""
+        parts = [f"{self.args[0]}"]
+        if self.code:
+            parts.append(f"(Status: {self.code})")
+        if self.context:
+            parts.append(f"Context: {self.context}")
+        if self.retry_after:
+            parts.append(f"Retry after: {self.retry_after}s")
+        return " ".join(parts)
+
+
 # Type aliases for domain sets
-DomainSet = Final[frozenset[str]]
-WebhookDomains = DomainSet
-AssetDomains = DomainSet
+WebhookDomains = frozenset[str]
+AssetDomains = frozenset[str]
 
 # Allowed domains for webhooks and assets
 WEBHOOK_DOMAINS: WebhookDomains = frozenset({
     "discord.com",
-    "ptb.discord.com",
-    "canary.discord.com"
+    "discordapp.com",
+    "discord.gg"
 })
 
 ASSET_DOMAINS: AssetDomains = frozenset({
@@ -199,7 +244,7 @@ def get_progress_color(percent: float) -> int:
     return DiscordColor.PROGRESS_90  # Fallback for 100%
 
 
-def validate_url(url: str, allowed_domains: DomainSet) -> bool:
+def validate_url(url: str, allowed_domains: WebhookDomains | AssetDomains) -> bool:
     """Validate URL against allowed domains.
 
     Args:

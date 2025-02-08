@@ -32,31 +32,33 @@ Example:
 """
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 import os
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional, Set, Any, Callable
+from typing import Any, Callable, Dict, Optional, Set
 
 import aiofiles
 import aiofiles.os
 import structlog
 
 from config.constants import (
+    MessageType,
     MonitorEvent,
     MonitorState,
     NotificationLevel,
-    MessageType,
     NotificationProvider,
     Version,
 )
 from config.settings import Settings
 from core.calculator import TransferCalculator, TransferStats
-from core.process import ProcessManager, ProcessStats, ProcessState
-from notifications.base import NotificationError, NotificationProvider as BaseNotificationProvider
+from core.process import ProcessManager, ProcessState
+from notifications.base import NotificationError
+from notifications.base import NotificationProvider as BaseNotificationProvider
 from notifications.factory import notification_factory
 from utils.formatters import format_duration, format_eta
-from utils.version import VersionChecker, Version as SemanticVersion
+from utils.version import Version as SemanticVersion
+from utils.version import VersionChecker
 
 logger = structlog.get_logger(__name__)
 

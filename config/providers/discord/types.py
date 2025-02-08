@@ -13,8 +13,6 @@ from typing import Final, Literal, Optional, TypedDict
 
 from config.constants import JsonDict
 from shared.providers.discord import (
-    ASSET_DOMAINS,
-    WEBHOOK_DOMAINS,
     ApiLimit,
     AssetDomains,
     DiscordColor,
