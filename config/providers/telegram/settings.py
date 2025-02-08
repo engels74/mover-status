@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional, Union
 
 from pydantic import Field, HttpUrl, field_validator
 
-from config.constants import API, ErrorMessages
+from config.constants import API, ErrorMessages, APIEndpoints
 from config.providers.base import BaseProviderSettings
 from config.providers.telegram.schemas import BotConfigSchema
 from config.providers.telegram.types import validate_chat_id
@@ -114,9 +114,15 @@ class TelegramSettings(BaseProviderSettings):
     )
 
     api_base_url: HttpUrl = Field(
-        default=API.TELEGRAM_BASE_URL,
-        description="Telegram API base URL"
+        default=APIEndpoints.TELEGRAM_BASE_URL,  # type: ignore
+        description="Telegram API base URL",
+        json_schema_extra={"format": "uri"}
     )
+
+    @field_validator("api_base_url", mode="before")
+    def validate_api_url(cls, v: str) -> HttpUrl:
+        """Validate and convert API URL."""
+        return HttpUrl(v)
 
     max_message_length: int = Field(
         default=MessageLimit.MESSAGE_TEXT,
@@ -194,34 +200,6 @@ class TelegramSettings(BaseProviderSettings):
 
         return v
 
-    @field_validator("api_base_url")
-    @classmethod
-    def validate_api_url(cls, v: HttpUrl) -> HttpUrl:
-        """Validate API base URL.
-
-        Args:
-            v: API URL to validate
-
-        Returns:
-            HttpUrl: Validated API URL
-
-        Raises:
-            ValueError: If URL is invalid
-        """
-        parsed = str(v).rstrip("/")
-        if not parsed.startswith("https://"):
-            raise ValueError(ErrorMessages.INSECURE_URL.format(
-                url=parsed
-            ))
-
-        if API.TELEGRAM_DOMAIN not in parsed:
-            raise ValueError(ErrorMessages.INVALID_API_DOMAIN.format(
-                domain=API.TELEGRAM_DOMAIN,
-                url=parsed
-            ))
-
-        return HttpUrl(parsed)
-
     @field_validator("max_message_length")
     @classmethod
     def validate_message_length(cls, v: int) -> int:
@@ -260,7 +238,7 @@ class TelegramSettings(BaseProviderSettings):
                 bot_token=self.bot_token,
                 chat_id=str(self.chat_id),
                 parse_mode=self.parse_mode,
-                disable_notifications=self.disable_notifications,
+                disable_notification=self.disable_notifications,
                 protect_content=self.protect_content,
                 message_thread_id=self.message_thread_id,
                 api_base_url=str(self.api_base_url)

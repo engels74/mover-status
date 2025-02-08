@@ -19,10 +19,10 @@ from pydantic import BaseModel, Field, field_validator
 from shared.providers.discord import (
     ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
-    ApiLimits,
+    ApiLimit,
     validate_url,
 )
-from shared.providers.discord.types import WebhookConfig
+from shared.providers.discord.types import WebhookPayload as WebhookConfig
 
 
 class DiscordSchemaError(Exception):
@@ -45,13 +45,13 @@ class EmbedFieldSchema(BaseModel):
     name: str = Field(
         ...,
         min_length=1,
-        max_length=ApiLimits.FIELD_NAME_LENGTH,
+        max_length=ApiLimit.FIELD_NAME_LENGTH,
         description="Field name"
     )
     value: str = Field(
         ...,
         min_length=1,
-        max_length=ApiLimits.FIELD_VALUE_LENGTH,
+        max_length=ApiLimit.FIELD_VALUE_LENGTH,
         description="Field value"
     )
     inline: bool = Field(
@@ -78,7 +78,7 @@ class EmbedFooterSchema(BaseModel):
     text: str = Field(
         ...,
         min_length=1,
-        max_length=ApiLimits.FOOTER_LENGTH,
+        max_length=ApiLimit.FOOTER_LENGTH,
         description="Footer text"
     )
     icon_url: Optional[str] = Field(
@@ -107,7 +107,7 @@ class ForumConfigSchema(BaseModel):
     )
     default_thread_name: Optional[str] = Field(
         default=None,
-        max_length=ApiLimits.CHANNEL_NAME_LENGTH,
+        max_length=ApiLimit.CHANNEL_NAME_LENGTH,
         description="Default name for auto-created threads"
     )
     archive_duration: int = Field(
@@ -141,7 +141,7 @@ class WebhookConfigSchema(BaseModel):
     username: Optional[str] = Field(
         None,
         min_length=1,
-        max_length=ApiLimits.USERNAME_LENGTH,
+        max_length=ApiLimit.USERNAME_LENGTH,
         description="Override the default username of the webhook"
     )
     avatar_url: Optional[str] = Field(
@@ -196,7 +196,8 @@ class WebhookConfigSchema(BaseModel):
             WebhookConfig: Webhook configuration dictionary
         """
         config: WebhookConfig = {
-            "url": self.webhook_url,
+            "content": None,  # Initialize with required fields
+            "embeds": []
         }
 
         if self.username:

@@ -15,7 +15,7 @@ from config.constants import JsonDict
 from shared.providers.discord import (
     ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
-    ApiLimits,
+    ApiLimit,
     AssetDomains,
     DiscordColor,
     DomainSet,
@@ -65,15 +65,19 @@ class RateLimitInfo(TypedDict):
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 ContentType = Literal["application/json"]
 
+# Convert domain sets to lists for JSON compatibility
+webhook_domains_list: list[str] = ["discord.com", "ptb.discord.com", "canary.discord.com"]
+asset_domains_list: list[str] = ["cdn.discordapp.com", "media.discordapp.net", "i.imgur.com"]
+
 # Webhook API constraints
-WEBHOOK_CONSTRAINTS: Final[JsonDict] = {
+WEBHOOK_CONSTRAINTS: Final[dict[str, int | str | list[str]]] = {
     "max_retries": 3,
     "retry_delay": 5,
-    "max_embeds": ApiLimits.EMBEDS_PER_MESSAGE,
-    "max_username_length": ApiLimits.USERNAME_LENGTH,
+    "max_embeds": ApiLimit.EMBEDS_PER_MESSAGE,
+    "max_username_length": ApiLimit.USERNAME_LENGTH,
     "webhook_timeout": 30,
-    "allowed_domains": WEBHOOK_DOMAINS,
-    "allowed_asset_domains": ASSET_DOMAINS,
+    "allowed_domains": webhook_domains_list,
+    "allowed_asset_domains": asset_domains_list,
 }
 
 # Default webhook configuration
@@ -121,7 +125,7 @@ __all__ = [
     'WEBHOOK_CONSTRAINTS',
 
     # Re-exports from shared types
-    'ApiLimits',
+    'ApiLimit',
     'DiscordColor',
     'Embed',
     'WebhookPayload',

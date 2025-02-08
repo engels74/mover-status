@@ -27,20 +27,51 @@ from __future__ import annotations
 
 from typing import Any, Dict, Final, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import ValidationError
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import DiscordSchemaError, WebhookConfigSchema
 from shared.providers.discord import (
     ASSET_DOMAINS,
     WEBHOOK_DOMAINS,
-    ApiLimits,
+    ApiLimit,
     DiscordColor,
-    validate_thread_name,
     validate_url,
 )
+from config.constants import JsonDict, JsonValue
+from typing import cast
+import re
+
+# Thread name validation pattern
+THREAD_NAME_PATTERN: Final = re.compile(r"^[\w\-\s]{1,100}$")
+
+def validate_thread_name(name: str, field: Optional[str] = None) -> bool:
+    """Validate thread name format.
+    
+    Args:
+        name: Thread name to validate
+        field: Optional field name for error context
+        
+    Returns:
+        bool: True if thread name is valid
+        
+    Raises:
+        ValueError: If thread name is invalid
+    """
+    if not name or not name.strip():
+        raise ValueError(f"Thread name cannot be empty{f' ({field})' if field else ''}")
+    
+    if not THREAD_NAME_PATTERN.match(name):
+        raise ValueError(
+            f"Thread name must be 1-100 characters and contain only letters, numbers, "
+            f"hyphens, and spaces{f' ({field})' if field else ''}"
+        )
+    
+    return True
 
 """Discord webhook settings and configuration."""
+
 
 class DiscordSettingsError(Exception):
     """Base exception for Discord settings validation errors."""
@@ -54,11 +85,6 @@ class DiscordSettingsError(Exception):
         """
         super().__init__(message)
         self.setting = setting
-
-
-# Immutable sets of allowed domains
-WEBHOOK_DOMAINS: Final = WEBHOOK_DOMAINS
-ASSET_DOMAINS: Final = ASSET_DOMAINS
 
 
 class ForumSettings(BaseModel):
@@ -77,7 +103,7 @@ class ForumSettings(BaseModel):
     )
     default_thread_name: Optional[str] = Field(
         default=None,
-        max_length=ApiLimits.CHANNEL_NAME_LENGTH,
+        max_length=ApiLimit.CHANNEL_NAME_LENGTH,
         description="Default name for auto-created threads"
     )
     archive_duration: int = Field(
@@ -101,10 +127,14 @@ class ForumSettings(BaseModel):
         Raises:
             DiscordSettingsError: If thread name is invalid
         """
+        if v is None:
+            return None
+            
         try:
-            return validate_thread_name(v, "forum.default_thread_name")
+            validate_thread_name(v, "forum.default_thread_name")
         except ValueError as e:
             raise DiscordSettingsError(str(e), setting="forum.default_thread_name") from e
+        return v
 
 
 class WebhookSettings(BaseModel):
@@ -174,19 +204,28 @@ class WebhookSettings(BaseModel):
     @classmethod
     def validate_thread_name(cls, v: Optional[str]) -> Optional[str]:
         """Validate thread name format."""
-        if v is not None:
-            if not v.strip():
-                raise ValueError("Thread name cannot be empty")
-            if not validate_thread_name(v):
-                raise ValueError("Invalid thread name format")
+        if v is None:
+            return None
+            
+        try:
+            validate_thread_name(v)
+        except ValueError as e:
+            raise ValueError(str(e))
         return v
 
     @field_validator("thread_id", "thread_name")
     @classmethod
-    def validate_thread_settings(cls, v: Optional[str], info: Dict[str, Any]) -> Optional[str]:
+    def validate_thread_settings(
+        cls, v: Optional[str], info: ValidationInfo
+    ) -> Optional[str]:
         """Validate thread settings."""
-        if "thread_id" in info.data and "thread_name" in info.data:
-            if bool(info.data["thread_id"]) != bool(info.data["thread_name"]):
+        if info.field_name == "thread_id":
+            thread_name = info.data.get("thread_name")
+            if bool(v) != bool(thread_name):
+                raise ValueError("Both thread_id and thread_name must be provided together")
+        elif info.field_name == "thread_name":
+            thread_id = info.data.get("thread_id")
+            if bool(v) != bool(thread_id):
                 raise ValueError("Both thread_id and thread_name must be provided together")
         return v
 
@@ -244,6 +283,11 @@ class DiscordSettings(BaseProviderSettings):
         description="Thread ID to send messages to"
     )
 
+    thread_name: Optional[str] = Field(
+        default=None,
+        description="Thread name to send messages to"
+    )
+
     forum: Optional[ForumSettings] = Field(
         default=None,
         description="Optional forum channel settings"
@@ -297,18 +341,27 @@ class DiscordSettings(BaseProviderSettings):
             # Create webhook config using schema
             webhook_config = None
             if self.webhook_url:
-                webhook_config = WebhookConfigSchema(
+                # Convert webhook config to Dict[str, JsonValue] for type compatibility
+                raw_config = WebhookConfigSchema(
                     webhook_url=str(self.webhook_url),
                     username=self.username,
                     avatar_url=self.avatar_url,
-                    forum=self.forum.model_dump() if self.forum else None
+                    thread_name=self.thread_name if self.thread_id else None
                 ).to_webhook_config()
+                # Convert to compatible type by extracting only JsonValue fields
+                webhook_config = {
+                    "content": raw_config.get("content"),
+                    "username": raw_config.get("username"),
+                    "avatar_url": raw_config.get("avatar_url"),
+                    "thread_name": raw_config.get("thread_name"),
+                    "embeds": [],  # Initialize as empty list
+                }
 
             # Add Discord-specific configuration
-            config.update({
-                "webhook_config": webhook_config,
-                "embed_color": self.embed_color or DiscordColor.INFO
-            })
+            config.update([
+                ("webhook_config", webhook_config),
+                ("embed_color", int(self.embed_color or DiscordColor.INFO))
+            ])
 
             return config
 

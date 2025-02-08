@@ -24,15 +24,15 @@ Example:
 from enum import IntEnum
 from typing import List, TypedDict, Union
 
-from config.constants import Errors, JsonDict
+from config.constants import JsonDict
 from shared.providers.telegram import (
     ChatType as SharedChatType,
-)
-from shared.providers.telegram import (
     InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from shared.providers.telegram import (
     MessageLimit as SharedMessageLimit,
+    ApiLimit,
 )
 
 # Use shared types to avoid duplication
@@ -189,25 +189,25 @@ def create_progress_keyboard(percent: float) -> InlineKeyboardMarkup:
         ... )
     """
     if not 0 <= percent <= 100:
-        raise ValueError(Errors.INVALID_PERCENTAGE.format(value=percent))
+        raise ValueError(f"Invalid percentage value: {percent}")
 
     # Create progress bar
     total_slots = MessageLimit.BUTTONS_PER_ROW
     filled = int(percent * total_slots / 100)
     empty = total_slots - filled
 
-    # Build keyboard layout
-    keyboard: List[List[JsonDict]] = [
+    # Build keyboard layout with proper typing
+    keyboard: List[List[InlineKeyboardButton]] = [
         [
-            {"text": "█" * filled + "░" * empty, "callback_data": f"progress_{percent}"}
+            InlineKeyboardButton(text="█" * filled + "░" * empty, callback_data=f"progress_{percent}")
         ],
         [
-            {"text": f"{percent:.1f}%", "callback_data": "percent"},
-            {"text": "Cancel", "callback_data": "cancel"}
+            InlineKeyboardButton(text=f"{percent:.1f}%", callback_data="percent"),
+            InlineKeyboardButton(text="Cancel", callback_data="cancel")
         ]
     ]
 
-    return {"inline_keyboard": keyboard}
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def validate_chat_id(chat_id: Union[int, str]) -> bool:
@@ -241,7 +241,7 @@ def validate_chat_id(chat_id: Union[int, str]) -> bool:
         if chat_id.startswith("@"):
             username = chat_id[1:]
             return (
-                len(username) <= MessageLimit.USERNAME_LENGTH and
+                len(username) <= ApiLimit.USERNAME_LENGTH and
                 username.isalnum()
             )
 

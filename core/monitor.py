@@ -26,32 +26,39 @@ Example:
     >>>
     >>> async with monitor:
     ...     # Subscribe to events if needed
-    ...     monitor.subscribe(Events.TransferComplete, on_complete)
+    ...     monitor.subscribe(MonitorEvent.TRANSFER_COMPLETE, on_complete)
     ...     # Start monitoring
     ...     await monitor.start()
 """
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
+import os
 from pathlib import Path
-from typing import Dict, Optional, Set, Type
+from typing import Dict, Optional, Set, Any, Callable
 
 import aiofiles
-from structlog import get_logger
+import aiofiles.os
+import structlog
 
 from config.constants import (
-    Events,
-    States,
+    MonitorEvent,
+    MonitorState,
+    NotificationLevel,
+    MessageType,
+    NotificationProvider,
+    Version,
 )
 from config.settings import Settings
 from core.calculator import TransferCalculator, TransferStats
-from core.process import ProcessManager
-from notifications.base import NotificationError, NotificationProvider
+from core.process import ProcessManager, ProcessStats, ProcessState
+from notifications.base import NotificationError, NotificationProvider as BaseNotificationProvider
 from notifications.factory import notification_factory
-from utils.version import version_checker
+from utils.formatters import format_duration, format_eta
+from utils.version import VersionChecker, Version as SemanticVersion
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 class DirectoryScanner:
     """Asynchronous directory size scanner with caching and exclusion support.
@@ -100,62 +107,40 @@ class DirectoryScanner:
         return (current_time - timestamp) < self._cache_ttl
 
     async def get_size(self, path: Path) -> int:
-        """Get total size of directory and contents asynchronously.
+        """Get size of a file or directory.
 
         Args:
-            path: Directory path to scan
+            path: Path to get size for
 
         Returns:
             int: Total size in bytes
-
-        Raises:
-            OSError: If path cannot be accessed
         """
-        current_time = asyncio.get_event_loop().time()
-
-        # Check cache first
-        async with self._lock:
-            if self._is_cache_valid(path, current_time):
-                return self._cache[path][0]
-
-        # Handle single file
-        if await aiofiles.os.path.isfile(str(path)):
-            stat = await aiofiles.os.stat(str(path))
-            return stat.st_size
-
-        # Scan directory
-        total_size = 0
         try:
-            async for entry in aiofiles.os.scandir(str(path)):
-                entry_path = Path(entry.path)
-                if self._should_exclude(entry_path):
-                    continue
+            if path.is_file():
+                return os.path.getsize(path)
 
-                try:
-                    if await aiofiles.os.path.isfile(entry.path):
-                        stat = await aiofiles.os.stat(entry.path)
-                        total_size += stat.st_size
-                    elif await aiofiles.os.path.isdir(entry.path):
-                        total_size += await self.get_size(entry_path)
-                except (PermissionError, FileNotFoundError) as err:
-                    logger.warning(
-                        "Error accessing path",
-                        path=entry.path,
-                        error=str(err)
-                    )
+            # Calculate directory size
+            total_size = 0
+            try:
+                scanner = await aiofiles.os.scandir(str(path))
+                for entry in scanner:
+                    if self._should_exclude(Path(entry.path)):
+                        continue
+                    try:
+                        if entry.is_file():
+                            total_size += os.path.getsize(entry.path)
+                        elif entry.is_dir():
+                            total_size += await self.get_size(Path(entry.path))
+                    except (OSError, PermissionError) as e:
+                        logger.warning("Error getting size", path=entry.path, error=str(e))
+            except Exception as e:
+                logger.error("Error scanning directory", path=path, error=str(e))
 
-            # Update cache
-            async with self._lock:
-                self._cache[path] = (total_size, current_time)
             return total_size
 
-        except OSError as err:
-            logger.error(
-                "Directory scan error",
-                path=str(path),
-                error=str(err)
-            )
-            raise
+        except (OSError, PermissionError) as e:
+            logger.error("Error getting size", path=path, error=str(e))
+            return 0
 
     async def clear_cache(self) -> None:
         """Clear the size cache."""
@@ -173,20 +158,15 @@ class MonitorStats:
     - Start time for duration calculation
 
     Attributes:
-        process_state (States.ProcessState): Current process state
-        transfer_stats (Optional[TransferStats]): Current transfer progress
-        last_notification (Optional[datetime]): Timestamp of last notification
-        error_count (int): Number of errors encountered
         start_time (Optional[datetime]): Monitoring start timestamp
-        events (Set[Events.MonitorEvent]): Currently active events
+        error_count (int): Number of errors encountered
+        process_state (Optional[ProcessState]): Current process state
+        transfer_stats (Optional[TransferStats]): Current transfer progress
     """
-    process_state: States.ProcessState = States.ProcessState.UNKNOWN
-    transfer_stats: Optional[TransferStats] = None
-    last_notification: Optional[datetime] = None
-    error_count: int = 0
     start_time: Optional[datetime] = None
-    events: Set[Events.MonitorEvent] = field(default_factory=set)
-
+    error_count: int = 0
+    process_state: Optional[ProcessState] = None
+    transfer_stats: Optional[TransferStats] = None
 
 class MoverMonitor:
     """Main coordinator for file transfer monitoring and notifications.
@@ -210,7 +190,7 @@ class MoverMonitor:
         >>> monitor = MoverMonitor(settings)
         >>> async with monitor:
         ...     # Subscribe to transfer completion
-        ...     monitor.subscribe(Events.TransferComplete, on_complete)
+        ...     monitor.subscribe(MonitorEvent.TRANSFER_COMPLETE, on_complete)
         ...     # Start monitoring
         ...     await monitor.start()
         ...     # Monitor will run until stopped
@@ -226,26 +206,22 @@ class MoverMonitor:
             settings: Application configuration
         """
         self._settings = settings
-        self._stats = MonitorStats()
         self._process_manager = ProcessManager(settings)
         self._calculator = TransferCalculator(settings)
+        self._providers: Dict[str, BaseNotificationProvider] = {}
+        self._event_handlers: Dict[MonitorEvent, Set[Callable[..., Any]]] = {}
+        self._event_lock = asyncio.Lock()
+        self._provider_lock = asyncio.Lock()
+        self._stats = MonitorStats()
+        self._state = MonitorState.STOPPED
+        self._stopping = False
+        self._tasks: Set[asyncio.Task] = set()
 
         # Initialize directory scanner
         excluded = {Path(p).resolve() for p in settings.filesystem.excluded_paths}
         self._scanner = DirectoryScanner(excluded)
 
-        # Provider management
-        self._providers: Dict[str, NotificationProvider] = {}
-        self._state = States.MonitorState.IDLE
-        self._stopping = False
-        self._tasks: Set[asyncio.Task] = set()
-        self._event_handlers: Dict[Type[Events.MonitorEvent], Set[callable]] = {}
-
-        # Thread safety
-        self._state_lock = asyncio.Lock()
-        self._provider_lock = asyncio.Lock()
-        self._task_lock = asyncio.Lock()
-        self._event_lock = asyncio.Lock()
+        self._version_checker = VersionChecker()
 
     async def __aenter__(self) -> 'MoverMonitor':
         """Async context manager entry point.
@@ -262,63 +238,26 @@ class MoverMonitor:
         """
         await self.stop()
 
-    def subscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
+    def subscribe(self, event_type: MonitorEvent, handler: Callable[..., Any]) -> None:
         """Subscribe to specific monitor events.
 
-        Registers a callback function to be called when events of the specified
-        type occur. The handler can be either a regular function or a coroutine.
-
         Args:
-            event_type (Type[Events.MonitorEvent]): Event type to listen for
-            handler (callable): Callback function to handle the event
-
-        Example:
-            >>> async def on_complete(event):
-            ...     print(f"Transfer completed: {event.stats}")
-            >>> monitor.subscribe(Events.TransferComplete, on_complete)
+            event_type (MonitorEvent): Event type to listen for
+            handler (Callable[..., Any]): Callback function to handle the event
         """
-        async with self._event_lock:
-            if event_type not in self._event_handlers:
-                self._event_handlers[event_type] = set()
-            self._event_handlers[event_type].add(handler)
+        if event_type not in self._event_handlers:
+            self._event_handlers[event_type] = set()
+        self._event_handlers[event_type].add(handler)
 
-    async def unsubscribe(self, event_type: Type[Events.MonitorEvent], handler: callable) -> None:
+    def unsubscribe(self, event_type: MonitorEvent, handler: Callable[..., Any]) -> None:
         """Remove a subscription to monitor events.
 
-        Unregisters a previously registered callback function for the specified
-        event type. If the handler is not found, this operation is a no-op.
-
         Args:
-            event_type (Type[Events.MonitorEvent]): Event type to unsubscribe from
-            handler (callable): Callback function to remove
+            event_type (MonitorEvent): Event type to unsubscribe from
+            handler (Callable[..., Any]): Callback function to remove
         """
-        async with self._event_lock:
-            if event_type in self._event_handlers:
-                self._event_handlers[event_type].discard(handler)
-
-    async def _notify_event(self, event: Events.MonitorEvent) -> None:
-        """Notify all subscribers of a monitor event.
-
-        Calls all registered handlers for the event type, handling both regular
-        functions and coroutines appropriately. Errors in handlers are logged
-        but do not stop other handlers from being called.
-
-        Args:
-            event (Events.MonitorEvent): Event instance to notify about
-        """
-        if event.__class__ in self._event_handlers:
-            for handler in self._event_handlers[event.__class__]:
-                try:
-                    if asyncio.iscoroutinefunction(handler):
-                        await handler(event)
-                    else:
-                        handler(event)
-                except Exception as err:
-                    logger.error(
-                        "Event handler error",
-                        event=event.__class__.__name__,
-                        error=str(err)
-                    )
+        if event_type in self._event_handlers:
+            self._event_handlers[event_type].discard(handler)
 
     async def start(self) -> None:
         """Start the monitoring system.
@@ -336,30 +275,30 @@ class MoverMonitor:
         Raises:
             RuntimeError: If monitoring is already active or startup fails
         """
-        if self._state != States.MonitorState.IDLE:
+        if self._state != MonitorState.STOPPED:
             raise RuntimeError("Monitor is already running")
 
         try:
-            self._state = States.MonitorState.STARTING
+            self._state = MonitorState.STARTING
             logger.info("Starting mover monitor")
 
             # Initialize notification providers
             await self._setup_providers()
 
             # Start monitoring
-            self._state = States.MonitorState.MONITORING
+            self._state = MonitorState.MONITORING
             monitoring_task = asyncio.create_task(self._monitoring_loop())
             self._tasks.add(monitoring_task)
             monitoring_task.add_done_callback(self._tasks.discard)
 
             # Start version checking if enabled
-            if self._settings.application.check_version:
+            if self._settings.check_version:
                 version_task = asyncio.create_task(self._version_check_loop())
                 self._tasks.add(version_task)
                 version_task.add_done_callback(self._tasks.discard)
 
         except Exception as err:
-            self._state = States.MonitorState.ERROR
+            self._state = MonitorState.ERROR
             logger.error("Monitor start failed", error=str(err))
             raise RuntimeError("Failed to start monitoring") from err
 
@@ -376,7 +315,7 @@ class MoverMonitor:
         This method is idempotent and can be called multiple times safely.
         If the system is already stopped, this is a no-op.
         """
-        if self._state == States.MonitorState.STOPPED:
+        if self._state == MonitorState.STOPPED:
             return
 
         logger.info("Stopping mover monitor")
@@ -392,229 +331,236 @@ class MoverMonitor:
 
         # Clean up
         await self._cleanup()
-        self._state = States.MonitorState.STOPPED
+        self._state = MonitorState.STOPPED
         logger.info("Monitor stopped")
 
-    async def _setup_providers(self) -> None:
-        """Initialize and configure notification providers.
-
-        Creates provider instances for each enabled provider in settings using
-        the notification factory. Currently supports Discord and Telegram providers.
-        Provider initialization failures are logged but don't stop other providers.
-
-        Provider initialization sequence:
-        1. Load provider-specific configuration
-        2. Create provider instance via factory
-        3. Store provider in internal registry
-        """
+    async def _setup_providers(self):
+        """Initialize notification providers."""
         async with self._provider_lock:
-            for provider_id in self._settings.active_providers:
+            if self._settings.discord.enabled:
                 try:
-                    config = None
-                    if provider_id == NotificationProvider.DISCORD:
-                        config = self._settings.discord.to_provider_config()
-                    elif provider_id == NotificationProvider.TELEGRAM:
-                        config = self._settings.telegram.to_provider_config()
-
-                    if config:
-                        provider = await notification_factory.create_provider(
-                            provider_id, config
-                        )
-                        self._providers[provider_id] = provider
-                        logger.info(f"Initialized {provider_id} provider")
-
-                except Exception as err:
-                    logger.error(
-                        f"Failed to initialize {provider_id} provider",
-                        error=str(err)
+                    provider = await notification_factory.get_provider(
+                        NotificationProvider.DISCORD,
+                        self._settings.discord.dict()
                     )
+                    if provider:
+                        self._providers["discord"] = provider
+                except Exception as e:
+                    logger.error("Failed to initialize Discord provider", error=str(e))
 
-    async def _send_notifications(
-        self,
-        stats: TransferStats,
-        force: bool = False
-    ) -> None:
-        """Send progress notifications to all configured providers.
-
-        Creates a progress message from the current transfer statistics and
-        sends it to each configured notification provider. Notification failures
-        for individual providers are logged but don't prevent other providers
-        from receiving updates.
-
-        Args:
-            stats (TransferStats): Current transfer progress statistics
-            force (bool, optional): If True, send notification regardless of
-                progress increment check. Defaults to False.
-
-        Note:
-            The notification includes:
-            - Completion percentage
-            - Remaining size/files
-            - Elapsed time
-            - Estimated time to completion
-            - Custom progress message
-        """
-        async with self._provider_lock:
-            for provider in self._providers.values():
+            if self._settings.telegram.enabled:
                 try:
-                    # Create progress message
-                    message = self._create_progress_message(stats)
-
-                    # Send notification
-                    await provider.notify_progress(
-                        stats.percent_complete,
-                        stats.remaining_formatted,
-                        stats.elapsed_formatted,
-                        stats.etc_formatted,
-                        description=message
+                    provider = await notification_factory.get_provider(
+                        NotificationProvider.TELEGRAM,
+                        self._settings.telegram.dict()
                     )
+                    if provider:
+                        self._providers["telegram"] = provider
+                except Exception as e:
+                    logger.error("Failed to initialize Telegram provider", error=str(e))
 
-                except NotificationError as err:
-                    logger.error(
-                        "Failed to send notification",
-                        provider=provider.__class__.__name__,
-                        error=str(err)
-                    )
+    async def _create_progress_message(self, stats: TransferStats) -> str:
+        """Create a progress notification message."""
+        percent = stats.percent_complete
+        remaining = stats.bytes_remaining
+        elapsed = format_duration(stats.elapsed_time)
+        eta = format_eta(datetime.now() + timedelta(seconds=stats.remaining_time))
 
-    async def _update_monitoring(self) -> None:
-        """Update monitoring state and transfer statistics.
+        return (
+            f"Transfer Progress: {percent:.1f}%\n"
+            f"Remaining: {remaining} bytes\n"
+            f"Elapsed: {elapsed}\n"
+            f"ETA: {eta}"
+        )
 
-        Performs a full update cycle:
-        1. Update process state from process manager
-        2. Calculate current cache directory size
-        3. Update transfer statistics with calculator
-        4. Send notifications if progress threshold reached
-        5. Emit monitoring events based on state changes
-        """
-        # Update process state
-        self._stats.process_state = await self._process_manager.get_state()
+    async def _send_notifications(self, stats: TransferStats, force: bool = False) -> None:
+        """Send progress notifications to all providers."""
+        if not force and (
+            not self._stats.start_time
+            or (datetime.now() - self._stats.start_time)
+            < timedelta(seconds=self._settings.monitoring.polling_interval)
+        ):
+            return
 
-        try:
-            # Get current cache size
-            cache_size = await self._get_cache_size()
+        message = await self._create_progress_message(stats)
 
-            # Update transfer stats
-            stats = await self._calculator.update(cache_size)
-            self._stats.transfer_stats = stats
+        for provider in self._providers.values():
+            try:
+                await provider.notify(
+                    message=str(message),
+                    level=NotificationLevel.INFO,
+                    message_type=MessageType.PROGRESS
+                )
+            except NotificationError as e:
+                logger.error(
+                    "Failed to send notification",
+                    provider=provider.__class__.__name__,
+                    error=str(e)
+                )
 
-            # Send notifications
-            await self._send_notifications(stats)
+        self._stats.start_time = datetime.now()
 
-        except Exception as err:
-            logger.error("Monitoring update failed", error=str(err))
-            self._stats.error_count += 1
-
-    async def _cleanup(self) -> None:
-        """Clean up monitoring system resources.
-
-        Performs cleanup tasks:
-        1. Close all notification providers
-        2. Clear event handlers
-        3. Reset internal state
-        """
-        # Close providers
+    async def _cleanup(self):
+        """Clean up monitoring system resources."""
         async with self._provider_lock:
             for provider in self._providers.values():
                 try:
-                    await provider.close()
-                except Exception as err:
-                    logger.error(
-                        "Provider cleanup error",
-                        provider=provider.__class__.__name__,
-                        error=str(err)
+                    await provider.notify(
+                        "Monitoring stopped",
+                        level=NotificationLevel.INFO,
+                        message_type=MessageType.SYSTEM
                     )
+                except Exception as e:
+                    logger.error("Failed to send shutdown notification", provider=provider, error=str(e))
             self._providers.clear()
 
-        # Clear handlers
-        async with self._event_lock:
-            self._event_handlers.clear()
-
-    async def _get_cache_size(self) -> int:
-        """Calculate the current size of the cache directory.
-
-        Uses the directory scanner to calculate the total size of the cache
-        directory, respecting path exclusions defined in settings.
-
-        Returns:
-            int: Total size of cache directory in bytes
-
-        Raises:
-            RuntimeError: If size calculation fails
-        """
-        try:
-            return await self._scanner.get_size(
-                Path(self._settings.filesystem.cache_path)
-            )
-        except OSError as err:
-            logger.error(
-                "Cache size calculation failed",
-                error=str(err)
-            )
-            raise RuntimeError("Failed to calculate cache size") from err
+        self._event_handlers.clear()
+        self._stats = MonitorStats()
+        self._state = MonitorState.STOPPED
 
     async def _monitoring_loop(self) -> None:
-        """Main monitoring loop.
-
-        Runs the monitoring update cycle at the configured interval. The loop
-        continues until the stopping flag is set or an unrecoverable error occurs.
-
-        The loop performs the following steps:
-        1. Update monitoring state and statistics
-        2. Sleep for the configured interval
-        3. Check for stopping condition
-        """
-        self._stats.start_time = datetime.now()
-        logger.info("Monitoring loop started")
-
+        """Main monitoring loop."""
         while not self._stopping:
             try:
+                # Check version if enabled
+                if self._settings.check_version:
+                    update_available = await self._version_checker.check_for_updates()
+                    if update_available:
+                        await self._notify_event(MonitorEvent.VERSION_CHECK)
+
                 await self._update_monitoring()
-                await asyncio.sleep(self._settings.monitoring.update_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as err:
-                logger.error("Monitoring loop error", error=str(err))
-                if self._stats.error_count >= self._settings.monitoring.max_errors:
-                    logger.error("Maximum error count reached, stopping monitor")
-                    break
-                await asyncio.sleep(1)
 
-        logger.info("Monitoring loop stopped")
+            except Exception as e:
+                logger.error("Monitoring loop error", error=str(e))
+                self._stats.error_count += 1
+                await self._notify_event(MonitorEvent.MONITOR_ERROR)
 
-    async def _version_check_loop(self) -> None:
-        """Periodic version check loop.
+            await asyncio.sleep(self._settings.monitoring.polling_interval)
 
-        Checks for new versions of the application at the configured interval.
-        If a new version is found, emits an update available event.
-
-        The loop continues until the stopping flag is set or an error occurs.
-        Version check failures are logged but don't stop the loop.
-        """
-        logger.info("Version check loop started")
+    async def _version_check_loop(self):
+        """Periodic version check loop."""
+        if not self._settings.check_version:
+            return
 
         while not self._stopping:
             try:
-                current = await version_checker.get_current_version()
-                latest = await version_checker.get_latest_version()
+                update_available, latest_version = await self._version_checker.check_for_updates()
 
-                if latest > current:
-                    await self._notify_event(Events.UpdateAvailable(latest))
+                if update_available:
+                    await self._notify_event(
+                        MonitorEvent.VERSION_CHECK,
+                        version=latest_version
+                    )
 
-                await asyncio.sleep(self._settings.application.version_check_interval)
+            except Exception as e:
+                logger.error("Version check failed", error=str(e))
+
+            try:
+                await asyncio.sleep(self._settings.monitoring.polling_interval)
             except asyncio.CancelledError:
                 break
-            except Exception as err:
-                logger.error("Version check error", error=str(err))
-                await asyncio.sleep(60)
 
-        logger.info("Version check loop stopped")
+    async def _update_monitoring(self) -> None:
+        """Update monitoring state and statistics."""
+        try:
+            # Get process stats and cache size
+            process_stats = await self._process_manager._get_process_stats()
+            cache_size = await self._get_cache_size()
+
+            # Update calculator with latest stats
+            transfer_stats = self._calculator.update_progress(
+                current_size=cache_size
+            )
+
+            # Update monitoring stats
+            self._stats.process_state = ProcessState(process_stats.process_state)
+            self._stats.transfer_stats = transfer_stats
+
+            # Send notifications if needed
+            await self._send_notifications(transfer_stats)
+
+            # Handle state transitions
+            if process_stats.process_state == ProcessState.ERROR:
+                self._stats.error_count += 1
+                await self._notify_event(MonitorEvent.MONITOR_ERROR)
+            elif process_stats.process_state == ProcessState.STOPPED:
+                await self._notify_event(MonitorEvent.TRANSFER_COMPLETE)
+
+        except Exception as e:
+            logger.error("Error updating monitoring state", error=str(e))
+            self._stats.error_count += 1
+            await self._notify_event(MonitorEvent.MONITOR_ERROR)
+
+    async def _get_cache_size(self) -> int:
+        """Get total size of cache directory."""
+        try:
+            if not self._settings.filesystem.cache_path.exists():
+                return 0
+
+            total_size = 0
+            try:
+                scanner = await aiofiles.os.scandir(str(self._settings.filesystem.cache_path))
+                for entry in scanner:
+                    try:
+                        if entry.is_file():
+                            total_size += os.path.getsize(entry.path)
+                        elif entry.is_dir():
+                            total_size += await self._scanner.get_size(Path(entry.path))
+                    except (OSError, PermissionError) as e:
+                        logger.warning("Error scanning path", path=entry.path, error=str(e))
+            except Exception as e:
+                logger.error("Error iterating directory", error=str(e))
+
+            return total_size
+        except (OSError, PermissionError) as e:
+            logger.error("Error scanning cache directory", error=str(e))
+            return 0
+
+    async def _notify_event(self, event: MonitorEvent, **kwargs) -> None:
+        """Notify all subscribers of a monitor event.
+
+        Args:
+            event (MonitorEvent): Event instance to notify about
+            **kwargs: Additional event data
+        """
+        async with self._event_lock:
+            if event in self._event_handlers:
+                for handler in self._event_handlers[event]:
+                    try:
+                        if asyncio.iscoroutinefunction(handler):
+                            await handler(event, **kwargs)
+                        else:
+                            handler(event, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            "Event handler failed",
+                            event=event,
+                            handler=handler,
+                            error=str(e)
+                        )
+
+    async def _check_version(self) -> None:
+        """Check for new version and notify if available."""
+        try:
+            current_version = SemanticVersion.from_string(Version.CURRENT)
+            latest_version = await self._version_checker.get_latest_version()
+
+            if latest_version and latest_version > current_version:
+                await self._notify_event(
+                    MonitorEvent.VERSION_CHECK,
+                    current_version=Version.CURRENT,
+                    latest_version=str(latest_version)
+                )
+
+        except Exception as e:
+            logger.error("Version check failed", error=str(e))
 
     @property
-    def state(self) -> States.MonitorState:
+    def state(self) -> MonitorState:
         """Get the current state of the monitoring system.
 
         Returns:
-            States.MonitorState: Current monitor state
+            MonitorState: Current monitor state
         """
         return self._state
 

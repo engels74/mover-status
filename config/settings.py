@@ -171,7 +171,7 @@ class Settings(BaseSettings):
 
     # Provider settings
     discord: DiscordSettings = Field(default_factory=lambda: DiscordSettings())
-    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    telegram: TelegramSettings = Field(default_factory=lambda: TelegramSettings())
 
     # Application behavior
     dry_run: bool = Field(

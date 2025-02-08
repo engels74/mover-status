@@ -20,7 +20,7 @@ Example:
     >>> max_size = ByteSizes.GB * 2  # 2 GB in bytes
 """
 
-from enum import IntEnum, StrEnum
+from enum import IntEnum, StrEnum, Enum
 from pathlib import Path
 from typing import Dict, List, TypeAlias, Union
 
@@ -152,11 +152,23 @@ class Monitoring:
     RETRY_ATTEMPTS = 3
     RETRY_DELAY = 5             # seconds
 
-class API:
+class API(IntEnum):
     """API-related constants."""
-    DEFAULT_TIMEOUT = 30        # seconds
+    DEFAULT_TIMEOUT = 30
     DEFAULT_RETRIES = 3
-    DEFAULT_RETRY_DELAY = 5     # seconds
+    DEFAULT_RETRY_DELAY = 5
+    MIN_RETRIES = 1
+    MAX_RETRIES = 5
+    MIN_RETRY_DELAY = 1
+    MAX_RETRY_DELAY = 30
+    DEFAULT_RATE_PERIOD = 60
+    MIN_RATE_PERIOD = 30
+    MAX_RATE_PERIOD = 3600
+
+class APIEndpoints:
+    """API endpoint constants."""
+    TELEGRAM_DOMAIN = "api.telegram.org"
+    TELEGRAM_BASE_URL = f"https://{TELEGRAM_DOMAIN}"
 
 class Templates:
     """Message template definitions and placeholder mappings.
@@ -194,7 +206,7 @@ class Templates:
         "progress_bar": "{progress_bar}"
     }
 
-class ErrorMessages:
+class ErrorMessages(StrEnum):
     """Standard error message templates for consistent error reporting.
 
     This class provides a centralized set of error message templates,
@@ -215,6 +227,12 @@ class ErrorMessages:
     PROVIDER_NOT_FOUND = "Provider not found: {provider}"
     PROVIDER_DISABLED = "Provider is disabled: {provider}"
     RATE_LIMIT_EXCEEDED = "Rate limit exceeded for provider: {provider}"
+    FIELD_REQUIRED = "Field '{field}' is required {context}"
+    INVALID_BOT_TOKEN = "Invalid bot token format: {token}"
+    INVALID_CHAT_ID = "Invalid chat ID format: {chat_id}"
+    INSECURE_URL = "Only HTTPS URLs are allowed: {url}"
+    INVALID_API_DOMAIN = "Invalid API domain, expected {domain} in {url}"
+    VALUE_OUT_OF_RANGE = "Field '{field}' must be between {min} and {max}"
 
 class SuccessMessages:
     """Standard success message templates."""
@@ -223,6 +241,51 @@ class SuccessMessages:
     NOTIFICATION_SENT = "Notification sent successfully"
     VERSION_CURRENT = "Running latest version: {version}"
     PROVIDER_INITIALIZED = "Provider initialized successfully: {provider}"
+
+class MonitorState(str, Enum):
+    """Monitor state enumeration.
+
+    Defines the possible states of the monitoring system.
+
+    States:
+        UNKNOWN: Initial state or when monitor state cannot be determined
+        IDLE: Monitor is initialized but not actively monitoring
+        STARTING: Monitor is in the process of starting
+        MONITORING: Monitor is actively tracking progress
+        STOPPED: Monitor has been stopped
+        ERROR: Monitor encountered an error condition
+    """
+    UNKNOWN = "unknown"
+    IDLE = "idle"
+    STARTING = "starting"
+    MONITORING = "monitoring"
+    STOPPED = "stopped"
+    ERROR = "error"
+
+
+class MonitorEvent(str, Enum):
+    """Monitor event types.
+
+    Defines the types of events that can be emitted by the monitoring system.
+
+    Events:
+        TRANSFER_START: Transfer operation has started
+        TRANSFER_PROGRESS: Transfer progress update
+        TRANSFER_COMPLETE: Transfer operation completed
+        TRANSFER_ERROR: Error occurred during transfer
+        MONITOR_START: Monitoring system started
+        MONITOR_STOP: Monitoring system stopped
+        MONITOR_ERROR: Error in monitoring system
+        VERSION_CHECK: Version check completed
+    """
+    TRANSFER_START = "transfer_start"
+    TRANSFER_PROGRESS = "transfer_progress"
+    TRANSFER_COMPLETE = "transfer_complete"
+    TRANSFER_ERROR = "transfer_error"
+    MONITOR_START = "monitor_start"
+    MONITOR_STOP = "monitor_stop"
+    MONITOR_ERROR = "monitor_error"
+    VERSION_CHECK = "version_check"
 
 # Export commonly used constants
 __all__ = [
@@ -237,7 +300,10 @@ __all__ = [
     'Paths',
     'Monitoring',
     'API',
+    'APIEndpoints',
     'Templates',
     'ErrorMessages',
     'SuccessMessages',
+    'MonitorState',
+    'MonitorEvent'
 ]

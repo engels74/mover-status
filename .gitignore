@@ -171,3 +171,6 @@ poetry.toml
 pyrightconfig.json
 .project_overview/pyright_analysis.txt
 .project_overview/pyright_analysis.txt
+
+# AI IDE
+.windsurfrules

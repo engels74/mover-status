@@ -21,23 +21,51 @@ Example:
     ... )
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
+from enum import IntEnum, StrEnum
 
 from pydantic import (
     BaseModel,
     Field,
     HttpUrl,
     model_validator,
+    ValidationInfo,
 )
 
-from config.constants import API, ErrorMessages
-from config.providers.base import ProviderConfigModel
+from config.providers.base import BaseProviderSettings
 from config.providers.telegram.types import validate_chat_id
 from shared.providers.telegram import (
     MessageEntity,
     MessageLimit,
     ParseMode,
 )
+
+
+class API(IntEnum):
+    """API-related constants for Telegram provider."""
+    DEFAULT_TIMEOUT = 30
+    DEFAULT_RETRIES = 3
+    DEFAULT_RETRY_DELAY = 5
+    MIN_RETRIES = 1
+    MAX_RETRIES = 5
+    MIN_RETRY_DELAY = 1
+    MAX_RETRY_DELAY = 30
+    DEFAULT_RATE_PERIOD = 60
+    MIN_RATE_PERIOD = 30
+    MAX_RATE_PERIOD = 3600
+
+
+class ErrorMessages(StrEnum):
+    """Error messages for Telegram-specific validation."""
+    FIELD_REQUIRED = "Field '{field}' is required {context}"
+    INVALID_BUTTON_CONFIG = "Button '{button}' must have exactly one of url or callback_data"
+    ROW_TOO_LONG = "Row exceeds maximum number of buttons ({max_buttons})"
+    INVALID_CHAT_ID = "Invalid chat ID format: {chat_id}"
+    INSECURE_URL = "Only HTTPS URLs are allowed"
+    MESSAGE_TOO_LONG = "Message exceeds maximum length"
+    TOO_MANY_ENTITIES = "Too many entities in message"
+    INVALID_ENTITY_OFFSET = "Entity offset is invalid"
+    INVALID_ENTITY_LENGTH = "Entity length is invalid"
 
 
 class MessageEntitySchema(BaseModel):
@@ -187,7 +215,7 @@ class InlineKeyboardMarkupSchema(BaseModel):
         return self
 
 
-class BotConfigSchema(ProviderConfigModel):
+class BotConfigSchema(BaseProviderSettings):
     """Schema for comprehensive Telegram bot configuration validation.
 
     This model validates all aspects of a Telegram bot's configuration, including
@@ -201,7 +229,7 @@ class BotConfigSchema(ProviderConfigModel):
         disable_notification (bool): Silent message delivery option
         protect_content (bool): Content forwarding protection
         message_thread_id (Optional[int]): Forum topic thread ID
-        api_base_url (HttpUrl): Bot API endpoint URL
+        api_base_url (str): Bot API endpoint URL
         rate_limit (int): Messages per minute limit
         rate_period (int): Rate limit window in seconds
         retry_attempts (int): Maximum API retry attempts
@@ -245,9 +273,10 @@ class BotConfigSchema(ProviderConfigModel):
         gt=0,
         description="Message thread ID for forum topics"
     )
-    api_base_url: HttpUrl = Field(
+    api_base_url: str = Field(
         default="https://api.telegram.org",
-        description="Telegram Bot API base URL"
+        description="Telegram Bot API base URL",
+        pattern=r"^https://.+"
     )
     rate_limit: int = Field(
         default=MessageLimit.MESSAGES_PER_MINUTE,
@@ -274,7 +303,7 @@ class BotConfigSchema(ProviderConfigModel):
         description="Delay between retries in seconds"
     )
     timeout: float = Field(
-        default=10.0,
+        default=API.DEFAULT_TIMEOUT,
         ge=0.1,
         le=300.0,
         description="Request timeout in seconds",
@@ -296,7 +325,7 @@ class BotConfigSchema(ProviderConfigModel):
     }
 
     @model_validator(mode="after")
-    def validate_chat_id_format(self) -> "BotConfigSchema":
+    def validate_chat_id_format(self, info: ValidationInfo) -> "BotConfigSchema":
         """Validate chat ID format."""
         if not validate_chat_id(self.chat_id):
             raise ValueError(ErrorMessages.INVALID_CHAT_ID.format(
@@ -305,13 +334,42 @@ class BotConfigSchema(ProviderConfigModel):
         return self
 
     @model_validator(mode="after")
-    def validate_api_url(self) -> "BotConfigSchema":
+    def validate_api_url(self, info: ValidationInfo) -> "BotConfigSchema":
         """Validate API base URL."""
         if not str(self.api_base_url).startswith("https://"):
-            raise ValueError(ErrorMessages.INSECURE_URL.format(
-                url=self.api_base_url
-            ))
+            raise ValueError(ErrorMessages.INSECURE_URL)
         return self
+
+    @model_validator(mode="after")
+    def validate_entities(self, info: ValidationInfo) -> "BotConfigSchema":
+        """Validate message entities if present."""
+        text = getattr(self, "text", None)
+        entities = getattr(self, "entities", None)
+
+        if text and entities:
+            self.validate_entity_bounds(text, entities)
+        return self
+
+    def validate_entity_bounds(self, text: str, entities: List[MessageEntity]) -> None:
+        """Validate entity offsets and lengths."""
+        text_length = len(text)
+        
+        for entity in entities:
+            # Safely access TypedDict fields with get()
+            offset = entity.get("offset")
+            length = entity.get("length")
+            
+            if offset is None or length is None:
+                raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                    field="offset or length",
+                    context="for entities"
+                ))
+                
+            if offset < 0 or offset >= text_length:
+                raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET)
+                
+            if length <= 0 or offset + length > text_length:
+                raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH)
 
 
 def validate_message_content(
@@ -330,30 +388,30 @@ def validate_message_content(
     Raises:
         ValueError: If content exceeds Telegram limits
     """
-    # Check text length
     if len(text) > MessageLimit.MESSAGE_TEXT:
-        raise ValueError(ErrorMessages.MESSAGE_TOO_LONG.format(
-            max_length=MessageLimit.MESSAGE_TEXT
-        ))
+        raise ValueError(ErrorMessages.MESSAGE_TOO_LONG)
 
-    # Validate entities if present
-    if entities:
-        if len(entities) > MessageLimit.ENTITIES:
-            raise ValueError(ErrorMessages.TOO_MANY_ENTITIES.format(
-                max_entities=MessageLimit.ENTITIES
+    if not entities:
+        return True
+
+    if len(entities) > MessageLimit.ENTITIES:
+        raise ValueError(ErrorMessages.TOO_MANY_ENTITIES)
+
+    for entity in entities:
+        # Safely access TypedDict fields with get()
+        offset = entity.get("offset")
+        length = entity.get("length")
+        
+        if offset is None or length is None:
+            raise ValueError(ErrorMessages.FIELD_REQUIRED.format(
+                field="offset or length",
+                context="for entities"
             ))
-
-        # Check entity positions
-        text_length = len(text)
-        for entity in entities:
-            if entity.offset < 0 or entity.offset >= text_length:
-                raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET.format(
-                    offset=entity.offset
-                ))
-            if entity.offset + entity.length > text_length:
-                raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH.format(
-                    length=entity.length,
-                    offset=entity.offset
-                ))
+            
+        if offset < 0 or offset >= len(text):
+            raise ValueError(ErrorMessages.INVALID_ENTITY_OFFSET)
+            
+        if length <= 0 or offset + length > len(text):
+            raise ValueError(ErrorMessages.INVALID_ENTITY_LENGTH)
 
     return True

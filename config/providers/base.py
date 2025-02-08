@@ -21,7 +21,9 @@ Example:
     ...     # color_enabled is inherited from BaseProviderSettings
 """
 
-from typing import Dict, List, Optional, Set
+from enum import StrEnum
+from pathlib import Path
+from typing import Dict, List, Optional, Set, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import JsonSchemaValue
@@ -29,7 +31,9 @@ from pydantic.json_schema import JsonSchemaValue
 from config.constants import (
     API,
     JsonDict,
+    JsonValue,
     MessagePriority,
+    Monitoring,
     Templates,
 )
 
@@ -243,9 +247,9 @@ class BaseProviderSettings(BaseModel):
     )
 
     notification_increment: int = Field(
-        default=API.DEFAULT_NOTIFICATION_INCREMENT,
-        ge=API.MIN_NOTIFICATION_INCREMENT,
-        le=API.MAX_NOTIFICATION_INCREMENT,
+        default=Monitoring.DEFAULT_INCREMENT,
+        ge=Monitoring.MIN_INCREMENT,
+        le=Monitoring.MAX_INCREMENT,
         description="Progress percentage increment for notifications"
     )
 
@@ -309,9 +313,9 @@ class BaseProviderSettings(BaseModel):
             "rate_limit": self.rate_limit.model_dump(),
             "api_settings": self.api_settings.model_dump(),
             "message_template": self.message_template,
-            "message_priority": self.message_priority,
+            "message_priority": self.message_priority.value,  # Convert enum to string
             "notification_increment": self.notification_increment,
-            "tags": sorted(self.tags)  # Sort for consistent output
+            "tags": cast(List[JsonValue], sorted(str(tag) for tag in self.tags))  # Cast to correct type
         }
 
     @staticmethod
