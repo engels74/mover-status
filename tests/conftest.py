@@ -6,10 +6,9 @@ Provides mock configurations, factories, and utilities for testing.
 
 Example:
     def test_monitor(mock_settings, mock_process):
-        monitor = MoverMonitor(mock_settings)
+        monitor = Monitor(mock_settings)
         assert monitor.state == MonitorState.IDLE
 """
-
 
 import asyncio
 import json
@@ -79,6 +78,8 @@ def load_test_data() -> Callable[[str], Dict[str, Any]]:
 @pytest.fixture
 def mock_settings() -> Settings:
     """Create mock application settings.
+    
+    Note: This fixture has function scope and will be recreated for each test.
 
     Returns:
         Settings: Mock settings instance with test configuration
