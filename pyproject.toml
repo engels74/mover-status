@@ -66,10 +66,13 @@ allow-direct-references = true
 packages = ["."]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
+addopts = "-v"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra -q --cov=mover_status --cov-report=term-missing"
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["mover_status"]

@@ -237,36 +237,10 @@ class Settings(BaseSettings):
         with open(path, 'w') as f:
             yaml.safe_dump(config_data, f, default_flow_style=False)
 
-    class Config:
-        """Pydantic configuration."""
-        env_prefix = "MOVER_"
-        env_nested_delimiter = "__"
-        case_sensitive = False
-        validate_assignment = True
-        extra = "forbid"
-
     model_config = {
-        "json_schema_extra": {
-            "examples": [{
-                "filesystem": {
-                    "cache_path": "/mnt/cache",
-                    "excluded_paths": ["/mnt/cache/system"]
-                },
-                "logging": {
-                    "log_level": "INFO",
-                    "debug_mode": False
-                },
-                "monitoring": {
-                    "polling_interval": 1.0,
-                    "notification_increment": 25
-                },
-                "discord": {
-                    "enabled": True,
-                    "webhook_url": "https://discord.com/api/webhooks/..."
-                },
-                "telegram": {
-                    "enabled": False
-                }
-            }]
-        }
+        "env_prefix": "MOVER_",
+        "env_nested_delimiter": "__",
+        "case_sensitive": False,
+        "validate_assignment": True,
+        "extra": "forbid"
     }

@@ -206,9 +206,13 @@ def mock_responses() -> Generator[aioresponses, None, None]:
         yield m
 
 # Fixtures: Mock system components
-@pytest.fixture
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create event loop for async tests.
+@pytest.fixture(scope="function")
+def custom_event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+    """Create a custom event loop for tests that need specific loop behavior.
+    
+    This fixture should only be used in tests that require specific event loop
+    customization. For standard async tests, use the default pytest-asyncio
+    event loop fixture.
 
     Yields:
         Generator[asyncio.AbstractEventLoop, None, None]: Test event loop

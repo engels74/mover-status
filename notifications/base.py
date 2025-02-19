@@ -129,7 +129,7 @@ class NotificationState(BaseModel):
 
     Attributes:
         last_notification (Optional[datetime]): Timestamp of most recent notification
-        last_error (Optional[Exception]): Description of last error encountered
+        last_error (Optional[str]): Description of last error encountered
         last_error_time (Optional[datetime]): Timestamp of last error
         error_count (int): Total number of failed notifications
         notification_count (int): Total notifications attempted
@@ -142,17 +142,10 @@ class NotificationState(BaseModel):
         _type_counts (Dict[MessageType, int]): Counts by message type
         _last_by_type (Dict[MessageType, datetime]): Last timestamp by type
         _lock (asyncio.Lock): Thread safety lock
-
-    Example:
-        >>> state = provider.state
-        >>> print(f"Success rate: {state.success_count/state.notification_count:.1%}")
-        >>> print(f"Errors: {state.error_count}")
-        >>> for msg in state.history[-5:]:
-        ...     print(f"{msg['timestamp']}: {msg['message']}")
     """
 
     last_notification: Optional[datetime] = None
-    last_error: Optional[Exception] = None
+    last_error: Optional[str] = None  # Changed from Exception to str
     last_error_time: Optional[datetime] = None
     error_count: int = 0
     notification_count: int = 0
@@ -173,6 +166,11 @@ class NotificationState(BaseModel):
         message_type: None for message_type in MessageType
     }
     _lock: asyncio.Lock = asyncio.Lock()
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "validate_assignment": True
+    }
 
     async def add_notification(
         self,
