@@ -35,13 +35,13 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ### Process Tests (`tests/core/test_process.py`)
 
-- [ ] Test `ProcessState` enumeration
-- [ ] Test `ProcessStats` data class
-- [ ] Test `ProcessManager` class
-  - [ ] Test process discovery
-  - [ ] Test resource usage statistics
-  - [ ] Test error handling
-  - [ ] Test async operations
+- [x] `ProcessState` enumeration
+- [x] `ProcessStats` data class
+- [x] `ProcessManager` class
+  - [x] Process discovery
+  - [x] Resource usage statistics
+  - [x] Error handling
+  - [x] Async operations
 
 ## Configuration Tests
 
