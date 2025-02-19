@@ -5,7 +5,7 @@ name = "mover_status"
 version = "0.1.0"
 description = "A Python-based monitoring system for Unraid Mover process with Discord and Telegram notifications"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
     { name = "engels74", email = "engels74@tuta.io" }
@@ -17,7 +17,7 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
@@ -86,7 +86,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py312"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -98,7 +98,7 @@ use_parentheses = true
 line_length = 88
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
@@ -113,7 +113,7 @@ select = [
 ignore = ["E501"]  # line length handled by black
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -140,4 +140,4 @@ typeCheckingMode = "basic"
 useLibraryCodeForTypes = true
 reportMissingImports = true
 reportMissingTypeStubs = "none"
-pythonVersion = "3.11"
+pythonVersion = "3.12"
