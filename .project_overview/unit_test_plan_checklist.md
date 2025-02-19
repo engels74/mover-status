@@ -20,26 +20,18 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ### Monitor Tests (`tests/core/test_monitor.py`)
 
-- [ ] Test `DirectoryScanner` class
+- [x] DirectoryScanner class
 
-  - [ ] Test initialization with excluded paths
-  - [ ] Test path exclusion logic
-  - [ ] Test cache functionality
-  - [ ] Test async directory scanning
+  - [x] Initialization, path exclusion, cache, and async scanning
 
-- [ ] Test `MonitorStats` class
+- [x] MonitorStats class
 
-  - [ ] Test initialization
-  - [ ] Test state updates
+  - [x] Initialization and state updates
 
-- [ ] Test `MoverMonitor` class
-  - [ ] Test initialization with settings
-  - [ ] Test event subscription system
-  - [ ] Test notification handling
-  - [ ] Test process monitoring
-  - [ ] Test version checking
-  - [ ] Test async context manager
-  - [ ] Test graceful shutdown
+- [x] MoverMonitor class
+  - [x] Core functionality (init, events, notifications)
+  - [x] Process monitoring and version checking
+  - [x] Async operations (context manager, shutdown)
 
 ### Process Tests (`tests/core/test_process.py`)
 
