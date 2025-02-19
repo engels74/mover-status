@@ -630,7 +630,7 @@ class TelegramProvider(NotificationProvider):
                 self._consecutive_errors = 0
 
             self._last_error_time = datetime.now()
-            self._state.last_error = error
+            self._state.last_error = str(error)
 
             if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 self._state.disabled = True

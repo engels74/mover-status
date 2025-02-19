@@ -430,7 +430,7 @@ class DiscordProvider(NotificationProvider):
         except Exception as err:
             error = self._handle_request_error(err, "send_notification")
             async with self._state_lock:
-                self._state.last_error = error
+                self._state.last_error = str(error)
                 self._state.last_error_time = datetime.now()
             return False
 
@@ -462,7 +462,7 @@ class DiscordProvider(NotificationProvider):
         except Exception as err:
             error = self._handle_request_error(err, "notify_progress")
             async with self._state_lock:
-                self._state.last_error = error
+                self._state.last_error = str(error)
                 self._state.last_error_time = datetime.now()
             return False
 
@@ -492,7 +492,7 @@ class DiscordProvider(NotificationProvider):
         except Exception as err:
             error = self._handle_request_error(err, "notify_completion")
             async with self._state_lock:
-                self._state.last_error = error
+                self._state.last_error = str(error)
                 self._state.last_error_time = datetime.now()
             return False
 
@@ -522,7 +522,7 @@ class DiscordProvider(NotificationProvider):
         except Exception as err:
             error = self._handle_request_error(err, "notify_batch")
             async with self._state_lock:
-                self._state.last_error = error
+                self._state.last_error = str(error)
                 self._state.last_error_time = datetime.now()
             return False
 
@@ -554,7 +554,7 @@ class DiscordProvider(NotificationProvider):
         except Exception as err:
             error = self._handle_request_error(err, "notify_error")
             async with self._state_lock:
-                self._state.last_error = error
+                self._state.last_error = str(error)
                 self._state.last_error_time = datetime.now()
             return False
 
@@ -827,7 +827,7 @@ class DiscordProvider(NotificationProvider):
         """
         async with self._state_lock:
             self._consecutive_errors += 1
-            self._state.last_error = error
+            self._state.last_error = str(error)
             self._state.last_error_time = datetime.now()
 
             # Reset error count after successful operation
@@ -953,4 +953,3 @@ class DiscordProvider(NotificationProvider):
             color=DiscordColor.SUCCESS,
             footer_text="Completion Notice"
         ))
-
