@@ -22,7 +22,9 @@ from typing import (
     Dict,
     Generator,
     List,
+    Coroutine,
 )
+from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
@@ -32,14 +34,14 @@ from aioresponses import aioresponses
 from pydantic import BaseModel
 from pytest_mock import MockerFixture, MockFixture
 
-from config.constants import ProcessState
-from config.settings import Settings
+from config.constants import LogLevel, ProcessState
+from config.providers.discord.settings import DiscordSettings
+from config.providers.telegram.settings import TelegramSettings
+from config.settings import Settings, FileSystemSettings, LoggingSettings, MonitoringSettings
 from core.calculator import TransferStats
 from core.monitor import MonitorState
 from core.process import ProcessStats
 from notifications.base import NotificationProvider
-from notifications.discord.config import DiscordConfig
-from notifications.telegram.config import TelegramConfig
 from utils.version import Version
 
 # Test data directory
@@ -82,14 +84,23 @@ def mock_settings() -> Settings:
         Settings: Mock settings instance with test configuration
     """
     return Settings(
-        cache_path="/mnt/cache",
-        notification_increment=25,
-        debug_mode=True,
-        discord=DiscordConfig(
+        filesystem=FileSystemSettings(
+            cache_path=Path("/mnt/cache"),
+            excluded_paths=set()
+        ),
+        logging=LoggingSettings(
+            log_level=LogLevel.INFO,
+            debug_mode=True
+        ),
+        monitoring=MonitoringSettings(
+            polling_interval=1.0,
+            notification_increment=25
+        ),
+        discord=DiscordSettings(
             enabled=True,
             webhook_url="https://discord.com/api/webhooks/test"
         ),
-        telegram=TelegramConfig(
+        telegram=TelegramSettings(
             enabled=True,
             bot_token="123456:ABC-DEF",
             chat_id="-1001234567890"
@@ -120,16 +131,18 @@ def mock_process_stats() -> ProcessStats:
     """
     now = datetime.now()
     return ProcessStats(
-        script_pid=12345,
-        related_pids=[12346, 12347],
         total_cpu_percent=5.0,
         total_memory_percent=2.0,
+        total_memory_bytes=1024 * 1024,
         io_read_bytes=1024 * 1024,  # 1 MB
         io_write_bytes=2048 * 1024,  # 2 MB
-        start_time=now,
-        command_line="/usr/local/sbin/mover",
-        nice_level=10,
-        io_class="best-effort"
+        io_read_count=100,
+        io_write_count=200,
+        num_threads=4,
+        num_fds=10,
+        num_handles=0,
+        num_ctx_switches=1000,
+        process_state="running"
     )
 
 @pytest.fixture
@@ -143,11 +156,10 @@ def mock_transfer_stats() -> TransferStats:
     return TransferStats(
         initial_size=10 * 1024 * 1024 * 1024,  # 10 GB
         current_size=5 * 1024 * 1024 * 1024,   # 5 GB
-        bytes_moved=5 * 1024 * 1024 * 1024,    # 5 GB
         transfer_rate=100 * 1024 * 1024,       # 100 MB/s
         percent_complete=50.0,
         start_time=now,
-        estimated_completion=now + timedelta(hours=1)
+        remaining_time=3600  # 1 hour
     )
 
 # Fixtures: Mock network components
@@ -243,28 +255,34 @@ def mock_process_manager(mocker: MockerFixture) -> Generator[MockFixture, None, 
     yield mock
 
 @pytest.fixture
-def assert_called_with_delay() -> Callable[[MockFixture, float], None]:
+def assert_called_with_delay() -> Callable[[MagicMock, float], Coroutine[Any, Any, None]]:
     """Create assertion helper for delayed function calls.
 
     Returns:
-        Callable[[MockFixture, float], None]: Assertion helper function
+        Callable[[MagicMock, float], Coroutine[Any, Any, None]]: Assertion helper function
     """
-    async def _assert_delay(mock_func: MockFixture, expected_delay: float) -> None:
-        """Assert that a mock was called with a specific delay.
+    async def _assert_delay(mock_func: MagicMock, expected_delay: float) -> None:
+        """Assert that a mock function was called with the expected delay between calls.
 
         Args:
             mock_func: Mock function to check
-            expected_delay: Expected delay in seconds
+            expected_delay: Expected delay between calls in seconds
 
         Raises:
             AssertionError: If the actual delay differs from expected by more than 0.1s
         """
-        call_times = [call[0][0] for call in mock_func.await_args_list]
+        # Ensure the mock was called
+        assert mock_func.called, "Function was not called"
+        
+        # Extract call timestamps from the call arguments
+        calls = mock_func.call_args_list
+        call_times = [call.args[0] for call in calls]
+        
         actual_delay = (call_times[-1] - call_times[0]).total_seconds()
         assert abs(actual_delay - expected_delay) < 0.1, (
             f"Expected delay of {expected_delay}s, got {actual_delay}s"
         )
-
+    
     return _assert_delay
 
 # Fixtures: Mock HTTP components
