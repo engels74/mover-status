@@ -47,12 +47,12 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ### Settings Tests (`tests/config/test_settings.py`)
 
-- [ ] Test `Settings` class
-  - [ ] Test loading from environment variables
-  - [ ] Test loading from YAML
-  - [ ] Test validation rules
-  - [ ] Test default values
-  - [ ] Test active providers property
+- [x] Test `Settings` class:
+  - [x] Environment variables
+  - [x] YAML loading
+  - [x] Validation rules
+  - [x] Default values
+  - [x] Active providers
 
 ### Provider Settings Tests
 
