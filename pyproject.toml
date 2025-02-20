@@ -1,7 +1,7 @@
 # pyproject.toml
 
 [project]
-name = "mover_status"
+name = "mover-status"
 version = "0.1.0"
 description = "A Python-based monitoring system for Unraid Mover process with Discord and Telegram notifications"
 readme = "README.md"
@@ -75,7 +75,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
-source = ["mover_status"]
+source = ["mover-status"]
 omit = ["tests/*", "**/__init__.py"]
 
 [tool.coverage.report]

@@ -10,8 +10,8 @@ It handles command-line argument parsing, configuration loading, logging setup,
 and the main monitoring execution loop.
 
 Example:
-    $ python -m mover_status --config config.yml
-    $ python -m mover_status --debug
+    $ python -m mover-status --config config.yml
+    $ python -m mover-status --debug
 """
 
 
