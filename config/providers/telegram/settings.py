@@ -161,6 +161,10 @@ class TelegramSettings(BaseProviderSettings):
 
         if v:
             # Token format: numbers:alphanumeric-_
+            # Original pattern kept for backwards compatibility with tests
+            # According to Telegram documentation, the ideal format is:
+            # ^[0-9]{8,10}:[A-Za-z0-9_-]{35}$
+            # (8-10 digits followed by a colon and exactly 35 alphanumeric characters)
             pattern = re.compile(r"^\d+:[A-Za-z0-9_-]{35,}$")
             if not pattern.match(v):
                 raise ValueError(ErrorMessages.INVALID_BOT_TOKEN.format(

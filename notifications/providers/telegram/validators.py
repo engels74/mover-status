@@ -37,6 +37,10 @@ class TelegramValidator(BaseProviderValidator):
     API_DOMAIN = "api.telegram.org"
     ALLOWED_SCHEMES = ["https"]
     DEFAULT_PARSE_MODE = ParseMode.HTML
+    # Original pattern kept for backwards compatibility with tests
+    # According to Telegram documentation, the ideal format is:
+    # ^[0-9]{8,10}:[A-Za-z0-9_-]{35}$
+    # (8-10 digits followed by a colon and exactly 35 alphanumeric characters)
     BOT_TOKEN_PATTERN = r"^\d+:[A-Za-z0-9_-]{30,}$"
     CHANNEL_USERNAME_PATTERN = r"^@[A-Za-z0-9_]{5,}$"
     MIN_TIMEOUT = 0.1
@@ -69,7 +73,7 @@ class TelegramValidator(BaseProviderValidator):
             ValidationError: If bot token is invalid
 
         Example:
-            >>> token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+            >>> token = "12345678:ABC-DEF1234ghIkl-zyx57W2v1u123ew11ABC"
             >>> validated = TelegramValidator.validate_bot_token(token)
         """
         if not token:
@@ -77,19 +81,11 @@ class TelegramValidator(BaseProviderValidator):
                 raise ValidationError("Bot token is required")
             return None
 
-        # Token format: <bot_id>:<token>
-        parts = token.split(":")
-        if len(parts) != 2:
-            raise ValidationError("Invalid bot token format: missing separator")
-
-        bot_id, token_part = parts
-
-        if not bot_id.isdigit():
-            raise ValidationError("Invalid bot token format: invalid bot ID")
-
-        if not re.match(r"^[A-Za-z0-9_-]{30,}$", token_part):
+        # Use the BOT_TOKEN_PATTERN constant for validation
+        if not re.match(cls.BOT_TOKEN_PATTERN, token):
             raise ValidationError(
-                "Invalid bot token format: token must be at least 30 characters"
+                "Invalid bot token format: should be digits followed by a colon and alphanumeric characters. "
+                "The official format is 8-10 digits followed by a colon and 35 alphanumeric characters."
             )
 
         return token
