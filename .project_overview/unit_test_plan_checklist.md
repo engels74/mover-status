@@ -71,4 +71,123 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ## Notification Tests
 
-### Base Tests (`
+### Base Tests (`tests/notifications/test_base.py`)
+
+- [ ] Test base notification provider
+- [ ] Test notification factory
+- [ ] Test error handling
+
+### Provider Tests
+
+- [ ] Test Discord Provider (`tests/notifications/providers/discord/test_provider.py`)
+
+  - [ ] Test message formatting
+  - [ ] Test webhook sending
+  - [ ] Test rate limiting
+  - [ ] Test error handling
+  - [ ] Test template rendering
+
+- [ ] Test Telegram Provider (`tests/notifications/providers/telegram/test_provider.py`)
+  - [ ] Test message formatting
+  - [ ] Test API communication
+  - [ ] Test rate limiting
+  - [ ] Test error handling
+  - [ ] Test template rendering
+
+## Utility Tests
+
+### Formatter Tests (`tests/utils/test_formatters.py`)
+
+- [ ] Test size formatting
+- [ ] Test duration formatting
+- [ ] Test ETA formatting
+- [ ] Test edge cases
+
+### Validator Tests (`tests/utils/test_validators.py`)
+
+- [ ] Test path validation
+- [ ] Test URL validation
+- [ ] Test configuration validation
+- [ ] Test edge cases
+
+### Version Tests (`tests/utils/test_version.py`)
+
+- [ ] Test version parsing
+- [ ] Test version comparison
+- [ ] Test update checking
+- [ ] Test version string formatting
+
+## Test Infrastructure
+
+### Fixtures (`tests/conftest.py`)
+
+- [ ] Create mock settings fixture
+- [ ] Create mock process fixture
+- [ ] Create mock filesystem fixture
+- [ ] Create mock notification provider fixtures
+- [ ] Create temporary directory fixtures
+- [ ] Create async test utilities
+
+### Test Utilities
+
+- [ ] Create mock classes for external dependencies
+- [ ] Create test data generators
+- [ ] Create assertion helpers
+- [ ] Create async test wrappers
+
+## Test Organization Guidelines
+
+1. Follow this directory structure for tests:
+
+```
+tests/
+├── conftest.py
+├── core/
+│   ├── test_calculator.py
+│   ├── test_monitor.py
+│   └── test_process.py
+├── config/
+│   ├── providers/
+│   │   ├── discord/
+│   │   │   └── test_settings.py
+│   │   └── telegram/
+│   │       └── test_settings.py
+│   └── test_settings.py
+├── notifications/
+│   ├── providers/
+│   │   ├── discord/
+│   │   │   └── test_provider.py
+│   │   └── telegram/
+│   │       └── test_provider.py
+│   └── test_base.py
+└── utils/
+    ├── test_formatters.py
+    ├── test_validators.py
+    └── test_version.py
+```
+
+2. Test File Naming:
+
+   - All test files should be prefixed with `test_`
+   - Test file names should match the module they test
+   - Use descriptive suffixes for specialized test files
+
+3. Test Function Naming:
+
+   - Use `test_` prefix for all test functions
+   - Include the name of the function/method being tested
+   - Include the scenario or condition being tested
+   - Example: `test_update_progress_with_valid_size`
+
+4. Test Organization:
+
+   - Group related tests in classes
+   - Use descriptive test class names
+   - Include setup and teardown methods where needed
+   - Use appropriate pytest markers
+
+5. Documentation:
+   - Include docstrings for test classes and complex test functions
+   - Document test data and fixtures
+   - Explain complex test scenarios
+   - Include examples in docstrings where helpful
