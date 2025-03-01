@@ -114,15 +114,17 @@ class TelegramSettings(BaseProviderSettings):
     )
 
     api_base_url: HttpUrl = Field(
-        default=APIEndpoints.TELEGRAM_BASE_URL,  # type: ignore
+        default_factory=lambda: HttpUrl(APIEndpoints.TELEGRAM_BASE_URL),
         description="Telegram API base URL",
         json_schema_extra={"format": "uri"}
     )
 
     @field_validator("api_base_url", mode="before")
-    def validate_api_url(cls, v: str) -> HttpUrl:
+    def validate_api_url(cls, v: Any) -> HttpUrl:
         """Validate and convert API URL."""
-        return HttpUrl(v)
+        if isinstance(v, str):
+            return HttpUrl(v)
+        return v
 
     max_message_length: int = Field(
         default=MessageLimit.MESSAGE_TEXT,
