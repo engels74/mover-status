@@ -73,9 +73,9 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ### Base Tests (`tests/notifications/test_base.py`)
 
-- [ ] Test base notification provider
-- [ ] Test notification factory
-- [ ] Test error handling
+- [x] Test base notification provider
+- [x] Test notification factory
+- [x] Test error handling
 
 ### Provider Tests
 

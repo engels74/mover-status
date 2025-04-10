@@ -763,18 +763,26 @@ class NotificationFactory(Generic[T_Provider]):
             # Get provider class and validator
             provider_class, validator_class = self._validate_provider_exists(provider_id)
 
-            # Get and validate configuration
+            # Get base config
             provider_config = self._get_config(provider_id, config)
-            if validate:
-                provider_config = await self._validate_config(
-                    provider_id,
-                    validator_class,
-                    provider_config,
-                    priority_config
-                )
 
+            if validate:
+                try:
+                    # Validate and update provider_config in place
+                    provider_config = await self._validate_config(
+                        provider_id,
+                        validator_class,
+                        provider_config,
+                        priority_config
+                    )
+                except ValueError as e: # Catch validation errors specifically
+                    logger.error("Configuration validation failed", provider_id=provider_id, error=str(e))
+                    # Raise the specific error and prevent instantiation
+                    raise ProviderConfigError(f"Configuration validation failed for {provider_id}: {e}") from e
+
+            # If validation passed (or wasn't required), proceed to instantiation
             try:
-                # Initialize provider with validated config
+                # Initialize provider with potentially validated config
                 rate_limit = provider_config.get('rate_limit')
                 if isinstance(rate_limit, dict):
                     provider_config['rate_limit'] = rate_limit.get('value', API.DEFAULT_RATE_LIMIT)
@@ -782,7 +790,9 @@ class NotificationFactory(Generic[T_Provider]):
                     provider_config['rate_limit'] = API.DEFAULT_RATE_LIMIT
 
                 # Create provider instance
-                provider = provider_class(rate_limit=provider_config['rate_limit'])
+                # Ensure rate_limit passed is an int
+                init_rate_limit = int(provider_config['rate_limit'])
+                provider = provider_class(rate_limit=init_rate_limit)
 
                 # Set additional config after initialization
                 for key, value in provider_config.items():
@@ -801,21 +811,24 @@ class NotificationFactory(Generic[T_Provider]):
                 )
                 return cast(T_Provider, provider)
 
-            except NotificationError:
+            except NotificationError as ne:
                 logger.error(
-                    "Provider creation failed with NotificationError",
+                    "Provider creation failed during instantiation (NotificationError)",
                     provider_id=provider_id,
-                    error_type=type(NotificationError).__name__
+                    error_type=type(ne).__name__,
+                    error=str(ne)
                 )
+                # Re-raise specific notification errors if needed
                 raise
             except Exception as err:
                 logger.error(
-                    "Provider creation failed with unexpected error",
+                    "Provider creation failed with unexpected error during instantiation",
                     provider_id=provider_id,
                     error_type=type(err).__name__,
                     error=str(err)
                 )
-                raise ProviderConfigError(f"Failed to create provider {provider_id}: {err}") from err
+                # Wrap instantiation errors in ProviderConfigError
+                raise ProviderConfigError(f"Failed to create provider {provider_id} during instantiation: {err}") from err
 
     def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """Deep merge two configuration dictionaries with override support.

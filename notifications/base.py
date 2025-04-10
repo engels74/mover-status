@@ -62,6 +62,7 @@ Example:
 """
 
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import (
@@ -424,7 +425,7 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
 
         This is the main entry point for sending notifications. It handles:
         1. Priority determination from notification level
-        2. Rate limit checking based on message type
+        2. Rate limit checking based on provider state and message type
         3. Notification sending with retries
         4. State updates and history tracking
         5. Error handling and logging
@@ -458,42 +459,113 @@ class NotificationProvider(ABC, Generic[TConfig, TValidator]):
         async with self._notify_lock:
             # Get priority from level
             priority = self._get_priority_from_level(level)
+            success = False
+            last_exception: Optional[Exception] = None
 
             try:
                 # Check rate limits
                 async with self._rate_lock:
-                    last = self._state.get_last_by_type(message_type)
-                    if last:
-                        elapsed = (datetime.now() - last).total_seconds()
-                        if elapsed < MIN_NOTIFICATION_INTERVAL:
+                    now_mono = time.monotonic()
+                    if self._state.rate_limited:
+                        if self._state.rate_limit_until and now_mono < self._state.rate_limit_until:
+                            logger.debug("Notification skipped due to active rate limit", provider=type(self).__name__)
+                            # Return True here? Or False? Depends on desired behaviour.
+                            # Returning False indicates the *attempt* to notify was skipped/failed due to rate limit.
                             return False
+                        else:
+                            # Rate limit expired, reset state
+                            self._state.rate_limited = False
+                            self._state.rate_limit_until = None
+                            logger.debug("Rate limit expired, proceeding", provider=type(self).__name__)
+
+                    # Check minimum interval between messages of the same type (optional, can be provider-specific)
+                    # last_typed = self._state.get_last_by_type(message_type)
+                    # if last_typed:
+                    #     elapsed = (datetime.now() - last_typed).total_seconds()
+                    #     if elapsed < MIN_NOTIFICATION_INTERVAL:
+                    #         logger.debug("Notification skipped due to minimum interval", provider=type(self).__name__, message_type=message_type)
+                    #         return False # Skipped due to interval
+
+                # Determine retry attempts based on priority
+                attempts = self._priority_retry_attempts.get(priority, self._retry_attempts)
 
                 # Send notification with retries
-                success = await self.send_notification(
-                    message,
-                    level=level,
-                    priority=priority,
-                    message_type=message_type,
-                    **kwargs
-                )
+                for attempt in range(attempts + 1):
+                    try:
+                        # Note: send_notification might raise NotificationError or other exceptions
+                        success = await self.send_notification(
+                            message,
+                            level=level,
+                            priority=priority,
+                            message_type=message_type,
+                            **kwargs
+                        )
+                        if success:
+                            # Successful send, break retry loop
+                            last_exception = None # Clear last exception on success
+                            break
+                        else:
+                             # send_notification returned False, treat as failure for retry logic
+                            last_exception = NotificationError("send_notification returned False")
+                            logger.warning(
+                                "Notification attempt returned False",
+                                provider=type(self).__name__,
+                                attempt=attempt + 1,
+                                total_attempts=attempts + 1,
+                            )
 
-                # Update state
+                    except NotificationError as err:
+                        last_exception = err
+                        logger.warning(
+                            "Notification attempt failed",
+                            provider=type(self).__name__,
+                            attempt=attempt + 1,
+                            total_attempts=attempts + 1,
+                            error=str(err),
+                        )
+                    except Exception as err: # Catch unexpected errors during send
+                        last_exception = err
+                        logger.error(
+                            "Unexpected error during notification send",
+                            provider=type(self).__name__,
+                            attempt=attempt + 1,
+                            total_attempts=attempts + 1,
+                            error=str(err),
+                            error_type=type(err).__name__
+                        )
+                        # Decide if unexpected errors should stop retries
+                        # For now, let's continue retrying for NotificationError only
+                        # but log others severely.
+                        # Depending on the error, might want to break here.
+                        # break # Optionally break on non-NotificationError
+
+                    # If not the last attempt and failed, wait before retrying
+                    if not success and attempt < attempts:
+                        await asyncio.sleep(self._retry_delay)
+
+            except Exception as e:
+                # Catch errors outside the retry loop (e.g., rate limit logic issues)
+                logger.error("Error during notification process setup", error=str(e), error_type=type(e).__name__)
+                success = False
+                last_exception = e
+
+            finally:
+                 # Always update state after attempts are finished or an outer error occurred
                 await self._state.add_notification(
                     message,
                     success=success,
                     priority=priority,
                     message_type=message_type
                 )
+                # Only update error details if an actual exception occurred during the send attempts
+                # and the final result was failure.
+                if not success and last_exception:
+                    async with self._state._lock:
+                        self._state.error_count += 1
+                        self._state.last_error = str(last_exception)
+                        self._state.last_error_time = datetime.now()
 
-                return success
-
-            except Exception as err:
-                logger.error(
-                    "Notification failed",
-                    error=str(err),
-                    error_type=type(err).__name__
-                )
-                return False
+            return success
 
     @abstractmethod
     async def send_notification(
