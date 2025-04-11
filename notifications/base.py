@@ -75,7 +75,7 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from structlog import get_logger
 
 from config.constants import (
@@ -168,10 +168,10 @@ class NotificationState(BaseModel):
     }
     _lock: asyncio.Lock = asyncio.Lock()
 
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "validate_assignment": True
-    }
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        validate_assignment=True
+    )
 
     async def add_notification(
         self,

@@ -15,7 +15,7 @@ Example:
 
 from typing import Any, Dict, Optional, cast
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import Field, HttpUrl, field_validator, ConfigDict
 
 from config.providers.base import BaseProviderSettings
 from config.providers.discord.schemas import WebhookConfigSchema
@@ -145,11 +145,10 @@ class DiscordConfig(BaseProviderSettings):
 
         return config
 
-    class Config:
-        """Pydantic model configuration."""
-        validate_assignment = True
-        extra = "forbid"
-        json_schema_extra = {
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+        json_schema_extra={
             "examples": [
                 {
                     "enabled": True,
@@ -165,3 +164,4 @@ class DiscordConfig(BaseProviderSettings):
                 }
             ]
         }
+    )

@@ -71,44 +71,66 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ## Notification Tests
 
-### Base Tests (`tests/notifications/test_base.py`)
+### Base Tests
 
-- [x] Test base notification provider
-- [x] Test notification factory
-- [x] Test error handling
+- [x] Test base notification provider (`tests/notifications/test_notification_base.py`)
+  - [x] Test NotificationError
+  - [x] Test NotificationState 
+  - [x] Test NotificationProvider base class
+  - [x] Test notification tracking
+  - [x] Test error handling
+  - [x] Test retry logic
+  - [x] Test rate limiting
+
+- [x] Test notification factory (`tests/notifications/test_notification_factory.py`)
+  - [x] Test provider registration
+  - [x] Test provider creation
+  - [x] Test provider retrieval
+  - [x] Test config validation
+  - [x] Test factory cleanup
+  - [x] Test error handling
 
 ### Provider Tests
 
-- [ ] Test Discord Provider (`tests/notifications/providers/discord/test_provider.py`)
+- [x] Test Discord Provider (`tests/notifications/providers/discord/test_provider.py`)
 
-  - [ ] Test message formatting
-  - [ ] Test webhook sending
-  - [ ] Test rate limiting
-  - [ ] Test error handling
-  - [ ] Test template rendering
+  - [x] Test initialization and config
+  - [x] Test message formatting and template rendering
+  - [x] Test webhook sending
+  - [x] Test rate limiting
+  - [x] Test error handling and retry logic
 
 - [ ] Test Telegram Provider (`tests/notifications/providers/telegram/test_provider.py`)
-  - [ ] Test message formatting
-  - [ ] Test API communication
-  - [ ] Test rate limiting
-  - [ ] Test error handling
-  - [ ] Test template rendering
+  - [ ] Test initialization and config validation
+  - [ ] Test message formatting and template rendering
+  - [ ] Test API communication with mocked responses
+  - [ ] Test rate limiting implementation
+  - [ ] Test error handling and retry mechanism
 
 ## Utility Tests
 
 ### Formatter Tests (`tests/utils/test_formatters.py`)
 
-- [ ] Test size formatting
-- [ ] Test duration formatting
-- [ ] Test ETA formatting
-- [ ] Test edge cases
+- [ ] Test size formatting (KB, MB, GB)
+- [ ] Test duration formatting (seconds to human-readable)
+- [ ] Test timestamp formatting
+- [ ] Test progress bar formatting
+- [ ] Test edge cases (zero, negative, extreme values)
 
 ### Validator Tests (`tests/utils/test_validators.py`)
 
 - [ ] Test path validation
+  - [ ] Test existence checks
+  - [ ] Test permission checks
+  - [ ] Test symbolic link handling
 - [ ] Test URL validation
+  - [ ] Test valid format
+  - [ ] Test supported protocols
+  - [ ] Test domain validation
 - [ ] Test configuration validation
-- [ ] Test edge cases
+  - [ ] Test type checking
+  - [ ] Test required fields
+  - [ ] Test field constraints
 
 ### Version Tests (`tests/utils/test_version.py`)
 
@@ -121,19 +143,26 @@ This document outlines the comprehensive unit test plan for the MoverStatus appl
 
 ### Fixtures (`tests/conftest.py`)
 
-- [ ] Create mock settings fixture
-- [ ] Create mock process fixture
-- [ ] Create mock filesystem fixture
-- [ ] Create mock notification provider fixtures
-- [ ] Create temporary directory fixtures
-- [ ] Create async test utilities
+- [x] Create mock settings fixture
+- [x] Create mock process fixture
+- [x] Create mock transfer stats fixture
+- [x] Create mock notification provider fixtures
+- [x] Create temporary directory fixtures
+- [x] Create async test utilities and helpers
 
 ### Test Utilities
 
-- [ ] Create mock classes for external dependencies
-- [ ] Create test data generators
-- [ ] Create assertion helpers
-- [ ] Create async test wrappers
+- [x] Create mock classes for external dependencies
+- [x] Create test data generators
+- [x] Create assertion helpers
+- [x] Create async test wrappers
+
+## Priority for Remaining Tests
+
+1. **Telegram Provider Tests** - Important for feature parity with Discord provider
+2. **Formatter Tests** - Critical for UX and display functionality
+3. **Validator Tests** - Important for application robustness
+4. **Version Tests** - Important for update functionality
 
 ## Test Organization Guidelines
 
@@ -159,7 +188,8 @@ tests/
 │   │   │   └── test_provider.py
 │   │   └── telegram/
 │   │       └── test_provider.py
-│   └── test_base.py
+│   ├── test_notification_base.py
+│   └── test_notification_factory.py
 └── utils/
     ├── test_formatters.py
     ├── test_validators.py

@@ -14,9 +14,9 @@ Example:
     >>> provider_config = config.to_provider_config()
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, cast
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ConfigDict
 
 from config.providers.base import BaseProviderSettings
 from config.providers.telegram.schemas import BotConfigSchema
@@ -218,11 +218,10 @@ class TelegramConfig(BaseProviderSettings):
 
         return config
 
-    class Config:
-        """Pydantic model configuration."""
-        validate_assignment = True
-        extra = "forbid"
-        json_schema_extra = {
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+        json_schema_extra={
             "examples": [
                 {
                     "enabled": True,
@@ -238,3 +237,4 @@ class TelegramConfig(BaseProviderSettings):
                 }
             ]
         }
+    )

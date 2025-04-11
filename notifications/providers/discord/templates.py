@@ -48,7 +48,7 @@ Note:
     https://discord.com/developers/docs/resources/webhook#execute-webhook
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, List, Optional, cast
 
 from shared.providers.discord.types import (
@@ -273,7 +273,7 @@ def create_progress_embed(
         color=color if color is not None else (
             get_progress_color(percent) if color_enabled else None
         ),
-        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
+        timestamp=datetime.now(UTC).isoformat() if use_native_timestamps else None
     )
 
     # Create and add progress field
@@ -377,7 +377,7 @@ def create_warning_embed(
         title=title,
         description=message,
         color=color if color is not None else 0xffff00,
-        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
+        timestamp=datetime.now(UTC).isoformat() if use_native_timestamps else None
     )
 
     current_time = datetime.now()
@@ -397,7 +397,7 @@ def create_system_embed(
         title=title,
         description=message,
         color=color if color is not None else 0x0000ff,
-        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
+        timestamp=datetime.now(UTC).isoformat() if use_native_timestamps else None
     )
 
     current_time = datetime.now()
@@ -418,7 +418,7 @@ def create_interactive_embed(
         title=title,
         description=description,
         color=0x0000ff,
-        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
+        timestamp=datetime.now(UTC).isoformat() if use_native_timestamps else None
     )
 
     actions_text = "\n".join(
@@ -433,7 +433,7 @@ def create_interactive_embed(
     )
 
     if expires_in:
-        expiry_time = datetime.utcnow() + timedelta(seconds=expires_in)
+        expiry_time = datetime.now(UTC) + timedelta(seconds=expires_in)
         add_field(
             embed,
             name="Expires",
@@ -458,7 +458,7 @@ def create_debug_embed(
         title="Debug Information",
         description=message,
         color=0x808080,  # Using DEBUG instead of LIGHT_GREY
-        timestamp=datetime.utcnow().isoformat() if use_native_timestamps else None
+        timestamp=datetime.now(UTC).isoformat() if use_native_timestamps else None
     )
 
     if context:
