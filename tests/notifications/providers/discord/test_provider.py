@@ -14,6 +14,7 @@ These tests validate the functionality of the DiscordProvider class, including:
 import asyncio
 import json
 from datetime import datetime
+from typing import Any, Dict, TypedDict, cast
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import aiohttp
@@ -23,7 +24,7 @@ from pytest_mock import MockerFixture
 
 from config.constants import MessagePriority, MessageType, NotificationLevel
 from config.providers.discord.types import WebhookConfig
-from notifications.providers.discord.provider import DiscordProvider
+from notifications.providers.discord.provider import DiscordProvider, DiscordConfig
 from notifications.providers.discord.templates import (
     create_progress_embed,
     create_completion_embed,
@@ -39,8 +40,8 @@ from utils.formatters import format_timestamp
 # Constants for testing - using valid webhook URL format with numeric webhook ID and valid token
 WEBHOOK_URL = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOP-1234567890"
 USERNAME = "Test Bot"
-DEFAULT_CONFIG = {
-    "webhook_url": WEBHOOK_URL,
+DEFAULT_CONFIG: Dict[str, Any] = {
+    "webhook_url": WEBHOOK_URL,  # Using webhook_url as expected by DiscordProvider
     "username": USERNAME,
     "color_enabled": True,
     "rate_limit": 5,
@@ -69,7 +70,9 @@ class PartialDict(dict):
 @pytest.fixture
 def discord_config() -> WebhookConfig:
     """Create a Discord webhook configuration for testing."""
-    return DEFAULT_CONFIG.copy()
+    # Use cast to explicitly tell type checker this is a WebhookConfig
+    # This is acceptable for testing since WebhookConfig is a TypedDict with total=False
+    return cast(WebhookConfig, DEFAULT_CONFIG.copy())
 
 
 @pytest.fixture
@@ -85,13 +88,13 @@ def mock_response():
 class MockDiscordProvider(DiscordProvider):
     """A mock Discord provider for testing purposes."""
     
-    def __init__(self, config):
+    def __init__(self, config: WebhookConfig):
         """Initialize with patched validation."""
         # Patch validation
         with patch("notifications.providers.discord.provider.DiscordValidator") as mock_validator:
             validator_instance = mock_validator.return_value
             validator_instance.validate_config.return_value = {
-                "webhook_url": config["webhook_url"],
+                "webhook_url": config.get("webhook_url", ""),  # Keep webhook_url
                 "username": config.get("username"),
                 "avatar_url": None,
                 "embed_color": None,
@@ -119,7 +122,7 @@ class MockDiscordProvider(DiscordProvider):
 @pytest.fixture
 async def discord_provider():
     """Create an initialized MockDiscordProvider instance for testing."""
-    provider = MockDiscordProvider(DEFAULT_CONFIG.copy())
+    provider = MockDiscordProvider(cast(WebhookConfig, DEFAULT_CONFIG.copy()))
     
     # Replace session with mock
     mock_session = MagicMock()
@@ -140,7 +143,7 @@ class TestDiscordProviderInitialization:
 
     def test_initialization_with_valid_config(self):
         """Test provider initialization with valid configuration."""
-        provider = MockDiscordProvider(DEFAULT_CONFIG.copy())
+        provider = MockDiscordProvider(cast(WebhookConfig, DEFAULT_CONFIG.copy()))
         
         # Verify provider configuration
         assert provider._webhook_url == WEBHOOK_URL
@@ -170,7 +173,7 @@ class TestDiscordProviderInitialization:
             invalid_config["webhook_url"] = "https://example.com"
             
             with pytest.raises(DiscordWebhookError) as exc:
-                DiscordProvider(invalid_config)
+                DiscordProvider(cast(WebhookConfig, invalid_config))
             
             assert "Invalid webhook URL" in str(exc.value)
 
@@ -189,7 +192,7 @@ class TestDiscordProviderInitialization:
             del invalid_config["webhook_url"]
             
             with pytest.raises(Exception):
-                DiscordProvider(invalid_config)
+                DiscordProvider(cast(WebhookConfig, invalid_config))
 
 
 class TestDiscordTemplateRendering:
