@@ -86,4 +86,72 @@ Edit the script to configure the necessary settings:
 - `DISCORD_WEBHOOK_URL`: Your Discord webhook URL.
 - `DISCORD_NAME_OVERRIDE`: The display name for Discord notifications.
 - `NOTIFICATION_INCREMENT`: The frequency of notifications in percentage increments.
-- `
+- `DRY_RUN`: Set to `true` to test notifications without actual monitoring.
+- `ENABLE_DEBUG`: Set to `true` to enable debug logging.
+
+### 🤖 Telegram Bot Setup 
+
+1. **Create a Telegram Bot**:
+    - Open Telegram and search for the user `@BotFather`.
+    - Start a chat with `@BotFather` and send the command `/start`.
+    - To create a new bot, send the command `/newbot`.
+    - Follow the instructions to name your bot and receive your bot token.
+    - Save the bot token for later use.
+
+2. **Invite the Bot to Your Group or Channel**:
+    - Create a new group or channel in Telegram.
+    - Invite your bot to the group or channel. Make sure to promote it to an admin if you want it to have full access to send messages.
+
+3. **Send a Message in the Group or Channel**:
+    - Send any message in the group or channel to generate activity that the bot can access.
+
+4. **Get Your Telegram Group or Channel Chat ID**:
+    - Visit the following URL in your web browser, replacing `YOUR_BOT_TOKEN` with your actual bot token:
+      ```
+      https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates
+      ```
+    - Look for the `chat` object in the JSON response to find your `TELEGRAM_CHAT_ID`. For example, in the response:
+      ```json
+      {
+        "ok": true,
+        "result": [
+          {
+            "update_id": 123456789,
+            "message": {
+              "chat": {
+                "id": -1001122334455,
+                "title": "Your Group or Channel Name",
+                "type": "supergroup"
+              }
+            }
+          }
+        ]
+      }
+      ```
+
+  The `TELEGRAM_CHAT_ID` would then be `-1001122334455`.
+
+### 🖥️ Discord Webhook Setup 
+
+1. Go to your Discord server settings.
+2. Navigate to the "Integrations" section and click "Webhooks".
+3. Click "New Webhook" and configure it.
+4. Copy the Webhook URL.
+5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
+
+### 🐛 Reporting Issues
+
+If you encounter any issues or have feature requests, please create a new issue on GitHub by following these steps:
+
+1. Go to the [Issues](https://github.com/engels74/mover-status/issues) tab in the repository.
+2. Click on **New Issue**.
+3. Select the appropriate issue template and fill out the required details.
+4. Submit the issue.
+
+**Note:** Please **do not** reach out for support via Discord, as there is no official Discord server for this project. All support requests should be submitted as GitHub issues.
+
+## ⚖️ License
+
+[![GNU AGPLv3 Image](https://www.gnu.org/graphics/agplv3-155x51.png)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+This project is licensed under the AGPLv3 License - see the LICENSE file for details.
