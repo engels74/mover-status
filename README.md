@@ -16,6 +16,7 @@
 - [📸 Images (preview)](#-images-preview)
 - [⚙️ How it works](#-how-it-works)
 - [🛠️ Installation](#-installation)
+- [🔄 Mover Tuning Plugin](#-mover-tuning-plugin)
 - [⏰❌ Why can't I use cron/scheduling for this script?!](#-why-cant-i-use-cronscheduling-for-this-script)
 - [🔄 Can I make the script start on startup/reboot?](#-can-i-make-the-script-start-on-startupreboot)
 - [⚙️ Script Settings](#-script-settings)
@@ -52,6 +53,13 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 9. Select "**Save Changes**" to save the script
 10. Use **Run in Background** to run the script
 11. Cron-jobs should **NOT** be used with the script
+
+### 🔄 Mover Tuning Plugin
+If you are using the "Mover Tuning" plugin for Unraid, please ensure you have the latest version installed. The old version has been removed from the Unraid app/plugin store and will not be auto-removed. Users must manually update to the new version.
+
+<p align="center">
+  <img src="https://up.shx.gg/71UMT4Sbk.png" alt="New Mover Tuning Plugin" width="60%">
+</p>
 
 ### ⏰❌ Why can't I use cron/scheduling for this script?! 
 The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background. 
