@@ -55,7 +55,7 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 11. Cron-jobs should **NOT** be used with the script
 
 ### 🔄 Mover Tuning Plugin
-If you are using the "Mover Tuning" plugin for Unraid, please ensure you have the latest version installed. The old version has been removed from the Unraid app/plugin store and will not be auto-removed. Users must manually update to the new version.
+If you are using the "Mover Tuning" plugin for Unraid, please ensure you have the latest version installed. The old version has been removed from the Unraid app/plugin store and will not be auto-removed. Users must manually update to [the new version](https://unraid.net/community/apps?q=mover+tuning#r).
 
 <p align="center">
   <img src="https://up.shx.gg/71UMT4Sbk.png" alt="New Mover Tuning Plugin" width="60%">
