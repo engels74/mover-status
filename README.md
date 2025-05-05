@@ -118,6 +118,17 @@ Edit the script to configure the necessary settings:
 4. Copy the Webhook URL.
 5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
 
+### 🐛 Reporting Issues
+
+If you encounter any issues or have feature requests, please create a new issue on GitHub by following these steps:
+
+1. Go to the [Issues](https://github.com/engels74/mover-status/issues) tab in the repository.
+2. Click on **New Issue**.
+3. Select the appropriate issue template and fill out the required details.
+4. Submit the issue.
+
+**Note:** Please **do not** reach out for support via Discord, as there is no official Discord server for this project. All support requests should be submitted as GitHub issues.
+
 ## ⚖️ License
 
 [![GNU AGPLv3 Image](https://www.gnu.org/graphics/agplv3-155x51.png)](https://www.gnu.org/licenses/agpl-3.0.en.html)
