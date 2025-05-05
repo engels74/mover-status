@@ -11,6 +11,19 @@
   <a href="https://endsoftwarepatents.org/innovating-without-patents"><img style="height: 20px;" src="https://static.fsf.org/nosvn/esp/logos/patent-free.svg"></a>
 </p>
 
+## Table of Contents
+- [Description](#-description)
+- [Images (preview)](#-images-preview)
+- [How it works](#-how-it-works)
+- [Installation](#-installation)
+- [Why can't I use cron/scheduling for this script?!](#-why-cant-i-use-cronscheduling-for-this-script)
+- [Can I make the script start on startup/reboot?](#-can-i-make-the-script-start-on-startupreboot)
+- [Script Settings](#-script-settings)
+- [Telegram Bot Setup](#-telegram-bot-setup)
+- [Discord Webhook Setup](#-discord-webhook-setup)
+- [Reporting Issues](#-reporting-issues)
+- [License](#-license)
+
 ### 📜 Description 
 This Bash script monitors the progress of the "Mover" process and sends updates to Discord and/or Telegram webhooks. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
