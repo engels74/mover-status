@@ -191,7 +191,7 @@ class TestConfigManager:
 
         # Test getting a value with an invalid key
         assert config_manager.get("") is None
-        assert config_manager.get(None) is None  # type: ignore
+        assert config_manager.get(None) is None  # pyright:ignore[reportArgumentType]
 
     def test_save_config(self, temp_dir: str) -> None:
         """Test saving configuration to a YAML file."""
