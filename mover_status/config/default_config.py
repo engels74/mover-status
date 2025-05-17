@@ -1,31 +1,25 @@
 """
-Default configuration values for the Mover Status Monitor.
+Core default configuration values for the Mover Status Monitor.
 
-This module defines the default configuration dictionary that will be used
+This module defines the core default configuration dictionary that will be used
 if no user configuration is provided or as a fallback for missing values.
+
+Provider-specific configuration defaults are defined in their respective modules
+and will be aggregated by the ConfigManager.
 """
 
 from typing import Dict, Any
 
 
-# Default configuration dictionary
+# Core default configuration dictionary (non-provider specific)
 DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
-    # Notification settings
+    # Notification settings (shared across providers)
     "notification": {
-        # Enable/disable notification platforms
-        "use_telegram": False,
-        "use_discord": False,
-
-        # Telegram configuration
-        "telegram_bot_token": "",
-        "telegram_chat_id": "",
-
-        # Discord configuration
-        "discord_webhook_url": "",
-        "discord_name": "Mover Bot",
-
         # Notification frequency (percentage increments)
         "notification_increment": 25,
+
+        # List of enabled providers
+        "enabled_providers": [],
     },
 
     # Monitoring settings
@@ -40,27 +34,9 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
         "poll_interval": 1,
     },
 
-    # Message templates
+    # Message templates (shared/fallback)
     "messages": {
-        # Telegram message template (HTML formatting)
-        "telegram_moving": (
-            "Moving data from SSD Cache to HDD Array. &#10;"
-            "Progress: <b>{percent}%</b> complete. &#10;"
-            "Remaining data: {remaining_data}.&#10;"
-            "Estimated completion time: {etc}.&#10;&#10;"
-            "Note: Services like Plex may run slow or be unavailable during the move."
-        ),
-
-        # Discord message template (Markdown formatting)
-        "discord_moving": (
-            "Moving data from SSD Cache to HDD Array.\n"
-            "Progress: **{percent}%** complete.\n"
-            "Remaining data: {remaining_data}.\n"
-            "Estimated completion time: {etc}.\n\n"
-            "Note: Services like Plex may run slow or be unavailable during the move."
-        ),
-
-        # Completion message (used for both platforms)
+        # Completion message (used for all platforms)
         "completion": "Moving has been completed!",
     },
 
