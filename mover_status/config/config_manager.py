@@ -7,6 +7,11 @@ on YAML as the configuration format and provides a clean interface for accessing
 configuration values throughout the application.
 """
 
+# pyright: reportUnnecessaryIsInstance=false
+# The above directive is necessary because this module performs runtime type validation
+# of user-provided configuration data, which requires isinstance checks even when
+# the static type system can determine the types.
+
 import os
 import yaml
 from typing import Dict, Any, Optional, cast, List, TypedDict
