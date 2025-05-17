@@ -52,7 +52,7 @@ pythonVersion = "3.13"
 # Original disabled settings (kept as reference):
 reportMissingTypeStubs = false  # Keep this disabled as it's common for third-party libraries to lack stubs
 reportUnknownMemberType = true  # Enable this to catch untyped class members
-reportUnnecessaryIsInstance = false  # Re-enabled this because validation logic needs isinstance checks
+reportUnnecessaryIsInstance = true  # Enable to catch redundant isinstance checks
 reportUnknownVariableType = true  # Enable this to catch untyped variables
 enableTypeIgnoreComments = false  # Disable type:ignore comments in favor of pyright:ignore
 
