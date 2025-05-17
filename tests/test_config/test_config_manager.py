@@ -5,7 +5,9 @@ Tests for the configuration manager module.
 import os
 import yaml
 import pytest
-from typing import Dict, Any, Optional
+from typing import cast
+
+from mover_status.config.config_manager import MoverStatusConfig
 
 # Import the modules to test
 from mover_status.config.default_config import DEFAULT_CONFIG
@@ -114,7 +116,7 @@ class TestConfigManager:
 
         # Create a ConfigManager and merge with defaults
         config_manager = ConfigManager()
-        merged_config = config_manager._merge_with_defaults(user_config)
+        merged_config = config_manager.merge_with_defaults(user_config)
 
         # Check that user values override defaults
         assert merged_config["notification"]["notification_increment"] == 10
@@ -239,7 +241,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = invalid_config
+        config_manager.config = cast(MoverStatusConfig, invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -278,7 +280,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = invalid_config
+        config_manager.config = cast(MoverStatusConfig, invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -326,7 +328,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = invalid_config
+        config_manager.config = cast(MoverStatusConfig, invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -386,7 +388,7 @@ class TestConfigManager:
         }
 
         # Set the valid configuration
-        config_manager.config = valid_config
+        config_manager.config = cast(MoverStatusConfig, valid_config)
 
         # Validation should not raise an exception
         config_manager.validate_config()

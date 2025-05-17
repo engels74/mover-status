@@ -2,9 +2,6 @@
 Tests for the default configuration modules.
 """
 
-import pytest
-from typing import Any, Dict
-
 # Import the modules to test
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.notification.providers.telegram import TELEGRAM_DEFAULTS
@@ -101,8 +98,7 @@ class TestCoreDefaultConfig:
         assert isinstance(paths["exclude"], list)
 
         # Check that all excluded paths are strings
-        for path in paths["exclude"]:
-            assert isinstance(path, str)
+        assert all(isinstance(item, str) for item in paths["exclude"])
 
     def test_debug_section(self) -> None:
         """Test the debug section of the configuration."""

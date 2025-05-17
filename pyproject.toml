@@ -51,3 +51,5 @@ typeCheckingMode = "strict"
 pythonVersion = "3.13"
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
+reportUnnecessaryIsInstance = false
+reportUnknownVariableType = false

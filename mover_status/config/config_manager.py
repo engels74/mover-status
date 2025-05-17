@@ -9,12 +9,70 @@ configuration values throughout the application.
 
 import os
 import yaml
-from typing import Dict, Any, Optional, cast, List
+from typing import Dict, Any, Optional, cast, List, TypedDict
 
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.notification.providers.telegram.defaults import TELEGRAM_DEFAULTS
 from mover_status.notification.providers.discord.defaults import DISCORD_DEFAULTS
 from mover_status.config.validation_error import ValidationError
+
+
+# Type definitions for configuration structure
+class TelegramConfig(TypedDict):
+    enabled: bool
+    bot_token: str
+    chat_id: str
+    message_template: str
+    parse_mode: str
+    disable_notification: bool
+
+
+class DiscordConfig(TypedDict):
+    enabled: bool
+    webhook_url: str
+    username: str
+    message_template: str
+    use_embeds: bool
+    embed_title: str
+    embed_colors: Dict[str, int]
+
+
+class ProvidersConfig(TypedDict):
+    telegram: TelegramConfig
+    discord: DiscordConfig
+
+
+class NotificationConfig(TypedDict):
+    notification_increment: int
+    enabled_providers: List[str]
+    providers: ProvidersConfig
+
+
+class MonitoringConfig(TypedDict):
+    mover_executable: str
+    cache_directory: str
+    poll_interval: int
+
+
+class MessagesConfig(TypedDict):
+    completion: str
+
+
+class PathsConfig(TypedDict):
+    exclude: List[str]
+
+
+class DebugConfig(TypedDict):
+    dry_run: bool
+    enable_debug: bool
+
+
+class MoverStatusConfig(TypedDict):
+    notification: NotificationConfig
+    monitoring: MonitoringConfig
+    messages: MessagesConfig
+    paths: PathsConfig
+    debug: DebugConfig
 
 
 class ConfigManager:
@@ -38,10 +96,10 @@ class ConfigManager:
                          will use default configuration values.
         """
         self.config_path = config_path
-        self.config = self.get_default_config()
+        self.config: MoverStatusConfig = self.get_default_config()
 
     @staticmethod
-    def get_default_config() -> Dict[str, Any]:
+    def get_default_config() -> MoverStatusConfig:
         """
         Get the default configuration by merging core defaults with provider defaults.
 
@@ -65,9 +123,9 @@ class ConfigManager:
             k: v for k, v in DISCORD_DEFAULTS.items() if k != "name" and k != "enabled"
         }
 
-        return default_config
+        return cast(MoverStatusConfig, default_config)
 
-    def load(self, config_path: Optional[str] = None) -> Dict[str, Any]:
+    def load(self, config_path: Optional[str] = None) -> MoverStatusConfig:
         """
         Load configuration from a YAML file and merge with defaults.
 
@@ -113,7 +171,7 @@ class ConfigManager:
                 return self.config
 
             # Merge with defaults
-            self.config = self._merge_with_defaults(cast(Dict[str, Any], user_config))
+            self.config = self.merge_with_defaults(cast(Dict[str, Any], user_config))
 
             # Validate the merged configuration
             self.validate_config()
@@ -124,7 +182,7 @@ class ConfigManager:
             # If the YAML is invalid, raise a ValueError
             raise ValueError(f"Invalid YAML in configuration file: {e}")
 
-    def _merge_with_defaults(self, user_config: Dict[str, Any]) -> Dict[str, Any]:
+    def merge_with_defaults(self, user_config: Dict[str, Any]) -> MoverStatusConfig:
         """
         Merge user configuration with default configuration.
 
@@ -138,7 +196,7 @@ class ConfigManager:
         merged_config = self.get_default_config()
 
         # Recursively merge the user config into the default config
-        self._merge_dicts(merged_config, user_config)
+        self._merge_dicts(cast(Dict[str, Any], merged_config), user_config)
 
         return merged_config
 
@@ -206,7 +264,7 @@ class ConfigManager:
         keys = key.split(".")
 
         # Start with the full config
-        current_dict: Dict[str, Any] = self.config
+        current_dict = cast(Dict[str, Any], self.config)
 
         # Traverse the config dictionary
         for i, k in enumerate(keys):
@@ -316,7 +374,7 @@ class ConfigManager:
         errors: List[str] = []
 
         # Check notification section field types
-        if "notification" in self.config and isinstance(self.config["notification"], dict):
+        if "notification" in self.config:
             notification = self.config["notification"]
 
             # Check notification_increment type
@@ -328,11 +386,11 @@ class ConfigManager:
                 errors.append("Field notification.enabled_providers must be a list")
 
             # Check provider-specific field types
-            if "providers" in notification and isinstance(notification["providers"], dict):
+            if "providers" in notification:
                 providers = notification["providers"]
 
                 # Check Telegram provider field types
-                if "telegram" in providers and isinstance(providers["telegram"], dict):
+                if "telegram" in providers:
                     telegram = providers["telegram"]
                     if "enabled" in telegram and not isinstance(telegram["enabled"], bool):
                         errors.append("Field notification.providers.telegram.enabled must be a boolean")
@@ -342,7 +400,7 @@ class ConfigManager:
                         errors.append("Field notification.providers.telegram.chat_id must be a string")
 
                 # Check Discord provider field types
-                if "discord" in providers and isinstance(providers["discord"], dict):
+                if "discord" in providers:
                     discord = providers["discord"]
                     if "enabled" in discord and not isinstance(discord["enabled"], bool):
                         errors.append("Field notification.providers.discord.enabled must be a boolean")
@@ -352,7 +410,7 @@ class ConfigManager:
                         errors.append("Field notification.providers.discord.username must be a string")
 
         # Check monitoring section field types
-        if "monitoring" in self.config and isinstance(self.config["monitoring"], dict):
+        if "monitoring" in self.config:
             monitoring = self.config["monitoring"]
             if "mover_executable" in monitoring and not isinstance(monitoring["mover_executable"], str):
                 errors.append("Field monitoring.mover_executable must be a string")
@@ -362,7 +420,7 @@ class ConfigManager:
                 errors.append("Field monitoring.poll_interval must be an integer")
 
         # Check debug section field types
-        if "debug" in self.config and isinstance(self.config["debug"], dict):
+        if "debug" in self.config:
             debug = self.config["debug"]
             if "dry_run" in debug and not isinstance(debug["dry_run"], bool):
                 errors.append("Field debug.dry_run must be a boolean")
@@ -381,7 +439,7 @@ class ConfigManager:
         errors: List[str] = []
 
         # Check notification section field values
-        if "notification" in self.config and isinstance(self.config["notification"], dict):
+        if "notification" in self.config:
             notification = self.config["notification"]
 
             # Check notification_increment value
@@ -393,24 +451,23 @@ class ConfigManager:
                 errors.append("Field notification.notification_increment must be positive")
 
             # Check enabled_providers value
-            if "enabled_providers" in notification and isinstance(notification["enabled_providers"], list):
+            if "enabled_providers" in notification:
                 valid_providers = ["telegram", "discord"]
                 for provider in notification["enabled_providers"]:
                     if provider not in valid_providers:
                         errors.append(f"Invalid provider in notification.enabled_providers: {provider}")
 
             # Check provider-specific field values
-            if "providers" in notification and isinstance(notification["providers"], dict):
+            if "providers" in notification:
                 providers = notification["providers"]
 
                 # Check Telegram provider field values
-                if "telegram" in providers and isinstance(providers["telegram"], dict):
+                if "telegram" in providers:
                     telegram = providers["telegram"]
                     if (
                         "enabled" in telegram
                         and telegram["enabled"] is True
                         and "bot_token" in telegram
-                        and isinstance(telegram["bot_token"], str)
                         and not telegram["bot_token"]
                     ):
                         errors.append("Field notification.providers.telegram.bot_token cannot be empty when enabled")
@@ -418,25 +475,23 @@ class ConfigManager:
                         "enabled" in telegram
                         and telegram["enabled"] is True
                         and "chat_id" in telegram
-                        and isinstance(telegram["chat_id"], str)
                         and not telegram["chat_id"]
                     ):
                         errors.append("Field notification.providers.telegram.chat_id cannot be empty when enabled")
 
                 # Check Discord provider field values
-                if "discord" in providers and isinstance(providers["discord"], dict):
+                if "discord" in providers:
                     discord = providers["discord"]
                     if (
                         "enabled" in discord
                         and discord["enabled"] is True
                         and "webhook_url" in discord
-                        and isinstance(discord["webhook_url"], str)
                         and not discord["webhook_url"]
                     ):
                         errors.append("Field notification.providers.discord.webhook_url cannot be empty when enabled")
 
         # Check monitoring section field values
-        if "monitoring" in self.config and isinstance(self.config["monitoring"], dict):
+        if "monitoring" in self.config:
             monitoring = self.config["monitoring"]
 
             # Check poll_interval value
