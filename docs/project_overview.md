@@ -69,9 +69,6 @@ mover_status/
 │   │       ├── test_telegram.py
 │   │       └── test_discord.py
 │   └── test_utils/           # Tests for utilities
-│
-└── scripts/                 # Installation scripts
-    └── install.sh           # Unraid installation script
 ```
 
 ## File Descriptions
