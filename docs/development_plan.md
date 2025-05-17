@@ -67,8 +67,6 @@ The plan is organized into logical phases that build upon each other, ensuring a
   - [ ] **Feature: Configuration Loading**
     - [ ] **TDD: Define Test Cases:**
       - [ ] Test case: Load from YAML file
-      - [ ] Test case: Load from JSON file
-      - [ ] Test case: Load from INI file
       - [ ] Test case: Merge with defaults
       - [ ] Test case: Handle missing file
       - [ ] Test case: Handle invalid file
@@ -90,7 +88,6 @@ The plan is organized into logical phases that build upon each other, ensuring a
   - [ ] **Feature: Configuration Saving**
     - [ ] **TDD: Define Test Cases:**
       - [ ] Test case: Save to YAML file
-      - [ ] Test case: Save to JSON file
       - [ ] Test case: Handle permission errors
     - [ ] **TDD: Write Failing Tests:** Add to `tests/test_config/test_config_manager.py`
     - [ ] **Implementation:** Add save methods to `ConfigManager`

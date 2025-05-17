@@ -45,10 +45,8 @@ bash scripts/install.sh
 
 ## Configuration
 
-Create a configuration file in one of the following formats:
-- YAML: `config.yaml`
-- JSON: `config.json`
-- INI: `config.ini`
+Create a configuration file in YAML format:
+- `config.yaml`
 
 Example configuration (YAML):
 

@@ -89,7 +89,7 @@ mover_status/
 #### Configuration
 
 - **config/\_\_init\_\_.py**: Exports configuration functionality.
-- **config/config_manager.py**: Handles loading, validation, and saving of configuration from YAML/JSON/INI. Aggregates default configurations from all providers.
+- **config/config_manager.py**: Handles loading, validation, and saving of configuration from YAML files. Aggregates default configurations from all providers.
 - **config/default_config.py**: Defines core default configuration values and structure (non-provider specific).
 
 #### Core Functionality
@@ -174,7 +174,7 @@ The configuration system uses a layered approach with:
 
 - Modular, provider-specific default configurations
 - Core defaults for shared settings
-- File-based configuration in standard formats
+- File-based configuration in YAML format
 - Command-line argument overrides
 - Dynamic configuration validation
 - Type checking and schema enforcement
