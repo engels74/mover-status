@@ -62,41 +62,41 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation for modularity
 
-- [ ] **Module: `mover_status/config/config_manager.py`**
-  - [ ] **Analyze Requirements:** Review configuration loading/saving needs
-  - [ ] **Feature: Configuration Loading**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Load from YAML file
-      - [ ] Test case: Merge with defaults
-      - [ ] Test case: Handle missing file
-      - [ ] Test case: Handle invalid file
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_config_manager.py`
-    - [ ] **Implementation:** Create `ConfigManager` class with load methods
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/config/config_manager.py`**
+  - [x] **Analyze Requirements:** Review configuration loading/saving needs
+  - [x] **Feature: Configuration Loading**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Load from YAML file
+      - [x] Test case: Merge with defaults
+      - [x] Test case: Handle missing file
+      - [x] Test case: Handle invalid file
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_config_manager.py`
+    - [x] **Implementation:** Create `ConfigManager` class with load methods
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Configuration Validation**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Validate required fields
-      - [ ] Test case: Validate field types
-      - [ ] Test case: Handle invalid values
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_config/test_config_manager.py`
-    - [ ] **Implementation:** Add validation methods to `ConfigManager`
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Configuration Validation**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Validate required fields
+      - [x] Test case: Validate field types
+      - [x] Test case: Handle invalid values
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_config/test_config_manager.py`
+    - [x] **Implementation:** Add validation methods to `ConfigManager`
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Configuration Saving**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Save to YAML file
-      - [ ] Test case: Handle permission errors
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_config/test_config_manager.py`
-    - [ ] **Implementation:** Add save methods to `ConfigManager`
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Configuration Saving**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Save to YAML file
+      - [x] Test case: Handle permission errors
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_config/test_config_manager.py`
+    - [x] **Implementation:** Add save methods to `ConfigManager`
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/config/__init__.py`**
-  - [ ] Export necessary classes and functions
-  - [ ] Implement convenience functions if needed
+- [x] **Module: `mover_status/config/__init__.py`**
+  - [x] Export necessary classes and functions
+  - [x] Implement convenience functions if needed
 
 ## Phase 3: Utility Functions
 
