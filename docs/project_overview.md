@@ -89,8 +89,8 @@ mover_status/
 #### Configuration
 
 - **config/\_\_init\_\_.py**: Exports configuration functionality.
-- **config/config_manager.py**: Handles loading, validation, and saving of configuration from YAML/JSON/INI.
-- **config/default_config.py**: Defines default configuration values and structure.
+- **config/config_manager.py**: Handles loading, validation, and saving of configuration from YAML/JSON/INI. Aggregates default configurations from all providers.
+- **config/default_config.py**: Defines core default configuration values and structure (non-provider specific).
 
 #### Core Functionality
 
@@ -111,10 +111,14 @@ mover_status/
 - **notification/formatter.py**: Common message formatting logic shared across providers.
 
 - **notification/providers/\_\_init\_\_.py**: Provider registry for auto-discovery of notification backends.
+- **notification/providers/telegram/\_\_init\_\_.py**: Package initialization for Telegram provider.
 - **notification/providers/telegram/provider.py**: Telegram-specific implementation of the notification interface.
 - **notification/providers/telegram/formatter.py**: Telegram-specific message formatting (HTML).
+- **notification/providers/telegram/defaults.py**: Default configuration values specific to Telegram.
+- **notification/providers/discord/\_\_init\_\_.py**: Package initialization for Discord provider.
 - **notification/providers/discord/provider.py**: Discord-specific implementation using webhooks.
 - **notification/providers/discord/formatter.py**: Discord-specific message formatting (embeds/markdown).
+- **notification/providers/discord/defaults.py**: Default configuration values specific to Discord.
 
 #### Utilities
 
@@ -168,11 +172,19 @@ The monitoring subsystem employs an event-driven observer pattern. It:
 
 The configuration system uses a layered approach with:
 
-- Hardcoded defaults as fallbacks
+- Modular, provider-specific default configurations
+- Core defaults for shared settings
 - File-based configuration in standard formats
 - Command-line argument overrides
 - Dynamic configuration validation
 - Type checking and schema enforcement
+
+Each notification provider defines its own default configuration in a dedicated file, which is aggregated by the configuration manager. This approach ensures:
+
+- Provider-specific settings remain isolated and maintainable
+- Adding or removing providers automatically updates the available configuration options
+- The core configuration remains clean and focused on shared settings
+- Each provider is responsible for its own configuration schema and validation
 
 ## Understanding Unraid's Mover
 

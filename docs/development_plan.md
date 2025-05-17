@@ -48,7 +48,7 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 2: Configuration Management
 
-- [x] **Module: `mover_status/config/default_config.py`**
+- [x] **Module: `mover_status/config/default_config.py` and Provider-Specific Defaults**
   - [x] **Analyze `moverStatus.sh`:** Review all configurable settings in the bash script
   - [x] **Feature: Default Configuration Values**
     - [x] **TDD: Define Test Cases:**
@@ -56,9 +56,11 @@ The plan is organized into logical phases that build upon each other, ensuring a
       - [x] Test case: Default values match expected types
       - [x] Test case: Configuration structure is as expected
     - [x] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_default_config.py`
-    - [x] **Implementation:** Create default configuration dictionary in `default_config.py`
+    - [x] **Implementation:**
+      - [x] Create core default configuration dictionary in `default_config.py`
+      - [x] Create provider-specific defaults in `notification/providers/*/defaults.py`
     - [x] **TDD: Verify Tests Pass**
-    - [x] **Refactor:** Review and optimize the implementation
+    - [x] **Refactor:** Review and optimize the implementation for modularity
 
 - [ ] **Module: `mover_status/config/config_manager.py`**
   - [ ] **Analyze Requirements:** Review configuration loading/saving needs
