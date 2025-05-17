@@ -5,7 +5,7 @@ Tests for the configuration manager module.
 import os
 import yaml
 import pytest
-from typing import cast
+from typing import cast, Any
 
 from mover_status.config.config_manager import MoverStatusConfig
 
@@ -358,7 +358,7 @@ class TestConfigManager:
         config_manager = ConfigManager(config_path=config_path)
 
         # Create a valid configuration
-        valid_config = {
+        valid_config: dict[str, Any] = {
             "notification": {
                 "notification_increment": 25,
                 "enabled_providers": ["telegram"],

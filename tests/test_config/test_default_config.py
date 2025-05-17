@@ -98,7 +98,7 @@ class TestCoreDefaultConfig:
         assert isinstance(paths["exclude"], list)
 
         # Check that all excluded paths are strings
-        assert all(isinstance(item, str) for item in paths["exclude"])
+        assert all(isinstance(item, str) for item in paths["exclude"])  # pyright:ignore[reportUnknownVariableType]
 
     def test_debug_section(self) -> None:
         """Test the debug section of the configuration."""
