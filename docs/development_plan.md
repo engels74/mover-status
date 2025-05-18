@@ -113,16 +113,16 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/utils/process.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review process monitoring code
-  - [ ] **Feature: Process Detection**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Detect running process by name
-      - [ ] Test case: Handle non-existent process
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_process.py`
-    - [ ] **Implementation:** Create process detection functions
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/utils/process.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review process monitoring code
+  - [x] **Feature: Process Detection**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Detect running process by name
+      - [x] Test case: Handle non-existent process
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_process.py`
+    - [x] **Implementation:** Create process detection functions
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/utils/data.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review data handling utilities
