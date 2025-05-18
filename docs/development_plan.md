@@ -124,20 +124,20 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/utils/data.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review data handling utilities
-  - [ ] **Feature: Directory Size Calculation**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Calculate directory size
-      - [ ] Test case: Handle exclusions
-      - [ ] Test case: Handle non-existent directory
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_data.py`
-    - [ ] **Implementation:** Create directory size calculation functions
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/utils/data.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review data handling utilities
+  - [x] **Feature: Directory Size Calculation**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Calculate directory size
+      - [x] Test case: Handle exclusions
+      - [x] Test case: Handle non-existent directory
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_data.py`
+    - [x] **Implementation:** Create directory size calculation functions
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/utils/__init__.py`**
-  - [ ] Export necessary functions
+- [x] **Module: `mover_status/utils/__init__.py`**
+  - [x] Export necessary functions
 
 ## Phase 4: Core Calculation Logic
 
