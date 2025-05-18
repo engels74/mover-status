@@ -325,19 +325,44 @@ class ConfigManager:
             default_config["notification"]["providers"] = {}
 
         # Add Telegram provider defaults
-        telegram_defaults: dict[str, object] = {}
-        for k, item_value in TELEGRAM_DEFAULTS.items():
-            if k != "name" and k != "enabled":
-                # We know the value is a valid configuration value
-                telegram_defaults[k] = cast(object, item_value)
+        from mover_status.config.default_config import TelegramConfig
+
+        # Create a properly typed dictionary for Telegram defaults
+        telegram_defaults: TelegramConfig = {
+            "bot_token": TELEGRAM_DEFAULTS["bot_token"],
+            "chat_id": TELEGRAM_DEFAULTS["chat_id"],
+            "message_template": TELEGRAM_DEFAULTS["message_template"],
+            "parse_mode": TELEGRAM_DEFAULTS["parse_mode"],
+            "disable_notification": TELEGRAM_DEFAULTS["disable_notification"],
+            "enabled": False  # Default to disabled
+        }
+
+        # Add to the config
+        if "providers" not in default_config["notification"]:
+            default_config["notification"]["providers"] = {}
         default_config["notification"]["providers"]["telegram"] = telegram_defaults
 
         # Add Discord provider defaults
-        discord_defaults: dict[str, object] = {}
-        for k, item_value in DISCORD_DEFAULTS.items():
-            if k != "name" and k != "enabled":
-                # We know the value is a valid configuration value
-                discord_defaults[k] = cast(object, item_value)
+        from mover_status.config.default_config import DiscordConfig
+
+        # Create a properly typed dictionary for Discord defaults
+        # Convert the embed_colors dictionary to the expected format
+        embed_colors: dict[str, int] = {}
+        for color_key, color_value in DISCORD_DEFAULTS["embed_colors"].items():
+            if isinstance(color_key, str) and isinstance(color_value, int):
+                embed_colors[color_key] = color_value
+
+        discord_defaults: DiscordConfig = {
+            "webhook_url": DISCORD_DEFAULTS["webhook_url"],
+            "username": DISCORD_DEFAULTS["username"],
+            "message_template": DISCORD_DEFAULTS["message_template"],
+            "use_embeds": DISCORD_DEFAULTS["use_embeds"],
+            "embed_title": DISCORD_DEFAULTS["embed_title"],
+            "embed_colors": embed_colors,
+            "enabled": False  # Default to disabled
+        }
+
+        # Add to the config
         default_config["notification"]["providers"]["discord"] = discord_defaults
 
         # Convert the dictionary to a MoverStatusConfig object

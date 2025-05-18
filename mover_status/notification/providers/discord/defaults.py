@@ -6,11 +6,31 @@ notification provider. These values will be used if no user configuration is pro
 or as a fallback for missing values.
 """
 
-from typing import Any
+from typing import TypedDict
+
+
+class EmbedColorsType(TypedDict):
+    """Type definition for Discord embed colors."""
+    low_progress: int
+    mid_progress: int
+    high_progress: int
+    complete: int
+
+
+class DiscordDefaultsType(TypedDict):
+    """Type definition for Discord provider defaults."""
+    name: str
+    enabled: bool
+    webhook_url: str
+    username: str
+    message_template: str
+    use_embeds: bool
+    embed_title: str
+    embed_colors: EmbedColorsType
 
 
 # Discord provider default configuration
-DISCORD_DEFAULTS: dict[str, Any] = {
+DISCORD_DEFAULTS: DiscordDefaultsType = {
     # Provider identification
     "name": "discord",
     "enabled": False,

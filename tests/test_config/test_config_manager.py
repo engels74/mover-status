@@ -10,6 +10,7 @@ Tests for the configuration manager module.
 import os
 import yaml
 import pytest
+from typing import cast
 
 from mover_status.config.config_manager import MoverStatusConfig
 
@@ -222,12 +223,33 @@ class TestConfigManager:
 
         # Load the configuration from the file
         with open(config_path, "r") as f:
-            saved_config = yaml.safe_load(f)
+            # Use an explicit cast to handle the Any type from yaml.safe_load
+            saved_config_raw = cast(dict[str, object], yaml.safe_load(f))
+
+        # Type check and cast
+        assert isinstance(saved_config_raw, dict), "Saved config should be a dictionary"
 
         # Check that the saved configuration matches the expected values
-        assert saved_config["notification"]["notification_increment"] == 10
-        assert saved_config["notification"]["providers"]["telegram"]["enabled"] is True
-        assert saved_config["notification"]["providers"]["telegram"]["bot_token"] == "test_token"
+        assert "notification" in saved_config_raw
+        notification = saved_config_raw["notification"]
+        assert isinstance(notification, dict)
+
+        assert "notification_increment" in notification
+        assert notification["notification_increment"] == 10
+
+        assert "providers" in notification
+        providers = notification["providers"]
+        assert isinstance(providers, dict)
+
+        assert "telegram" in providers
+        telegram = providers["telegram"]
+        assert isinstance(telegram, dict)
+
+        assert "enabled" in telegram
+        assert telegram["enabled"] is True
+
+        assert "bot_token" in telegram
+        assert telegram["bot_token"] == "test_token"
 
     def test_validate_required_fields(self, temp_dir: str) -> None:
         """Test validation of required fields in the configuration."""

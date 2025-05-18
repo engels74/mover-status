@@ -6,11 +6,22 @@ notification provider. These values will be used if no user configuration is pro
 or as a fallback for missing values.
 """
 
-from typing import Any
+from typing import TypedDict
+
+
+class TelegramDefaultsType(TypedDict):
+    """Type definition for Telegram provider defaults."""
+    name: str
+    enabled: bool
+    bot_token: str
+    chat_id: str
+    message_template: str
+    parse_mode: str
+    disable_notification: bool
 
 
 # Telegram provider default configuration
-TELEGRAM_DEFAULTS: dict[str, Any] = {
+TELEGRAM_DEFAULTS: TelegramDefaultsType = {
     # Provider identification
     "name": "telegram",
     "enabled": False,

@@ -8,11 +8,82 @@ Provider-specific configuration defaults are defined in their respective modules
 and will be aggregated by the ConfigManager.
 """
 
-from typing import Any
+from typing import TypedDict, NotRequired
+
+
+# Define type structures for the configuration
+class ProviderConfig(TypedDict, total=False):
+    """Base configuration for notification providers."""
+    enabled: bool
+
+
+class TelegramConfig(ProviderConfig):
+    """Telegram notification provider configuration."""
+    bot_token: str
+    chat_id: str
+    message_template: str
+    parse_mode: str
+    disable_notification: bool
+
+
+class DiscordConfig(ProviderConfig):
+    """Discord notification provider configuration."""
+    webhook_url: str
+    username: str
+    message_template: str
+    use_embeds: bool
+    embed_title: str
+    embed_colors: dict[str, int]
+
+
+class ProvidersConfig(TypedDict, total=False):
+    """Container for all notification provider configurations."""
+    telegram: TelegramConfig
+    discord: DiscordConfig
+
+
+class NotificationConfig(TypedDict):
+    """Notification settings configuration."""
+    notification_increment: int
+    enabled_providers: list[str]
+    providers: NotRequired[ProvidersConfig]
+
+
+class MonitoringConfig(TypedDict):
+    """Monitoring settings configuration."""
+    mover_executable: str
+    cache_directory: str
+    poll_interval: int
+
+
+class MessagesConfig(TypedDict):
+    """Message templates configuration."""
+    completion: str
+
+
+class PathsConfig(TypedDict):
+    """Path settings configuration."""
+    exclude: list[str]
+
+
+class DebugConfig(TypedDict):
+    """Debug settings configuration."""
+    dry_run: bool
+    enable_debug: bool
+
+
+# Define a type for the complete configuration structure
+class DefaultConfigType(TypedDict):
+    """Complete configuration structure with all sections."""
+    notification: NotificationConfig
+    monitoring: MonitoringConfig
+    messages: MessagesConfig
+    paths: PathsConfig
+    debug: DebugConfig
 
 
 # Core default configuration dictionary (non-provider specific)
-DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
+DEFAULT_CONFIG: DefaultConfigType = {
     # Notification settings (shared across providers)
     "notification": {
         # Notification frequency (percentage increments)
