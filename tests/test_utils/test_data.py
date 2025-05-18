@@ -9,7 +9,7 @@ import sys
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Generator, List, Optional
+from typing import Generator, List
 import pytest
 from unittest.mock import patch, MagicMock
 

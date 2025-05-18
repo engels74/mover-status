@@ -141,21 +141,21 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 4: Core Calculation Logic
 
-- [ ] **Module: `mover_status/core/calculation/size.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review the `human_readable` function
-  - [ ] **Feature: Convert Bytes to Human-Readable Format**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Bytes (e.g., 500 bytes -> "500 Bytes")
-      - [ ] Test case: Kilobytes (e.g., 2048 bytes -> "2.0 KB")
-      - [ ] Test case: Megabytes (e.g., 3145728 bytes -> "3.0 MB")
-      - [ ] Test case: Gigabytes (e.g., 4294967296 bytes -> "4.0 GB")
-      - [ ] Test case: Terabytes (e.g., 5497558138880 bytes -> "5.0 TB")
-      - [ ] Test case: Zero bytes -> "0 Bytes"
-      - [ ] Test case: Large TB value with GB remainder
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_size.py`
-    - [ ] **Implementation:** Create `format_bytes` function
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/calculation/size.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review the `human_readable` function
+  - [x] **Feature: Convert Bytes to Human-Readable Format**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Bytes (e.g., 500 bytes -> "500 Bytes")
+      - [x] Test case: Kilobytes (e.g., 2048 bytes -> "2.0 KB")
+      - [x] Test case: Megabytes (e.g., 3145728 bytes -> "3.0 MB")
+      - [x] Test case: Gigabytes (e.g., 4294967296 bytes -> "4.0 GB")
+      - [x] Test case: Terabytes (e.g., 5497558138880 bytes -> "5.0 TB")
+      - [x] Test case: Zero bytes -> "0 Bytes"
+      - [x] Test case: Large TB value with GB remainder
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_size.py`
+    - [x] **Implementation:** Create `format_bytes` function
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/core/calculation/time.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review the `calculate_etc` function
@@ -180,8 +180,8 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [ ] **TDD: Verify Tests Pass**
     - [ ] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/core/calculation/__init__.py`**
-  - [ ] Export calculation functions
+- [x] **Module: `mover_status/core/calculation/__init__.py`**
+  - [x] Export calculation functions
 
 ## Phase 5: Version Checking
 
