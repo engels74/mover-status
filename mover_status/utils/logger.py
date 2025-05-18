@@ -9,7 +9,52 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, cast, final
+from typing import cast, final, TypeVar
+
+
+T = TypeVar('T')
+
+
+def safe_bool(value: object, default: bool = False) -> bool:
+    """
+    Safely cast a value to a boolean.
+
+    Args:
+        value: The value to cast
+        default: The default value to return if casting fails
+
+    Returns:
+        The cast value or the default if casting fails
+    """
+    if value is None:
+        return default
+    try:
+        return bool(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_int(value: object, default: int = 0) -> int:
+    """
+    Safely cast a value to an integer.
+
+    Args:
+        value: The value to cast
+        default: The default value to return if casting fails
+
+    Returns:
+        The cast value or the default if casting fails
+    """
+    if value is None:
+        return default
+    try:
+        # Handle different types that can be converted to int
+        if isinstance(value, (int, float, str)):
+            return int(value)
+        # For other types, just try int() and let it raise an exception if it fails
+        return int(value)  # pyright: ignore[reportArgumentType]
+    except (ValueError, TypeError):
+        return default
 
 
 class LogLevel(Enum):
@@ -135,7 +180,7 @@ def setup_logger(name: str, config: LoggerConfig) -> logging.Logger:
     return logger
 
 
-def configure_from_dict(name: str, config_dict: dict[str, Any]) -> logging.Logger:
+def configure_from_dict(name: str, config_dict: dict[str, object]) -> logging.Logger:
     """
     Configure a logger from a dictionary.
 
@@ -178,14 +223,14 @@ def configure_from_dict(name: str, config_dict: dict[str, Any]) -> logging.Logge
 
     # Create config object
     config = LoggerConfig(
-        console_enabled=bool(config_dict.get('console_enabled', True)),
-        file_enabled=bool(config_dict.get('file_enabled', False)),
+        console_enabled=safe_bool(config_dict.get('console_enabled', True), True),
+        file_enabled=safe_bool(config_dict.get('file_enabled', False), False),
         file_path=cast(str | None, config_dict.get('file_path')),
         level=level,
         format=log_format,
-        file_append=bool(config_dict.get('file_append', True)),
-        max_file_size=int(config_dict.get('max_file_size', 10 * 1024 * 1024)),
-        backup_count=int(config_dict.get('backup_count', 3))
+        file_append=safe_bool(config_dict.get('file_append', True), True),
+        max_file_size=safe_int(config_dict.get('max_file_size', 10 * 1024 * 1024), 10 * 1024 * 1024),
+        backup_count=safe_int(config_dict.get('backup_count', 3), 3)
     )
 
     return setup_logger(name, config)

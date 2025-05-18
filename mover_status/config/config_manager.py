@@ -175,6 +175,73 @@ class MoverStatusConfig:
         """
         return key in self._data
 
+    def get_nested_value(self, path: str) -> object:
+        """
+        Get a nested configuration value using dot notation.
+
+        This method provides type-safe access to nested configuration values.
+
+        Args:
+            path: The path to the configuration value using dot notation
+                 (e.g., "notification.providers.telegram.enabled")
+
+        Returns:
+            The configuration value at the specified path
+
+        Raises:
+            KeyError: If any part of the path does not exist
+        """
+        if not path:
+            raise KeyError("Empty path")
+
+        parts = path.split(".")
+        section = parts[0]
+
+        # Get the top-level section
+        if section not in self._data:
+            raise KeyError(f"Unknown configuration section: {section}")
+
+        # Start with the section value
+        if section == "notification":
+            section_data = self._data["notification"]
+        elif section == "monitoring":
+            section_data = self._data["monitoring"]
+        elif section == "messages":
+            section_data = self._data["messages"]
+        elif section == "paths":
+            section_data = self._data["paths"]
+        elif section == "debug":
+            section_data = self._data["debug"]
+        else:
+            # This should never happen due to the check above
+            raise KeyError(f"Unknown configuration section: {section}")
+
+        # TypedDict is structurally compatible with dict, but we need to cast to satisfy the type checker
+        current_dict = cast(dict[str, object], cast(object, section_data))
+
+        # Navigate through the nested keys
+        for i in range(1, len(parts)):
+            key = parts[i]
+            if not isinstance(current_dict, dict):
+                raise KeyError(f"Cannot access '{key}' in '{'.'.join(parts[:i])}': not a dictionary")
+
+            if key not in current_dict:
+                raise KeyError(f"Key '{key}' not found in '{'.'.join(parts[:i])}'")
+
+            value = current_dict[key]
+            if i == len(parts) - 1:
+                # We've reached the final key, return the value
+                return value
+
+            # Continue traversing if we're not at the final key
+            if not isinstance(value, dict):
+                raise KeyError(f"Cannot access '{parts[i+1]}' in '{'.'.join(parts[:i+1])}': not a dictionary")
+
+            current_dict = cast(dict[str, object], value)
+
+        # This should never happen due to the loop structure
+        return cast(object, current_dict)
+
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "MoverStatusConfig":
         """
@@ -262,7 +329,7 @@ class ConfigManager:
         for k, item_value in TELEGRAM_DEFAULTS.items():
             if k != "name" and k != "enabled":
                 # We know the value is a valid configuration value
-                telegram_defaults[k] = item_value
+                telegram_defaults[k] = cast(object, item_value)
         default_config["notification"]["providers"]["telegram"] = telegram_defaults
 
         # Add Discord provider defaults
@@ -270,7 +337,7 @@ class ConfigManager:
         for k, item_value in DISCORD_DEFAULTS.items():
             if k != "name" and k != "enabled":
                 # We know the value is a valid configuration value
-                discord_defaults[k] = item_value
+                discord_defaults[k] = cast(object, item_value)
         default_config["notification"]["providers"]["discord"] = discord_defaults
 
         # Convert the dictionary to a MoverStatusConfig object
@@ -313,7 +380,7 @@ class ConfigManager:
             # Load the YAML file
             with open(path, "r") as f:
                 # yaml.safe_load returns Any, but we know it's a dictionary or None
-                user_config_raw = yaml.safe_load(f)
+                user_config_raw = yaml.safe_load(f)  # pyright: ignore[reportAny]
 
             # If the file is empty or not a dictionary, use the default config
             if user_config_raw is None or not isinstance(user_config_raw, dict):
@@ -416,36 +483,12 @@ class ConfigManager:
         if key is None or key == "":
             return default
 
-        # Split the key by dots to handle nested keys
-        keys = key.split(".")
-
-        # Start with the full config as a dictionary
-        config_dict = self.config.to_dict()
-        current: dict[str, object] = {}
-
-        # Convert ConfigSections to a regular dictionary
-        for section, value in config_dict.items():
-            current[section] = value
-
-        # Traverse the config dictionary
-        for i, k in enumerate(keys):
+        try:
+            # Use the get_nested_value method from MoverStatusConfig
+            return self.config.get_nested_value(key)
+        except KeyError:
             # If the key doesn't exist, return the default
-            if k not in current:
-                return default
-
-            # If this is the last key, return the value
-            if i == len(keys) - 1:
-                return current[k]
-
-            # Otherwise, move to the next level
-            value = current[k]
-            if isinstance(value, dict):
-                current = cast(dict[str, object], value)
-            else:
-                return default
-
-        # This should never be reached, but return the last value just in case
-        return default
+            return default
 
     def validate_config(self) -> None:
         """

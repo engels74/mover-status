@@ -2,10 +2,14 @@
 Tests for the configuration manager module.
 """
 
+# pyright: reportGeneralTypeIssues=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
+# This directive is necessary because the tests access TypedDict fields in a way
+# that is valid at runtime but that the static type checker cannot verify.
+# We also disable unknown variable and argument type reporting for test data.
+
 import os
 import yaml
 import pytest
-from typing import Any
 
 from mover_status.config.config_manager import MoverStatusConfig
 
@@ -364,7 +368,7 @@ class TestConfigManager:
         config_manager = ConfigManager(config_path=config_path)
 
         # Create a valid configuration
-        valid_config: dict[str, Any] = {
+        valid_config = {
             "notification": {
                 "notification_increment": 25,
                 "enabled_providers": ["telegram"],

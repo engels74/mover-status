@@ -8,6 +8,7 @@ It is used primarily for monitoring the mover process in Unraid systems.
 import os
 import psutil
 import logging
+from typing import cast
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -47,14 +48,14 @@ def find_process_by_name(name: str, case_sensitive: bool = False) -> list[psutil
 
     for process in psutil.process_iter(['pid', 'name']):
         try:
-            process_name: str = process.info['name']
+            process_name = cast(str, process.info['name'])
 
             # Compare names based on case sensitivity setting
             if case_sensitive:
                 if process_name == name:
                     matching_processes.append(process)
             else:
-                lower_process_name: str = process_name.lower()
+                lower_process_name = process_name.lower()
                 if lower_process_name == name.lower():
                     matching_processes.append(process)
 
