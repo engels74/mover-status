@@ -100,18 +100,18 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 3: Utility Functions
 
-- [ ] **Module: `mover_status/utils/logger.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review logging requirements
-  - [ ] **Feature: Configurable Logger**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Console logging
-      - [ ] Test case: File logging
-      - [ ] Test case: Log levels
-      - [ ] Test case: Log formatting
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_logger.py`
-    - [ ] **Implementation:** Create logger setup functions
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/utils/logger.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review logging requirements
+  - [x] **Feature: Configurable Logger**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Console logging
+      - [x] Test case: File logging
+      - [x] Test case: Log levels
+      - [x] Test case: Log formatting
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_utils/test_logger.py`
+    - [x] **Implementation:** Create logger setup functions
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/utils/process.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review process monitoring code
