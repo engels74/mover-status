@@ -102,7 +102,7 @@ def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> List[psutil
 
     # If no processes found by direct checks, fall back to name-based search
     if not processes:
-        logger.debug(f"No mover processes found by direct checks, falling back to name search")
+        logger.debug("No mover processes found by direct checks, falling back to name search")
         processes = find_process_by_name(mover_name)
 
     return processes

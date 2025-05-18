@@ -6,7 +6,6 @@ This module contains tests for the format_bytes function in the size calculation
 
 import pytest
 
-
 def test_format_bytes_zero() -> None:
     """Test formatting zero bytes."""
     from mover_status.core.calculation.size import format_bytes
