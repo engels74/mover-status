@@ -130,6 +130,24 @@ def test_find_process_by_name_case_insensitive(dummy_process: psutil.Process) ->
         assert not any(p.pid == dummy_process.pid for p in processes)
 
 
+def test_find_process_by_name_case_sensitive() -> None:
+    """Test the case-sensitive branch of find_process_by_name."""
+    from mover_status.utils.process import find_process_by_name
+
+    # Mock a process with an exact name match
+    mock_process = MagicMock()
+    mock_process.info = {'name': 'ExactName', 'pid': 12345}
+
+    with patch('psutil.process_iter', return_value=[mock_process]):
+        # Test with case_sensitive=True and exact match
+        processes = find_process_by_name('ExactName', case_sensitive=True)
+        assert len(processes) == 1
+
+        # Test with case_sensitive=True and different case (should not match)
+        processes = find_process_by_name('exactname', case_sensitive=True)
+        assert len(processes) == 0
+
+
 @patch('psutil.process_iter')
 def test_find_mover_process_by_exact_path(mock_process_iter: MagicMock) -> None:
     """Test finding mover process by exact executable path."""
@@ -228,3 +246,101 @@ def test_is_mover_running_false(mock_find_mover: MagicMock) -> None:
     # Verify the result
     assert result is False
     mock_find_mover.assert_called_once_with('/usr/local/sbin/mover')
+
+
+def test_find_process_by_name_exception_handling() -> None:
+    """Test that find_process_by_name handles exceptions during process iteration."""
+    from mover_status.utils.process import find_process_by_name
+
+    # Create a mock process that raises exceptions
+    mock_process = MagicMock()
+    mock_process.info = {'name': 'test_process'}
+
+    # First process raises NoSuchProcess
+    mock_process_no_such = MagicMock()
+    mock_process_no_such.info.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+
+    # Second process raises AccessDenied
+    mock_process_access_denied = MagicMock()
+    mock_process_access_denied.info.__getitem__.side_effect = psutil.AccessDenied()
+
+    # Third process raises ZombieProcess
+    mock_process_zombie = MagicMock()
+    mock_process_zombie.info.__getitem__.side_effect = psutil.ZombieProcess(pid=5678)
+
+    # Set up process_iter to return our mock processes
+    with patch('psutil.process_iter', return_value=[
+            mock_process_no_such,
+            mock_process_access_denied,
+            mock_process_zombie,
+            mock_process
+        ]):
+
+        # Call the function - it should handle the exceptions and return the valid process
+        processes = find_process_by_name('test_process')
+
+        # Verify the results
+        assert len(processes) == 1
+        assert processes[0] == mock_process
+
+
+@patch('mover_status.utils.process.logger')
+def test_find_process_by_name_with_exception(_: MagicMock) -> None:
+    """Test that find_process_by_name handles exceptions during process iteration."""
+    from mover_status.utils.process import find_process_by_name
+
+    # Create a mock process that raises an exception
+    mock_process = MagicMock()
+    mock_process.info.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+
+    # Set up process_iter to return our mock process
+    with patch('psutil.process_iter', return_value=[mock_process]):
+        # Call the function - it should handle the exception
+        processes = find_process_by_name("test_process")
+
+        # Verify the results - should be an empty list since all processes failed
+        assert len(processes) == 0
+
+
+@patch('mover_status.utils.process.logger')
+def test_find_mover_process_with_exception(mock_logger: MagicMock) -> None:
+    """Test that find_mover_process handles exceptions during process iteration."""
+    from mover_status.utils.process import find_mover_process
+    from typing import Any
+
+    # Create a mock process that raises an exception when accessing 'exe'
+    mock_process = MagicMock()
+
+    # Set up the mock to raise an exception when accessing 'exe' but return a valid name
+    def mock_getitem(key: str) -> Any:
+        if key == 'exe':
+            raise psutil.NoSuchProcess(pid=1234)
+        elif key == 'name':
+            return 'mover'  # This will make the name check pass
+        return None
+
+    mock_process.info.__getitem__.side_effect = mock_getitem
+
+    # Define a proper __contains__ method
+    def mock_contains(_: Any, key: str) -> bool:  # pyright:ignore
+        return key in ('name', 'exe')
+
+    # Assign the method
+    mock_process.info.__contains__ = mock_contains
+    mock_process.pid = 1234
+
+    # Set up process_iter to return our mock process
+    with patch('psutil.process_iter', return_value=[mock_process]):
+        # Mock find_process_by_name to return an empty list (to ensure we're testing the exception path)
+        with patch('mover_status.utils.process.find_process_by_name', return_value=[]):
+            # Call the function - it should handle the exception
+            processes = find_mover_process()
+
+            # Verify the results - should be an empty list since all processes failed
+            assert len(processes) == 0
+
+            # Verify that the logger was called with the error message
+            mock_logger.debug.assert_any_call(f"Error accessing process: {psutil.NoSuchProcess(pid=1234)}")
+
+            # Verify that the fallback message was logged
+            mock_logger.debug.assert_any_call("No mover processes found by direct checks, falling back to name search")
