@@ -13,17 +13,23 @@ configuration values throughout the application.
 # the static type system can determine the types.
 
 import os
+from collections.abc import Mapping
 import yaml
-from typing import Any, TypedDict, final
+from typing import TypedDict, final, cast, TypeVar
 
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.notification.providers.telegram.defaults import TELEGRAM_DEFAULTS
 from mover_status.notification.providers.discord.defaults import DISCORD_DEFAULTS
 from mover_status.config.validation_error import ValidationError
 
+# Type variables for generic dictionary operations
+T = TypeVar('T')
+K = TypeVar('K', bound=str)
+V = TypeVar('V')
 
 # Type definitions for configuration structure
 class TelegramConfig(TypedDict):
+    """Telegram notification provider configuration."""
     enabled: bool
     bot_token: str
     chat_id: str
@@ -33,6 +39,7 @@ class TelegramConfig(TypedDict):
 
 
 class DiscordConfig(TypedDict):
+    """Discord notification provider configuration."""
     enabled: bool
     webhook_url: str
     username: str
@@ -43,33 +50,49 @@ class DiscordConfig(TypedDict):
 
 
 class ProvidersConfig(TypedDict):
+    """Container for all notification provider configurations."""
     telegram: TelegramConfig
     discord: DiscordConfig
 
 
 class NotificationConfig(TypedDict):
+    """Notification settings configuration."""
     notification_increment: int
     enabled_providers: list[str]
     providers: ProvidersConfig
 
 
 class MonitoringConfig(TypedDict):
+    """Monitoring settings configuration."""
     mover_executable: str
     cache_directory: str
     poll_interval: int
 
 
 class MessagesConfig(TypedDict):
+    """Message templates configuration."""
     completion: str
 
 
 class PathsConfig(TypedDict):
+    """Path settings configuration."""
     exclude: list[str]
 
 
 class DebugConfig(TypedDict):
+    """Debug settings configuration."""
     dry_run: bool
     enable_debug: bool
+
+
+# Define a type for the complete configuration structure
+class ConfigSections(TypedDict):
+    """Complete configuration structure with all sections."""
+    notification: NotificationConfig
+    monitoring: MonitoringConfig
+    messages: MessagesConfig
+    paths: PathsConfig
+    debug: DebugConfig
 
 
 @final
@@ -86,11 +109,11 @@ class MoverStatusConfig:
 
     def __init__(
         self,
-        notification: dict[str, Any],
-        monitoring: dict[str, Any],
-        messages: dict[str, Any],
-        paths: dict[str, Any],
-        debug: dict[str, Any]
+        notification: NotificationConfig,
+        monitoring: MonitoringConfig,
+        messages: MessagesConfig,
+        paths: PathsConfig,
+        debug: DebugConfig
     ) -> None:
         """
         Initialize the MoverStatusConfig.
@@ -102,7 +125,7 @@ class MoverStatusConfig:
             paths: Paths configuration
             debug: Debug configuration
         """
-        self._data: dict[str, dict[str, Any]] = {
+        self._data: ConfigSections = {
             "notification": notification,
             "monitoring": monitoring,
             "messages": messages,
@@ -110,7 +133,7 @@ class MoverStatusConfig:
             "debug": debug
         }
 
-    def __getitem__(self, key: str) -> dict[str, Any]:
+    def __getitem__(self, key: str) -> NotificationConfig | MonitoringConfig | MessagesConfig | PathsConfig | DebugConfig:
         """
         Get a configuration section by key.
 
@@ -123,7 +146,22 @@ class MoverStatusConfig:
         Raises:
             KeyError: If the key does not exist
         """
-        return self._data[key]
+        if key not in self._data:
+            raise KeyError(f"Unknown configuration section: {key}")
+
+        if key == "notification":
+            return self._data["notification"]
+        elif key == "monitoring":
+            return self._data["monitoring"]
+        elif key == "messages":
+            return self._data["messages"]
+        elif key == "paths":
+            return self._data["paths"]
+        elif key == "debug":
+            return self._data["debug"]
+        else:
+            # This should never happen due to the check above
+            raise KeyError(f"Unknown configuration section: {key}")
 
     def __contains__(self, key: str) -> bool:
         """
@@ -138,7 +176,7 @@ class MoverStatusConfig:
         return key in self._data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MoverStatusConfig":
+    def from_dict(cls, data: Mapping[str, object]) -> "MoverStatusConfig":
         """
         Create a MoverStatusConfig instance from a dictionary.
 
@@ -149,22 +187,29 @@ class MoverStatusConfig:
             A new MoverStatusConfig instance
         """
         # Create a copy to avoid modifying the original
-        config_data = data.copy()
+        config_data = dict(data)
 
         # Ensure all required sections exist
         for section in ["notification", "monitoring", "messages", "paths", "debug"]:
             if section not in config_data:
                 config_data[section] = {}
 
+        # Cast the dictionary sections to their appropriate types
+        notification = cast(NotificationConfig, config_data.get("notification", {}))
+        monitoring = cast(MonitoringConfig, config_data.get("monitoring", {}))
+        messages = cast(MessagesConfig, config_data.get("messages", {}))
+        paths = cast(PathsConfig, config_data.get("paths", {}))
+        debug = cast(DebugConfig, config_data.get("debug", {}))
+
         return cls(
-            notification=config_data["notification"],  # type: ignore
-            monitoring=config_data["monitoring"],  # type: ignore
-            messages=config_data["messages"],  # type: ignore
-            paths=config_data["paths"],  # type: ignore
-            debug=config_data["debug"],  # type: ignore
+            notification=notification,
+            monitoring=monitoring,
+            messages=messages,
+            paths=paths,
+            debug=debug,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> ConfigSections:
         """
         Convert the MoverStatusConfig to a dictionary.
 
@@ -213,14 +258,20 @@ class ConfigManager:
             default_config["notification"]["providers"] = {}
 
         # Add Telegram provider defaults
-        default_config["notification"]["providers"]["telegram"] = {
-            k: v for k, v in TELEGRAM_DEFAULTS.items() if k != "name" and k != "enabled"
-        }
+        telegram_defaults: dict[str, object] = {}
+        for k, item_value in TELEGRAM_DEFAULTS.items():
+            if k != "name" and k != "enabled":
+                # We know the value is a valid configuration value
+                telegram_defaults[k] = item_value
+        default_config["notification"]["providers"]["telegram"] = telegram_defaults
 
         # Add Discord provider defaults
-        default_config["notification"]["providers"]["discord"] = {
-            k: v for k, v in DISCORD_DEFAULTS.items() if k != "name" and k != "enabled"
-        }
+        discord_defaults: dict[str, object] = {}
+        for k, item_value in DISCORD_DEFAULTS.items():
+            if k != "name" and k != "enabled":
+                # We know the value is a valid configuration value
+                discord_defaults[k] = item_value
+        default_config["notification"]["providers"]["discord"] = discord_defaults
 
         # Convert the dictionary to a MoverStatusConfig object
         return MoverStatusConfig.from_dict(default_config)
@@ -261,14 +312,18 @@ class ConfigManager:
         try:
             # Load the YAML file
             with open(path, "r") as f:
-                user_config = yaml.safe_load(f)
+                # yaml.safe_load returns Any, but we know it's a dictionary or None
+                user_config_raw = yaml.safe_load(f)
 
             # If the file is empty or not a dictionary, use the default config
-            if user_config is None or not isinstance(user_config, dict):
+            if user_config_raw is None or not isinstance(user_config_raw, dict):
                 self.config = self.get_default_config()
                 # Validate the default configuration
                 self.validate_config()
                 return self.config
+
+            # Convert to a properly typed dictionary
+            user_config = cast(Mapping[str, object], user_config_raw)
 
             # Merge with defaults
             self.config = self.merge_with_defaults(user_config)
@@ -282,7 +337,7 @@ class ConfigManager:
             # If the YAML is invalid, raise a ValueError
             raise ValueError(f"Invalid YAML in configuration file: {e}")
 
-    def merge_with_defaults(self, user_config: dict[str, Any]) -> MoverStatusConfig:
+    def merge_with_defaults(self, user_config: Mapping[str, object]) -> MoverStatusConfig:
         """
         Merge user configuration with default configuration.
 
@@ -293,7 +348,7 @@ class ConfigManager:
             The merged configuration dictionary.
         """
         # Start with a deep copy of the default config
-        default_config = self.get_default_config().to_dict()
+        default_config = dict(self.get_default_config().to_dict())
 
         # Recursively merge the user config into the default config
         self._merge_dicts(default_config, user_config)
@@ -301,7 +356,7 @@ class ConfigManager:
         # Convert the merged dictionary to a MoverStatusConfig object
         return MoverStatusConfig.from_dict(default_config)
 
-    def _merge_dicts(self, target: dict[str, Any], source: dict[str, Any]) -> None:
+    def _merge_dicts(self, target: dict[str, object], source: Mapping[str, object]) -> None:
         """
         Recursively merge source dictionary into target dictionary.
 
@@ -317,7 +372,7 @@ class ConfigManager:
                 and key in target
                 and isinstance(target[key], dict)
             ):
-                self._merge_dicts(target[key], value)
+                self._merge_dicts(cast(dict[str, object], target[key]), cast(Mapping[str, object], value))
             else:
                 # Otherwise, just overwrite the value
                 target[key] = value
@@ -364,22 +419,28 @@ class ConfigManager:
         # Split the key by dots to handle nested keys
         keys = key.split(".")
 
-        # Start with the full config
-        current_dict = self.config.to_dict()
+        # Start with the full config as a dictionary
+        config_dict = self.config.to_dict()
+        current: dict[str, object] = {}
+
+        # Convert ConfigSections to a regular dictionary
+        for section, value in config_dict.items():
+            current[section] = value
 
         # Traverse the config dictionary
         for i, k in enumerate(keys):
             # If the key doesn't exist, return the default
-            if k not in current_dict:
+            if k not in current:
                 return default
 
             # If this is the last key, return the value
             if i == len(keys) - 1:
-                return current_dict[k]
+                return current[k]
 
             # Otherwise, move to the next level
-            if isinstance(current_dict[k], dict):
-                current_dict = current_dict[k]
+            value = current[k]
+            if isinstance(value, dict):
+                current = cast(dict[str, object], value)
             else:
                 return default
 
