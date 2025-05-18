@@ -169,16 +169,16 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/core/calculation/progress.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review progress calculation logic
-  - [ ] **Feature: Calculate Progress Percentage**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Calculate percentage from initial and current size
-      - [ ] Test case: Handle edge cases (0%, 100%)
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_progress.py`
-    - [ ] **Implementation:** Create `calculate_progress` function
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/calculation/progress.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review progress calculation logic
+  - [x] **Feature: Calculate Progress Percentage**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Calculate percentage from initial and current size
+      - [x] Test case: Handle edge cases (0%, 100%)
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_progress.py`
+    - [x] **Implementation:** Create `calculate_progress` function
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [x] **Module: `mover_status/core/calculation/__init__.py`**
   - [x] Export calculation functions

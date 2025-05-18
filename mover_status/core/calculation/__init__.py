@@ -7,5 +7,6 @@ such as progress calculation, time estimation, and data size formatting.
 
 from mover_status.core.calculation.size import format_bytes
 from mover_status.core.calculation.time import calculate_eta
+from mover_status.core.calculation.progress import calculate_progress
 
-__all__ = ["format_bytes", "calculate_eta"]
+__all__ = ["format_bytes", "calculate_eta", "calculate_progress"]
