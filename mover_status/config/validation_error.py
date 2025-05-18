@@ -5,9 +5,10 @@ This module provides the ValidationError class, which is raised when
 configuration validation fails.
 """
 
-from typing import List, Optional
+from typing import final
 
 
+@final
 class ValidationError(Exception):
     """
     Exception raised when configuration validation fails.
@@ -16,7 +17,7 @@ class ValidationError(Exception):
     such as missing required fields, incorrect field types, or invalid values.
     """
 
-    def __init__(self, message: str, errors: Optional[List[str]] = None) -> None:
+    def __init__(self, message: str, errors: list[str] | None = None) -> None:
         """
         Initialize the ValidationError.
 
@@ -24,6 +25,6 @@ class ValidationError(Exception):
             message: The error message.
             errors: Optional list of specific validation errors.
         """
-        self.errors = errors or []
+        self.errors: list[str] = errors or []
         error_details = "\n - " + "\n - ".join(self.errors) if self.errors else ""
         super().__init__(f"{message}{error_details}")

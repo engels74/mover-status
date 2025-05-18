@@ -5,14 +5,12 @@ This module provides functions for calculating estimated time of completion
 based on progress rate.
 """
 
-from typing import Optional
-
 
 def calculate_eta(
     start_time: float,
     current_time: float,
     progress_percent: int
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate the estimated time of completion based on progress rate.
 
@@ -22,8 +20,8 @@ def calculate_eta(
         progress_percent: The current progress percentage (0-100).
 
     Returns:
-        Optional[float]: The estimated completion time as a Unix timestamp,
-                         or None if progress is 0% (still calculating).
+        float | None: The estimated completion time as a Unix timestamp,
+                      or None if progress is 0% (still calculating).
 
     Raises:
         ValueError: If progress_percent is not between 0 and 100,

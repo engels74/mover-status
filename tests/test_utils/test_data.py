@@ -9,7 +9,7 @@ import sys
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Generator, List
+from collections.abc import Generator
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -48,18 +48,18 @@ def populated_directory(temp_directory: Path) -> Generator[Path, None, None]:
         Generator yielding a Path object representing the populated directory.
     """
     # Create some files with known sizes
-    (temp_directory / "file1.txt").write_bytes(b"X" * 1000)  # 1 KB
-    (temp_directory / "file2.txt").write_bytes(b"X" * 2000)  # 2 KB
+    _ = (temp_directory / "file1.txt").write_bytes(b"X" * 1000)  # 1 KB
+    _ = (temp_directory / "file2.txt").write_bytes(b"X" * 2000)  # 2 KB
 
     # Create a subdirectory with files
     subdir = temp_directory / "subdir"
     subdir.mkdir()
-    (subdir / "file3.txt").write_bytes(b"X" * 3000)  # 3 KB
+    _ = (subdir / "file3.txt").write_bytes(b"X" * 3000)  # 3 KB
 
     # Create a subdirectory to be excluded
     exclude_dir = temp_directory / "exclude_me"
     exclude_dir.mkdir()
-    (exclude_dir / "file4.txt").write_bytes(b"X" * 4000)  # 4 KB
+    _ = (exclude_dir / "file4.txt").write_bytes(b"X" * 4000)  # 4 KB
 
     yield temp_directory
 
@@ -121,7 +121,7 @@ def test_get_directory_size_with_nonexistent_directory() -> None:
     from mover_status.utils.data import get_directory_size
 
     with pytest.raises(FileNotFoundError):
-        get_directory_size("/path/that/does/not/exist")
+        _ = get_directory_size("/path/that/does/not/exist")
 
 
 def test_get_directory_size_with_nonexistent_exclusion(populated_directory: Path) -> None:
@@ -164,14 +164,14 @@ def test_get_directory_size_subprocess_error(mock_run: MagicMock, populated_dire
     mock_run.side_effect = subprocess.SubprocessError("Command failed")
 
     with pytest.raises(RuntimeError, match="Failed to calculate directory size"):
-        get_directory_size(populated_directory)
+        _ = get_directory_size(populated_directory)
 
 
 def test_format_exclusions_empty_list() -> None:
     """Test that format_exclusions returns an empty list when given an empty list."""
     from mover_status.utils.data import format_exclusions
 
-    exclusions: List[str] = []
+    exclusions: list[str] = []
     result = format_exclusions(exclusions)
     assert result == []
 

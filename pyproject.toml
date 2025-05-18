@@ -47,7 +47,7 @@ python_classes = "Test*"
 addopts = "--cov=mover_status --cov-report=term-missing"
 
 [tool.basedpyright]
-typeCheckingMode = "strict"
+typeCheckingMode = "recommended"
 pythonVersion = "3.13"
 # Original disabled settings (kept as reference):
 reportMissingTypeStubs = true  # Enable this to catch missing type stubs

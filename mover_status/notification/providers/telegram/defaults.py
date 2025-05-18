@@ -6,19 +6,19 @@ notification provider. These values will be used if no user configuration is pro
 or as a fallback for missing values.
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
 # Telegram provider default configuration
-TELEGRAM_DEFAULTS: Dict[str, Any] = {
+TELEGRAM_DEFAULTS: dict[str, Any] = {
     # Provider identification
     "name": "telegram",
     "enabled": False,
-    
+
     # API configuration
     "bot_token": "",
     "chat_id": "",
-    
+
     # Message formatting
     "message_template": (
         "Moving data from SSD Cache to HDD Array. &#10;"
@@ -27,7 +27,7 @@ TELEGRAM_DEFAULTS: Dict[str, Any] = {
         "Estimated completion time: {etc}.&#10;&#10;"
         "Note: Services like Plex may run slow or be unavailable during the move."
     ),
-    
+
     # Formatting options
     "parse_mode": "HTML",
     "disable_notification": False,

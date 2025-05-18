@@ -27,7 +27,7 @@ def test_calculate_progress_zero_initial_size() -> None:
     current_size = 0
 
     with pytest.raises(ValueError, match="Initial size must be greater than zero"):
-        calculate_progress(initial_size, current_size)
+        _ = calculate_progress(initial_size, current_size)
 
 
 def test_calculate_progress_current_size_greater_than_initial() -> None:
@@ -38,7 +38,7 @@ def test_calculate_progress_current_size_greater_than_initial() -> None:
     current_size = 1200
 
     with pytest.raises(ValueError, match="Current size cannot be greater than initial size"):
-        calculate_progress(initial_size, current_size)
+        _ = calculate_progress(initial_size, current_size)
 
 
 def test_calculate_progress_negative_sizes() -> None:
@@ -47,11 +47,11 @@ def test_calculate_progress_negative_sizes() -> None:
 
     # Test with negative initial size
     with pytest.raises(ValueError, match="Initial size must be greater than zero"):
-        calculate_progress(-1000, 500)
+        _ = calculate_progress(-1000, 500)
 
     # Test with negative current size
     with pytest.raises(ValueError, match="Sizes cannot be negative"):
-        calculate_progress(1000, -500)
+        _ = calculate_progress(1000, -500)
 
 
 def test_calculate_progress_zero_percent() -> None:

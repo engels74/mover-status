@@ -6,19 +6,19 @@ notification provider. These values will be used if no user configuration is pro
 or as a fallback for missing values.
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
 # Discord provider default configuration
-DISCORD_DEFAULTS: Dict[str, Any] = {
+DISCORD_DEFAULTS: dict[str, Any] = {
     # Provider identification
     "name": "discord",
     "enabled": False,
-    
+
     # API configuration
     "webhook_url": "",
     "username": "Mover Bot",
-    
+
     # Message formatting
     "message_template": (
         "Moving data from SSD Cache to HDD Array.\n"
@@ -27,7 +27,7 @@ DISCORD_DEFAULTS: Dict[str, Any] = {
         "Estimated completion time: {etc}.\n\n"
         "Note: Services like Plex may run slow or be unavailable during the move."
     ),
-    
+
     # Embed options
     "use_embeds": True,
     "embed_title": "Mover: Moving Data",

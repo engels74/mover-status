@@ -14,7 +14,7 @@ configuration values throughout the application.
 
 import os
 import yaml
-from typing import Dict, Any, Optional, cast, List, TypedDict
+from typing import Any, TypedDict, final
 
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.notification.providers.telegram.defaults import TELEGRAM_DEFAULTS
@@ -39,7 +39,7 @@ class DiscordConfig(TypedDict):
     message_template: str
     use_embeds: bool
     embed_title: str
-    embed_colors: Dict[str, int]
+    embed_colors: dict[str, int]
 
 
 class ProvidersConfig(TypedDict):
@@ -49,7 +49,7 @@ class ProvidersConfig(TypedDict):
 
 class NotificationConfig(TypedDict):
     notification_increment: int
-    enabled_providers: List[str]
+    enabled_providers: list[str]
     providers: ProvidersConfig
 
 
@@ -64,7 +64,7 @@ class MessagesConfig(TypedDict):
 
 
 class PathsConfig(TypedDict):
-    exclude: List[str]
+    exclude: list[str]
 
 
 class DebugConfig(TypedDict):
@@ -72,12 +72,106 @@ class DebugConfig(TypedDict):
     enable_debug: bool
 
 
-class MoverStatusConfig(TypedDict):
-    notification: NotificationConfig
-    monitoring: MonitoringConfig
-    messages: MessagesConfig
-    paths: PathsConfig
-    debug: DebugConfig
+@final
+class MoverStatusConfig:
+    """
+    Configuration class for the Mover Status Monitor.
+
+    This class represents the complete configuration structure and provides
+    methods for converting between dictionary and class representations.
+
+    This class is decorated with @final to avoid the need for type annotations
+    on instance attributes, as they are guaranteed to be set in __init__.
+    """
+
+    def __init__(
+        self,
+        notification: dict[str, Any],
+        monitoring: dict[str, Any],
+        messages: dict[str, Any],
+        paths: dict[str, Any],
+        debug: dict[str, Any]
+    ) -> None:
+        """
+        Initialize the MoverStatusConfig.
+
+        Args:
+            notification: Notification configuration
+            monitoring: Monitoring configuration
+            messages: Messages configuration
+            paths: Paths configuration
+            debug: Debug configuration
+        """
+        self._data: dict[str, dict[str, Any]] = {
+            "notification": notification,
+            "monitoring": monitoring,
+            "messages": messages,
+            "paths": paths,
+            "debug": debug
+        }
+
+    def __getitem__(self, key: str) -> dict[str, Any]:
+        """
+        Get a configuration section by key.
+
+        Args:
+            key: The section key to get
+
+        Returns:
+            The configuration section
+
+        Raises:
+            KeyError: If the key does not exist
+        """
+        return self._data[key]
+
+    def __contains__(self, key: str) -> bool:
+        """
+        Check if a configuration section exists.
+
+        Args:
+            key: The section key to check
+
+        Returns:
+            True if the section exists, False otherwise
+        """
+        return key in self._data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MoverStatusConfig":
+        """
+        Create a MoverStatusConfig instance from a dictionary.
+
+        Args:
+            data: Dictionary containing configuration data
+
+        Returns:
+            A new MoverStatusConfig instance
+        """
+        # Create a copy to avoid modifying the original
+        config_data = data.copy()
+
+        # Ensure all required sections exist
+        for section in ["notification", "monitoring", "messages", "paths", "debug"]:
+            if section not in config_data:
+                config_data[section] = {}
+
+        return cls(
+            notification=config_data["notification"],  # type: ignore
+            monitoring=config_data["monitoring"],  # type: ignore
+            messages=config_data["messages"],  # type: ignore
+            paths=config_data["paths"],  # type: ignore
+            debug=config_data["debug"],  # type: ignore
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert the MoverStatusConfig to a dictionary.
+
+        Returns:
+            Dictionary representation of the configuration
+        """
+        return self._data.copy()
 
 
 class ConfigManager:
@@ -92,7 +186,7 @@ class ConfigManager:
     - Providing access to configuration values
     """
 
-    def __init__(self, config_path: Optional[str] = None) -> None:
+    def __init__(self, config_path: str | None = None) -> None:
         """
         Initialize the ConfigManager.
 
@@ -100,7 +194,7 @@ class ConfigManager:
             config_path: Optional path to a configuration file. If not provided,
                          will use default configuration values.
         """
-        self.config_path = config_path
+        self.config_path: str | None = config_path
         self.config: MoverStatusConfig = self.get_default_config()
 
     @staticmethod
@@ -128,9 +222,10 @@ class ConfigManager:
             k: v for k, v in DISCORD_DEFAULTS.items() if k != "name" and k != "enabled"
         }
 
-        return cast(MoverStatusConfig, default_config)
+        # Convert the dictionary to a MoverStatusConfig object
+        return MoverStatusConfig.from_dict(default_config)
 
-    def load(self, config_path: Optional[str] = None) -> MoverStatusConfig:
+    def load(self, config_path: str | None = None) -> MoverStatusConfig:
         """
         Load configuration from a YAML file and merge with defaults.
 
@@ -176,7 +271,7 @@ class ConfigManager:
                 return self.config
 
             # Merge with defaults
-            self.config = self.merge_with_defaults(cast(Dict[str, Any], user_config))
+            self.config = self.merge_with_defaults(user_config)
 
             # Validate the merged configuration
             self.validate_config()
@@ -187,7 +282,7 @@ class ConfigManager:
             # If the YAML is invalid, raise a ValueError
             raise ValueError(f"Invalid YAML in configuration file: {e}")
 
-    def merge_with_defaults(self, user_config: Dict[str, Any]) -> MoverStatusConfig:
+    def merge_with_defaults(self, user_config: dict[str, Any]) -> MoverStatusConfig:
         """
         Merge user configuration with default configuration.
 
@@ -198,14 +293,15 @@ class ConfigManager:
             The merged configuration dictionary.
         """
         # Start with a deep copy of the default config
-        merged_config = self.get_default_config()
+        default_config = self.get_default_config().to_dict()
 
         # Recursively merge the user config into the default config
-        self._merge_dicts(cast(Dict[str, Any], merged_config), user_config)
+        self._merge_dicts(default_config, user_config)
 
-        return merged_config
+        # Convert the merged dictionary to a MoverStatusConfig object
+        return MoverStatusConfig.from_dict(default_config)
 
-    def _merge_dicts(self, target: Dict[str, Any], source: Dict[str, Any]) -> None:
+    def _merge_dicts(self, target: dict[str, Any], source: dict[str, Any]) -> None:
         """
         Recursively merge source dictionary into target dictionary.
 
@@ -221,12 +317,12 @@ class ConfigManager:
                 and key in target
                 and isinstance(target[key], dict)
             ):
-                self._merge_dicts(target[key], cast(Dict[str, Any], value))
+                self._merge_dicts(target[key], value)
             else:
                 # Otherwise, just overwrite the value
                 target[key] = value
 
-    def save(self, config_path: Optional[str] = None) -> None:
+    def save(self, config_path: str | None = None) -> None:
         """
         Save the current configuration to a YAML file.
 
@@ -248,9 +344,9 @@ class ConfigManager:
 
         # Save the configuration to the file
         with open(path, "w") as f:
-            yaml.dump(self.config, f, default_flow_style=False)
+            yaml.dump(self.config.to_dict(), f, default_flow_style=False)
 
-    def get(self, key: Optional[str], default: Any = None) -> Any:
+    def get(self, key: str | None, default: object = None) -> object:
         """
         Get a configuration value by key.
 
@@ -269,7 +365,7 @@ class ConfigManager:
         keys = key.split(".")
 
         # Start with the full config
-        current_dict = cast(Dict[str, Any], self.config)
+        current_dict = self.config.to_dict()
 
         # Traverse the config dictionary
         for i, k in enumerate(keys):
@@ -282,7 +378,10 @@ class ConfigManager:
                 return current_dict[k]
 
             # Otherwise, move to the next level
-            current_dict = cast(Dict[str, Any], current_dict[k])
+            if isinstance(current_dict[k], dict):
+                current_dict = current_dict[k]
+            else:
+                return default
 
         # This should never be reached, but return the last value just in case
         return default
@@ -299,7 +398,7 @@ class ConfigManager:
         Raises:
             ValidationError: If the configuration is invalid.
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Validate required fields
         errors.extend(self._validate_required_fields())
@@ -314,14 +413,14 @@ class ConfigManager:
         if errors:
             raise ValidationError("Configuration validation failed:", errors)
 
-    def _validate_required_fields(self) -> List[str]:
+    def _validate_required_fields(self) -> list[str]:
         """
         Validate that all required fields are present in the configuration.
 
         Returns:
             A list of error messages for missing required fields.
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Check top-level required sections
         required_sections = ["notification", "monitoring", "messages", "paths", "debug"]
@@ -369,14 +468,14 @@ class ConfigManager:
 
         return errors
 
-    def _validate_field_types(self) -> List[str]:
+    def _validate_field_types(self) -> list[str]:
         """
         Validate that all fields have the correct type.
 
         Returns:
             A list of error messages for fields with incorrect types.
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Check notification section field types
         if "notification" in self.config:
@@ -434,14 +533,14 @@ class ConfigManager:
 
         return errors
 
-    def _validate_field_values(self) -> List[str]:
+    def _validate_field_values(self) -> list[str]:
         """
         Validate that all field values are valid.
 
         Returns:
             A list of error messages for fields with invalid values.
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Check notification section field values
         if "notification" in self.config:

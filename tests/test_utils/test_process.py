@@ -7,7 +7,7 @@ This module contains tests for the process detection functionality.
 import os
 import sys
 import subprocess
-from typing import Generator
+from collections.abc import Generator
 import pytest
 import psutil
 from unittest.mock import patch, MagicMock
@@ -42,7 +42,7 @@ def dummy_process() -> Generator[psutil.Process, None, None]:
         # Make sure to terminate the process when done
         if process.poll() is None:
             process.terminate()
-            process.wait(timeout=1)
+            _ = process.wait(timeout=1)
 
 
 def test_is_process_running_with_existing_process(dummy_process: psutil.Process) -> None:
@@ -306,13 +306,12 @@ def test_find_process_by_name_with_exception(_: MagicMock) -> None:
 def test_find_mover_process_with_exception(mock_logger: MagicMock) -> None:
     """Test that find_mover_process handles exceptions during process iteration."""
     from mover_status.utils.process import find_mover_process
-    from typing import Any
 
     # Create a mock process that raises an exception when accessing 'exe'
     mock_process = MagicMock()
 
     # Set up the mock to raise an exception when accessing 'exe' but return a valid name
-    def mock_getitem(key: str) -> Any:
+    def mock_getitem(key: str) -> str | None:
         if key == 'exe':
             raise psutil.NoSuchProcess(pid=1234)
         elif key == 'name':
@@ -322,7 +321,7 @@ def test_find_mover_process_with_exception(mock_logger: MagicMock) -> None:
     mock_process.info.__getitem__.side_effect = mock_getitem
 
     # Define a proper __contains__ method
-    def mock_contains(_: Any, key: str) -> bool:  # pyright:ignore
+    def mock_contains(_self: object, key: str) -> bool:
         return key in ('name', 'exe')
 
     # Assign the method

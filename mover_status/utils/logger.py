@@ -9,7 +9,7 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, cast, final
 
 
 class LogLevel(Enum):
@@ -28,13 +28,14 @@ class LogFormat(Enum):
 
 
 @dataclass
+@final
 class LoggerConfig:
     """Configuration for the logger."""
     console_enabled: bool = True
     file_enabled: bool = False
-    file_path: Optional[str] = None
-    level: Union[LogLevel, int] = LogLevel.INFO
-    format: Union[LogFormat, str] = LogFormat.SIMPLE
+    file_path: str | None = None
+    level: LogLevel | int = LogLevel.INFO
+    format: LogFormat | str = LogFormat.SIMPLE
     # Whether to append to existing log file or overwrite it
     file_append: bool = True
     # Maximum size of log file in bytes before rotation (default: 10MB)
@@ -44,7 +45,7 @@ class LoggerConfig:
 
 
 # Cache for loggers to ensure we don't create duplicates
-_loggers: Dict[str, logging.Logger] = {}
+_loggers: dict[str, logging.Logger] = {}
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -134,7 +135,7 @@ def setup_logger(name: str, config: LoggerConfig) -> logging.Logger:
     return logger
 
 
-def configure_from_dict(name: str, config_dict: Dict[str, Any]) -> logging.Logger:
+def configure_from_dict(name: str, config_dict: dict[str, Any]) -> logging.Logger:
     """
     Configure a logger from a dictionary.
 
@@ -179,7 +180,7 @@ def configure_from_dict(name: str, config_dict: Dict[str, Any]) -> logging.Logge
     config = LoggerConfig(
         console_enabled=bool(config_dict.get('console_enabled', True)),
         file_enabled=bool(config_dict.get('file_enabled', False)),
-        file_path=cast(Optional[str], config_dict.get('file_path')),
+        file_path=cast(str | None, config_dict.get('file_path')),
         level=level,
         format=log_format,
         file_append=bool(config_dict.get('file_append', True)),

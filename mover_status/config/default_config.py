@@ -8,11 +8,11 @@ Provider-specific configuration defaults are defined in their respective modules
 and will be aggregated by the ConfigManager.
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
 # Core default configuration dictionary (non-provider specific)
-DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
+DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
     # Notification settings (shared across providers)
     "notification": {
         # Notification frequency (percentage increments)

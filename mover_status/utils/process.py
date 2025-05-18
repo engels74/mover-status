@@ -6,7 +6,6 @@ It is used primarily for monitoring the mover process in Unraid systems.
 """
 
 import os
-from typing import List
 import psutil
 import logging
 
@@ -32,7 +31,7 @@ def is_process_running(pid: int) -> bool:
         return False
 
 
-def find_process_by_name(name: str, case_sensitive: bool = False) -> List[psutil.Process]:
+def find_process_by_name(name: str, case_sensitive: bool = False) -> list[psutil.Process]:
     """
     Find all processes with the given name.
 
@@ -41,21 +40,22 @@ def find_process_by_name(name: str, case_sensitive: bool = False) -> List[psutil
         case_sensitive: Whether to perform a case-sensitive search. Defaults to False.
 
     Returns:
-        List[psutil.Process]: A list of Process objects matching the name.
+        list[psutil.Process]: A list of Process objects matching the name.
         Returns an empty list if no matching processes are found.
     """
-    matching_processes: List[psutil.Process] = []
+    matching_processes: list[psutil.Process] = []
 
     for process in psutil.process_iter(['pid', 'name']):
         try:
-            process_name = process.info['name']
+            process_name: str = process.info['name']
 
             # Compare names based on case sensitivity setting
             if case_sensitive:
                 if process_name == name:
                     matching_processes.append(process)
             else:
-                if process_name.lower() == name.lower():
+                lower_process_name: str = process_name.lower()
+                if lower_process_name == name.lower():
                     matching_processes.append(process)
 
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -65,7 +65,7 @@ def find_process_by_name(name: str, case_sensitive: bool = False) -> List[psutil
     return matching_processes
 
 
-def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> List[psutil.Process]:
+def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> list[psutil.Process]:
     """
     Find the mover process based on the executable path.
 
@@ -77,14 +77,14 @@ def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> List[psutil
         mover_path: Path to the mover executable. Defaults to "/usr/local/sbin/mover".
 
     Returns:
-        List[psutil.Process]: A list of Process objects representing mover processes.
+        list[psutil.Process]: A list of Process objects representing mover processes.
         Returns an empty list if no mover processes are found.
     """
     # Extract just the executable name from the path
     mover_name = os.path.basename(mover_path)
 
     # Try to find by exact executable path first (more reliable in container with --pid=host)
-    processes: List[psutil.Process] = []
+    processes: list[psutil.Process] = []
 
     for proc in psutil.process_iter(['pid', 'name', 'exe']):
         try:

@@ -4,7 +4,7 @@ Test fixtures for the mover_status package.
 
 import os
 import tempfile
-from typing import Generator, Dict, Any
+from collections.abc import Generator
 
 import pytest
 
@@ -13,7 +13,7 @@ import pytest
 def temp_dir() -> Generator[str, None, None]:
     """
     Create a temporary directory for testing.
-    
+
     Returns:
         Generator[str, None, None]: Path to the temporary directory.
     """
@@ -25,7 +25,7 @@ def temp_dir() -> Generator[str, None, None]:
 def temp_file() -> Generator[str, None, None]:
     """
     Create a temporary file for testing.
-    
+
     Returns:
         Generator[str, None, None]: Path to the temporary file.
     """
@@ -37,12 +37,12 @@ def temp_file() -> Generator[str, None, None]:
 
 
 @pytest.fixture
-def sample_config() -> Dict[str, Any]:
+def sample_config() -> dict[str, object]:
     """
     Provide a sample configuration for testing.
-    
+
     Returns:
-        Dict[str, Any]: Sample configuration dictionary.
+        dict[str, object]: Sample configuration dictionary.
     """
     return {
         "notification": {

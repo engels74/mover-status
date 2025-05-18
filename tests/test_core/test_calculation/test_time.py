@@ -69,7 +69,7 @@ def test_calculate_eta_negative_progress() -> None:
     progress_percent = -10  # Negative progress
 
     with pytest.raises(ValueError, match="Progress percentage must be between 0 and 100"):
-        calculate_eta(start_time, current_time, progress_percent)
+        _ = calculate_eta(start_time, current_time, progress_percent)
 
 
 def test_calculate_eta_progress_over_100() -> None:
@@ -82,7 +82,7 @@ def test_calculate_eta_progress_over_100() -> None:
     progress_percent = 110  # Progress over 100%
 
     with pytest.raises(ValueError, match="Progress percentage must be between 0 and 100"):
-        calculate_eta(start_time, current_time, progress_percent)
+        _ = calculate_eta(start_time, current_time, progress_percent)
 
 
 def test_calculate_eta_start_time_after_current_time() -> None:
@@ -95,4 +95,4 @@ def test_calculate_eta_start_time_after_current_time() -> None:
     progress_percent = 50
 
     with pytest.raises(ValueError, match="Start time must be before current time"):
-        calculate_eta(start_time, current_time, progress_percent)
+        _ = calculate_eta(start_time, current_time, progress_percent)

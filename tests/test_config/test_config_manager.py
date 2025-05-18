@@ -5,7 +5,7 @@ Tests for the configuration manager module.
 import os
 import yaml
 import pytest
-from typing import cast, Any
+from typing import Any
 
 from mover_status.config.config_manager import MoverStatusConfig
 
@@ -26,22 +26,23 @@ class TestConfigManager:
         """Test that the ConfigManager can be initialized with a default path."""
         config_manager = ConfigManager()
         assert config_manager.config_path is None
-        assert isinstance(config_manager.config, dict)
+        assert isinstance(config_manager.config, MoverStatusConfig)
         # Default config should be loaded
-        assert config_manager.config == ConfigManager.get_default_config()
+        # We can't directly compare the objects, so we compare their dictionaries
+        assert config_manager.config.to_dict() == ConfigManager.get_default_config().to_dict()
 
     def test_init_with_custom_path(self, temp_file: str) -> None:
         """Test that the ConfigManager can be initialized with a custom path."""
         config_manager = ConfigManager(config_path=temp_file)
         assert config_manager.config_path == temp_file
-        assert isinstance(config_manager.config, dict)
+        assert isinstance(config_manager.config, MoverStatusConfig)
 
     def test_get_default_config(self) -> None:
         """Test that the default configuration is correctly assembled."""
         default_config = ConfigManager.get_default_config()
 
         # Check that the default config is a dictionary
-        assert isinstance(default_config, dict)
+        assert isinstance(default_config, MoverStatusConfig)
 
         # Check that the core default config is included
         for key in DEFAULT_CONFIG:
@@ -86,7 +87,7 @@ class TestConfigManager:
 
         # Load the configuration
         config_manager = ConfigManager(config_path=config_path)
-        config_manager.load()
+        _ = config_manager.load()
 
         # Check that the configuration was loaded correctly
         assert config_manager.config["notification"]["notification_increment"] == 10
@@ -138,23 +139,24 @@ class TestConfigManager:
         config_manager = ConfigManager(config_path="non_existent_file.yaml")
 
         # Load should not raise an exception but use defaults
-        config_manager.load()
+        _ = config_manager.load()
 
         # Check that the default configuration was loaded
-        assert config_manager.config == ConfigManager.get_default_config()
+        # We can't directly compare the objects, so we compare their dictionaries
+        assert config_manager.config.to_dict() == ConfigManager.get_default_config().to_dict()
 
     def test_handle_invalid_yaml(self, temp_file: str) -> None:
         """Test handling an invalid YAML file."""
         # Create an invalid YAML file
         with open(temp_file, "w") as f:
-            f.write("invalid: yaml: content: - [")
+            _ = f.write("invalid: yaml: content: - [")
 
         # Create a ConfigManager with the invalid file
         config_manager = ConfigManager(config_path=temp_file)
 
         # Load should raise a ValueError
         with pytest.raises(ValueError):
-            config_manager.load()
+            _ = config_manager.load()
 
     def test_get_config_value(self, temp_dir: str) -> None:
         """Test getting a configuration value by key."""
@@ -178,7 +180,7 @@ class TestConfigManager:
 
         # Load the configuration
         config_manager = ConfigManager(config_path=config_path)
-        config_manager.load()
+        _ = config_manager.load()
 
         # Test getting values with dot notation
         assert config_manager.get("notification.notification_increment") == 10
@@ -191,7 +193,7 @@ class TestConfigManager:
 
         # Test getting a value with an invalid key
         assert config_manager.get("") is None
-        assert config_manager.get(None) is None  # pyright:ignore[reportArgumentType]
+        assert config_manager.get(None) is None
 
     def test_save_config(self, temp_dir: str) -> None:
         """Test saving configuration to a YAML file."""
@@ -199,10 +201,14 @@ class TestConfigManager:
         config_path = os.path.join(temp_dir, "config.yaml")
         config_manager = ConfigManager(config_path=config_path)
 
-        # Modify the configuration
-        config_manager.config["notification"]["notification_increment"] = 10
-        config_manager.config["notification"]["providers"]["telegram"]["enabled"] = True
-        config_manager.config["notification"]["providers"]["telegram"]["bot_token"] = "test_token"
+        # Create a modified configuration
+        config_dict = config_manager.config.to_dict()
+        config_dict["notification"]["notification_increment"] = 10
+        config_dict["notification"]["providers"]["telegram"]["enabled"] = True
+        config_dict["notification"]["providers"]["telegram"]["bot_token"] = "test_token"
+
+        # Update the configuration
+        config_manager.config = MoverStatusConfig.from_dict(config_dict)
 
         # Save the configuration
         config_manager.save()
@@ -241,7 +247,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = cast(MoverStatusConfig, invalid_config)
+        config_manager.config = MoverStatusConfig.from_dict(invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -280,7 +286,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = cast(MoverStatusConfig, invalid_config)
+        config_manager.config = MoverStatusConfig.from_dict(invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -328,7 +334,7 @@ class TestConfigManager:
         }
 
         # Set the invalid configuration
-        config_manager.config = cast(MoverStatusConfig, invalid_config)
+        config_manager.config = MoverStatusConfig.from_dict(invalid_config)
 
         # Validation should raise a ValidationError
         with pytest.raises(ValidationError) as excinfo:
@@ -388,7 +394,7 @@ class TestConfigManager:
         }
 
         # Set the valid configuration
-        config_manager.config = cast(MoverStatusConfig, valid_config)
+        config_manager.config = MoverStatusConfig.from_dict(valid_config)
 
         # Validation should not raise an exception
         config_manager.validate_config()
@@ -398,4 +404,4 @@ class TestConfigManager:
             yaml.dump(valid_config, f)
 
         # Load should not raise an exception
-        config_manager.load()
+        _ = config_manager.load()

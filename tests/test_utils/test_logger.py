@@ -5,7 +5,7 @@ import os
 import tempfile
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Generator, Dict, Any
+from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
@@ -169,7 +169,7 @@ class TestLogger:
 
         # Clear the file
         with open(temp_log_file, "w") as f:
-            f.write("")
+            _ = f.write("")
 
         # Test detailed format
         detailed_config = LoggerConfig(
@@ -324,7 +324,7 @@ class TestLogger:
                     backup_count=0,
                 )
 
-                setup_logger("test_append_mode", config)
+                _ = setup_logger("test_append_mode", config)
 
                 # Verify FileHandler was called with mode='a'
                 mock_file_handler.assert_called_once()
@@ -342,7 +342,7 @@ class TestLogger:
                     backup_count=0,
                 )
 
-                setup_logger("test_write_mode", config)
+                _ = setup_logger("test_write_mode", config)
 
                 # Verify FileHandler was called with mode='w'
                 mock_file_handler.assert_called_once()
@@ -367,7 +367,7 @@ class TestLogger:
                     backup_count=3,
                 )
 
-                setup_logger("test_append_mode_rotating", config)
+                _ = setup_logger("test_append_mode_rotating", config)
 
                 # Verify RotatingFileHandler was called with mode='a'
                 mock_handler.assert_called_once()
@@ -385,7 +385,7 @@ class TestLogger:
                     backup_count=3,
                 )
 
-                setup_logger("test_write_mode_rotating", config)
+                _ = setup_logger("test_write_mode_rotating", config)
 
                 # Verify RotatingFileHandler was called with mode='w'
                 mock_handler.assert_called_once()
@@ -397,7 +397,7 @@ class TestLogger:
         logger_name = "test_dict_config"
 
         # Create a configuration dictionary
-        config_dict: Dict[str, Any] = {
+        config_dict: dict[str, object] = {
             "console_enabled": False,
             "file_enabled": True,
             "file_path": str(temp_log_file),
@@ -430,7 +430,7 @@ class TestLogger:
         logger_name = "test_dict_custom"
 
         # Create a configuration dictionary with custom format
-        config_dict: Dict[str, Any] = {
+        config_dict: dict[str, object] = {
             "console_enabled": False,
             "file_enabled": True,
             "file_path": str(temp_log_file),
@@ -451,12 +451,12 @@ class TestLogger:
 
     def test_configure_from_dict_invalid_level(self) -> None:
         """Test that configure_from_dict raises an error for invalid log levels."""
-        config_dict: Dict[str, Any] = {
+        config_dict: dict[str, object] = {
             "level": "INVALID_LEVEL",
         }
 
         with pytest.raises(ValueError, match="Invalid log level"):
-            configure_from_dict("test_invalid", config_dict)
+            _ = configure_from_dict("test_invalid", config_dict)
 
     def test_file_logging_without_path(self) -> None:
         """Test that setup_logger raises an error when file logging is enabled without a path."""
@@ -467,4 +467,4 @@ class TestLogger:
         )
 
         with pytest.raises(ValueError, match="File logging enabled but no file path provided"):
-            setup_logger("test_no_path", config)
+            _ = setup_logger("test_no_path", config)
