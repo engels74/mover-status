@@ -5,8 +5,13 @@ This module provides utilities for detecting and interacting with system process
 It is used primarily for monitoring the mover process in Unraid systems.
 """
 
+import os
 from typing import List
 import psutil
+import logging
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 
 def is_process_running(pid: int) -> bool:
@@ -58,3 +63,60 @@ def find_process_by_name(name: str, case_sensitive: bool = False) -> List[psutil
             continue
 
     return matching_processes
+
+
+def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> List[psutil.Process]:
+    """
+    Find the mover process based on the executable path.
+
+    This function is specifically designed to detect the Unraid mover process,
+    with special handling for containerized environments where process paths
+    might be different between host and container.
+
+    Args:
+        mover_path: Path to the mover executable. Defaults to "/usr/local/sbin/mover".
+
+    Returns:
+        List[psutil.Process]: A list of Process objects representing mover processes.
+        Returns an empty list if no mover processes are found.
+    """
+    # Extract just the executable name from the path
+    mover_name = os.path.basename(mover_path)
+
+    # Try to find by exact executable path first (more reliable in container with --pid=host)
+    processes: List[psutil.Process] = []
+
+    for proc in psutil.process_iter(['pid', 'name', 'exe']):
+        try:
+            # Check if the process executable matches the mover path
+            if 'exe' in proc.info and proc.info['exe'] == mover_path:
+                processes.append(proc)
+                logger.debug(f"Found mover process by exact path: PID {proc.pid}")
+            # Also check by name as a fallback
+            elif 'name' in proc.info and proc.info['name'] == mover_name:
+                processes.append(proc)
+                logger.debug(f"Found mover process by name: PID {proc.pid}")
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            logger.debug(f"Error accessing process: {e}")
+            continue
+
+    # If no processes found by direct checks, fall back to name-based search
+    if not processes:
+        logger.debug(f"No mover processes found by direct checks, falling back to name search")
+        processes = find_process_by_name(mover_name)
+
+    return processes
+
+
+def is_mover_running(mover_path: str = "/usr/local/sbin/mover") -> bool:
+    """
+    Check if the mover process is running.
+
+    Args:
+        mover_path: Path to the mover executable. Defaults to "/usr/local/sbin/mover".
+
+    Returns:
+        bool: True if at least one mover process is running, False otherwise.
+    """
+    processes = find_mover_process(mover_path)
+    return len(processes) > 0

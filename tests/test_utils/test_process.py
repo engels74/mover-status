@@ -10,6 +10,7 @@ import subprocess
 from typing import Generator
 import pytest
 import psutil
+from unittest.mock import patch, MagicMock
 
 # Add the parent directory to the path so we can import the module under test
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -127,3 +128,103 @@ def test_find_process_by_name_case_insensitive(dummy_process: psutil.Process) ->
     if process_name != dummy_process.name():  # Only test if the name actually has different case
         processes = find_process_by_name(process_name, case_sensitive=True)
         assert not any(p.pid == dummy_process.pid for p in processes)
+
+
+@patch('psutil.process_iter')
+def test_find_mover_process_by_exact_path(mock_process_iter: MagicMock) -> None:
+    """Test finding mover process by exact executable path."""
+    from mover_status.utils.process import find_mover_process
+
+    # Create a mock process that matches the mover path
+    mock_process = MagicMock()
+    mock_process.info = {'pid': 12345, 'name': 'mover', 'exe': '/usr/local/sbin/mover'}
+    mock_process.pid = 12345
+
+    # Set up the mock to return our mock process
+    mock_process_iter.return_value = [mock_process]
+
+    # Call the function
+    processes = find_mover_process()
+
+    # Verify the results
+    assert len(processes) == 1
+    assert processes[0].pid == 12345
+
+
+@patch('psutil.process_iter')
+def test_find_mover_process_by_name(mock_process_iter: MagicMock) -> None:
+    """Test finding mover process by name when exe doesn't match."""
+    from mover_status.utils.process import find_mover_process
+
+    # Create a mock process that matches the mover name but has a different exe path
+    mock_process = MagicMock()
+    mock_process.info = {'pid': 12345, 'name': 'mover', 'exe': '/some/other/path'}
+    mock_process.pid = 12345
+
+    # Set up the mock to return our mock process
+    mock_process_iter.return_value = [mock_process]
+
+    # Call the function
+    processes = find_mover_process()
+
+    # Verify the results
+    assert len(processes) == 1
+    assert processes[0].pid == 12345
+
+
+@patch('psutil.process_iter')
+@patch('mover_status.utils.process.find_process_by_name')
+def test_find_mover_process_fallback(mock_find_by_name: MagicMock, mock_process_iter: MagicMock) -> None:
+    """Test fallback to find_process_by_name when no processes found by direct checks."""
+    from mover_status.utils.process import find_mover_process
+
+    # Set up process_iter to return no matching processes
+    mock_process = MagicMock()
+    mock_process.info = {'pid': 12345, 'name': 'not_mover', 'exe': '/not/mover/path'}
+    mock_process_iter.return_value = [mock_process]
+
+    # Set up find_process_by_name to return a mock process
+    mock_result_process = MagicMock()
+    mock_result_process.pid = 54321
+    mock_find_by_name.return_value = [mock_result_process]
+
+    # Call the function
+    processes = find_mover_process()
+
+    # Verify the results
+    assert len(processes) == 1
+    assert processes[0].pid == 54321
+    mock_find_by_name.assert_called_once_with('mover')
+
+
+@patch('mover_status.utils.process.find_mover_process')
+def test_is_mover_running_true(mock_find_mover: MagicMock) -> None:
+    """Test is_mover_running returns True when processes are found."""
+    from mover_status.utils.process import is_mover_running
+
+    # Set up find_mover_process to return a mock process
+    mock_process = MagicMock()
+    mock_find_mover.return_value = [mock_process]
+
+    # Call the function
+    result = is_mover_running()
+
+    # Verify the result
+    assert result is True
+    mock_find_mover.assert_called_once_with('/usr/local/sbin/mover')
+
+
+@patch('mover_status.utils.process.find_mover_process')
+def test_is_mover_running_false(mock_find_mover: MagicMock) -> None:
+    """Test is_mover_running returns False when no processes are found."""
+    from mover_status.utils.process import is_mover_running
+
+    # Set up find_mover_process to return an empty list
+    mock_find_mover.return_value = []
+
+    # Call the function
+    result = is_mover_running()
+
+    # Verify the result
+    assert result is False
+    mock_find_mover.assert_called_once_with('/usr/local/sbin/mover')
