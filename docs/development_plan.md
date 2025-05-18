@@ -157,17 +157,17 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/core/calculation/time.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review the `calculate_etc` function
-  - [ ] **Feature: Calculate Estimated Time of Completion**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: 0% progress (should return "Calculating...")
-      - [ ] Test case: Mid-progress with consistent rate
-      - [ ] Test case: Different platform outputs (Discord vs Telegram format)
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_time.py`
-    - [ ] **Implementation:** Create `calculate_eta` function
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/calculation/time.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review the `calculate_etc` function
+  - [x] **Feature: Calculate Estimated Time of Completion**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: 0% progress (should return "Calculating...")
+      - [x] Test case: Mid-progress with consistent rate
+      - [x] Test case: Different platform outputs (Discord vs Telegram format)
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_calculation/test_time.py`
+    - [x] **Implementation:** Create `calculate_eta` function
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/core/calculation/progress.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review progress calculation logic
@@ -216,8 +216,26 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [ ] **TDD: Define Test Cases:**
       - [ ] Test case: Format message with placeholders
       - [ ] Test case: Handle missing placeholders
+      - [ ] Test case: Integrate with platform-agnostic calculation values
     - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/test_formatter.py`
     - [ ] **Implementation:** Create message formatting functions
+    - [ ] **TDD: Verify Tests Pass**
+    - [ ] **Refactor:** Review and optimize the implementation
+  - [ ] **Feature: Raw Value Formatting**
+    - [ ] **TDD: Define Test Cases:**
+      - [ ] Test case: Format ETA timestamp (convert None to "Calculating...")
+      - [ ] Test case: Format byte values for display
+      - [ ] Test case: Format progress percentage for display
+    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
+    - [ ] **Implementation:** Create common formatter functions for raw calculation values
+    - [ ] **TDD: Verify Tests Pass**
+    - [ ] **Refactor:** Review and optimize the implementation
+  - [ ] **Feature: Modular Formatting Architecture**
+    - [ ] **TDD: Define Test Cases:**
+      - [ ] Test case: Common formatter handles basic conversions before provider-specific formatting
+      - [ ] Test case: Provider formatters use common formatter functions for shared logic
+    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
+    - [ ] **Implementation:** Create modular formatting architecture
     - [ ] **TDD: Verify Tests Pass**
     - [ ] **Refactor:** Review and optimize the implementation
 
@@ -227,8 +245,10 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [ ] **TDD: Define Test Cases:**
       - [ ] Test case: Format message with HTML tags
       - [ ] Test case: Format ETA for Telegram
+      - [ ] Test case: Use common formatter for basic ETA conversion then apply Telegram-specific formatting
+      - [ ] Test case: Format valid timestamp into human-readable format for Telegram
     - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_telegram.py`
-    - [ ] **Implementation:** Create Telegram-specific formatting functions
+    - [ ] **Implementation:** Create Telegram-specific formatting functions that leverage common formatters
     - [ ] **TDD: Verify Tests Pass**
     - [ ] **Refactor:** Review and optimize the implementation
 
@@ -250,9 +270,11 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [ ] **TDD: Define Test Cases:**
       - [ ] Test case: Format message with markdown
       - [ ] Test case: Format ETA for Discord
+      - [ ] Test case: Use common formatter for basic ETA conversion then apply Discord-specific formatting
+      - [ ] Test case: Format valid timestamp into Discord's <t:timestamp:R> format
       - [ ] Test case: Create embed structure
     - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_discord.py`
-    - [ ] **Implementation:** Create Discord-specific formatting functions
+    - [ ] **Implementation:** Create Discord-specific formatting functions that leverage common formatters
     - [ ] **TDD: Verify Tests Pass**
     - [ ] **Refactor:** Review and optimize the implementation
 

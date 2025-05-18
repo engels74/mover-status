@@ -148,6 +148,11 @@ The notification system employs a provider-based architecture using dependency i
 - Handling provider-specific formatting requirements through adapter classes
 - Testing notification logic in isolation with mock providers
 
+The notification formatting follows a layered approach:
+- Common formatters handle basic conversions of raw calculation values (e.g., converting None to "Calculating..." for 0% progress)
+- Provider-specific formatters apply platform-specific formatting (e.g., Discord's timestamp format, Telegram's HTML)
+- This hybrid approach maintains separation of concerns while avoiding code duplication
+
 ### Calculation Logic
 
 The calculation subsystem applies the single responsibility principle by isolating mathematical operations and conversions. Each calculation module has a specific focus:
@@ -156,7 +161,13 @@ The calculation subsystem applies the single responsibility principle by isolati
 - Time calculation handles rate-of-change analysis and ETA prediction
 - Size formatting manages human-readable conversions of byte values
 
-This separation facilitates unit testing and allows algorithm improvements without affecting the monitoring logic.
+Calculation functions return platform-agnostic values (e.g., timestamps, byte counts) rather than formatted strings. This clean separation between calculation and formatting allows:
+
+- Core calculation logic to remain independent of display concerns
+- Consistent handling of special cases (e.g., 0% progress) through common formatters
+- Provider-specific formatters to focus on their unique formatting requirements
+
+This separation facilitates unit testing and allows algorithm improvements without affecting the monitoring logic or notification formatting.
 
 ### Monitoring Loop
 
