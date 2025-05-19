@@ -210,34 +210,34 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/formatter.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review message formatting logic
-  - [ ] **Feature: Common Message Formatting**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Format message with placeholders
-      - [ ] Test case: Handle missing placeholders
-      - [ ] Test case: Integrate with platform-agnostic calculation values
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/test_formatter.py`
-    - [ ] **Implementation:** Create message formatting functions
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
-  - [ ] **Feature: Raw Value Formatting**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Format ETA timestamp (convert None to "Calculating...")
-      - [ ] Test case: Format byte values for display
-      - [ ] Test case: Format progress percentage for display
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
-    - [ ] **Implementation:** Create common formatter functions for raw calculation values
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
-  - [ ] **Feature: Modular Formatting Architecture**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Common formatter handles basic conversions before provider-specific formatting
-      - [ ] Test case: Provider formatters use common formatter functions for shared logic
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
-    - [ ] **Implementation:** Create modular formatting architecture
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/formatter.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review message formatting logic
+  - [x] **Feature: Common Message Formatting**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Format message with placeholders
+      - [x] Test case: Handle missing placeholders
+      - [x] Test case: Integrate with platform-agnostic calculation values
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_notification/test_formatter.py`
+    - [x] **Implementation:** Create message formatting functions
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Raw Value Formatting**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Format ETA timestamp (convert None to "Calculating...")
+      - [x] Test case: Format byte values for display
+      - [x] Test case: Format progress percentage for display
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
+    - [x] **Implementation:** Create common formatter functions for raw calculation values
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Modular Formatting Architecture**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Common formatter handles basic conversions before provider-specific formatting
+      - [x] Test case: Provider formatters use common formatter functions for shared logic
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_notification/test_formatter.py`
+    - [x] **Implementation:** Create modular formatting architecture
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/telegram/formatter.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review Telegram-specific formatting
