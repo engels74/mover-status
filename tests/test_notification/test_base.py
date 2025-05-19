@@ -3,6 +3,7 @@ Tests for the abstract notification provider base class.
 """
 
 import pytest
+from typing import override
 
 # Import the module to test
 from mover_status.notification.base import NotificationProvider
@@ -17,8 +18,6 @@ class TestNotificationProvider:
         with pytest.raises(TypeError):
             # We expect this to fail since it's an abstract class
             # The type ignore is needed because mypy would catch this at compile time
-            # We're intentionally trying to instantiate an abstract class to test that it fails
-            # pyright:ignore[reportAbstractUsage]
             _ = NotificationProvider("test_provider")  # type: ignore
 
     def test_required_methods_defined(self) -> None:
@@ -34,8 +33,8 @@ class TestNotificationProvider:
     def test_concrete_implementation(self) -> None:
         """Test that a concrete implementation can be instantiated."""
         # Create a concrete implementation of the abstract class
-        # pyright:ignore[reportImplicitOverride]
         class ConcreteProvider(NotificationProvider):
+            @override
             def send_notification(self, message: str, **kwargs: object) -> bool:
                 """
                 Send a notification with the given message.
@@ -44,6 +43,7 @@ class TestNotificationProvider:
                 """
                 return True
 
+            @override
             def validate_config(self) -> list[str]:
                 """
                 Validate the provider configuration.
