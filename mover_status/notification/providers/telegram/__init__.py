@@ -11,9 +11,11 @@ from .formatter import (
     format_telegram_message,
     format_timestamp_for_telegram,
 )
+from .provider import TelegramProvider
 
 __all__ = [
     "TELEGRAM_DEFAULTS",
+    "TelegramProvider",
     "format_html_text",
     "format_telegram_eta",
     "format_telegram_message",

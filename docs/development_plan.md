@@ -252,17 +252,17 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/telegram/provider.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review Telegram notification logic
-  - [ ] **Feature: Telegram Notification Provider**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Send notification to Telegram
-      - [ ] Test case: Handle API errors
-      - [ ] Test case: Validate configuration
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/providers/test_telegram.py`
-    - [ ] **Implementation:** Create `TelegramProvider` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/telegram/provider.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review Telegram notification logic
+  - [x] **Feature: Telegram Notification Provider**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Send notification to Telegram
+      - [x] Test case: Handle API errors
+      - [x] Test case: Validate configuration
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_notification/providers/test_telegram.py`
+    - [x] **Implementation:** Create `TelegramProvider` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/discord/formatter.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review Discord-specific formatting
