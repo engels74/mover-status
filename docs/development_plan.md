@@ -264,19 +264,19 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/discord/formatter.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review Discord-specific formatting
-  - [ ] **Feature: Discord Message Formatting**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Format message with markdown
-      - [ ] Test case: Format ETA for Discord
-      - [ ] Test case: Use common formatter for basic ETA conversion then apply Discord-specific formatting
-      - [ ] Test case: Format valid timestamp into Discord's <t:timestamp:R> format
-      - [ ] Test case: Create embed structure
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_discord.py`
-    - [ ] **Implementation:** Create Discord-specific formatting functions that leverage common formatters
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/discord/formatter.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review Discord-specific formatting
+  - [x] **Feature: Discord Message Formatting**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Format message with markdown
+      - [x] Test case: Format ETA for Discord
+      - [x] Test case: Use common formatter for basic ETA conversion then apply Discord-specific formatting
+      - [x] Test case: Format valid timestamp into Discord's <t:timestamp:R> format
+      - [x] Test case: Create embed structure
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_discord.py`
+    - [x] **Implementation:** Create Discord-specific formatting functions that leverage common formatters
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/discord/provider.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review Discord notification logic

@@ -5,5 +5,19 @@ This package provides the implementation of the Discord notification provider.
 """
 
 from .defaults import DISCORD_DEFAULTS
+from .formatter import (
+    format_discord_message,
+    format_discord_eta,
+    format_markdown_text,
+    format_timestamp_for_discord,
+    create_embed,
+)
 
-__all__ = ["DISCORD_DEFAULTS"]
+__all__ = [
+    "DISCORD_DEFAULTS",
+    "format_discord_message",
+    "format_discord_eta",
+    "format_markdown_text",
+    "format_timestamp_for_discord",
+    "create_embed",
+]
