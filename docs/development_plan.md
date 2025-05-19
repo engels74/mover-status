@@ -185,17 +185,17 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 5: Version Checking
 
-- [ ] **Module: `mover_status/core/version.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review version checking logic
-  - [ ] **Feature: Check Latest Version**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Get latest version from GitHub
-      - [ ] Test case: Compare with current version
-      - [ ] Test case: Handle network errors
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_version.py`
-    - [ ] **Implementation:** Create version checking functions
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/version.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review version checking logic
+  - [x] **Feature: Check Latest Version**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Get latest version from GitHub
+      - [x] Test case: Compare with current version
+      - [x] Test case: Handle network errors
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_version.py`
+    - [x] **Implementation:** Create version checking functions
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 ## Phase 6: Notification System
 
