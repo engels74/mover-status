@@ -7,7 +7,7 @@ the formatter module and the provider implementation.
 
 import time
 from datetime import datetime
-from typing import cast
+from typing import TypedDict, NotRequired
 from unittest.mock import patch, MagicMock
 
 import requests
@@ -95,6 +95,26 @@ class TestTelegramFormatter:
         assert ":" in formatted_timestamp  # Contains time with colon
         assert " on " in formatted_timestamp  # Contains " on " separator
         assert "(" in formatted_timestamp and ")" in formatted_timestamp  # Contains timezone in parentheses
+
+
+class TelegramMessageResult(TypedDict):
+    """Type definition for Telegram message result data."""
+    message_id: int
+
+
+class TelegramResponseDict(TypedDict):
+    """Type definition for Telegram API response."""
+    ok: bool
+    result: NotRequired[TelegramMessageResult]
+    description: NotRequired[str]
+
+
+class TelegramRequestJSON(TypedDict):
+    """Type definition for Telegram request JSON data."""
+    chat_id: str
+    text: str
+    parse_mode: str
+    disable_notification: bool
 
 
 class TestTelegramProvider:
@@ -212,12 +232,23 @@ class TestTelegramProvider:
         }
         provider = TelegramProvider(config)
 
+        # Create expected request JSON for type checking
+        expected_request_json: TelegramRequestJSON = {
+            "chat_id": "12345678",
+            "text": "Test message",
+            "parse_mode": "HTML", 
+            "disable_notification": False
+        }
+
         # Mock the requests.post method to return a successful response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"ok": True, "result": {"message_id": 123}}
+        mock_response.json.return_value = TelegramResponseDict(
+            ok=True, 
+            result=TelegramMessageResult(message_id=123)
+        )
 
-        with patch("requests.post", return_value=mock_response):
+        with patch("requests.post", return_value=mock_response) as mock_post:
             # Send a notification
             result = provider.send_notification("Test message")
 
@@ -225,15 +256,15 @@ class TestTelegramProvider:
             assert result is True
 
             # Check that requests.post was called with the correct arguments
-            # We need to cast the mock to Any to access its attributes
-            mock_post = cast(MagicMock, requests.post)
             mock_post.assert_called_once()
-            args, kwargs = mock_post.call_args
-            assert "https://api.telegram.org/bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11/sendMessage" in args
-            assert kwargs["json"]["chat_id"] == "12345678"
-            assert kwargs["json"]["text"] == "Test message"
-            assert kwargs["json"]["parse_mode"] == "HTML"
-            assert kwargs["json"]["disable_notification"] is False
+            
+            # Extract the URL from the mock call
+            api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
+            mock_post.assert_called_with(
+                api_url,
+                json=expected_request_json,
+                timeout=10
+            )
 
     def test_send_notification_http_error(self) -> None:
         """Test handling HTTP errors when sending a notification."""
@@ -293,7 +324,10 @@ class TestTelegramProvider:
         # Mock the requests.post method to return an error response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"ok": False, "description": "Bad Request: chat not found"}
+        mock_response.json.return_value = TelegramResponseDict(
+            ok=False, 
+            description="Bad Request: chat not found"
+        )
 
         with patch("requests.post", return_value=mock_response):
             # Send a notification
@@ -315,12 +349,23 @@ class TestTelegramProvider:
         }
         provider = TelegramProvider(config)
 
+        # Create expected request JSON for type checking
+        expected_request_json: TelegramRequestJSON = {
+            "chat_id": "12345678",
+            "text": "Progress: <b>50%</b> complete",
+            "parse_mode": "HTML", 
+            "disable_notification": False
+        }
+
         # Mock the requests.post method to return a successful response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"ok": True, "result": {"message_id": 123}}
+        mock_response.json.return_value = TelegramResponseDict(
+            ok=True, 
+            result=TelegramMessageResult(message_id=123)
+        )
 
-        with patch("requests.post", return_value=mock_response):
+        with patch("requests.post", return_value=mock_response) as mock_post:
             # Send a notification with raw values
             raw_values: RawValues = {"percent": 50}
             result = provider.send_notification("", raw_values=raw_values)
@@ -329,12 +374,12 @@ class TestTelegramProvider:
             assert result is True
 
             # Check that requests.post was called with the correct arguments
-            # We need to cast the mock to Any to access its attributes
-            mock_post = cast(MagicMock, requests.post)
             mock_post.assert_called_once()
-            args, kwargs = mock_post.call_args
-            assert "https://api.telegram.org/bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11/sendMessage" in args
-            assert kwargs["json"]["chat_id"] == "12345678"
-            assert kwargs["json"]["text"] == "Progress: <b>50%</b> complete"
-            assert kwargs["json"]["parse_mode"] == "HTML"
-            assert kwargs["json"]["disable_notification"] is False
+            
+            # Extract the URL from the mock call
+            api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
+            mock_post.assert_called_with(
+                api_url,
+                json=expected_request_json,
+                timeout=10
+            )
