@@ -6,11 +6,11 @@ the formatter module and the provider implementation.
 """
 
 # pyright: reportTypedDictNotRequiredAccess=false
+# pyright: reportAny=false
 
 import time
 from unittest.mock import patch, MagicMock
 
-import pytest
 import requests
 
 from mover_status.notification.formatter import RawValues
@@ -318,7 +318,7 @@ class TestDiscordProvider:
         mock_post.assert_called_once()
 
         # Check that the request was made with the correct URL
-        args, kwargs = mock_post.call_args
+        _, kwargs = mock_post.call_args
         assert kwargs["url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
 
     @patch("requests.post")
@@ -357,7 +357,7 @@ class TestDiscordProvider:
         mock_post.assert_called_once()
 
         # Check that the request was made with the correct data
-        args, kwargs = mock_post.call_args
+        _, kwargs = mock_post.call_args
         assert "Progress: 50%" in str(kwargs["json"])
         assert "1.0 GB" in str(kwargs["json"])
 
