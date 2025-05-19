@@ -7,6 +7,17 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from collections.abc import Generator
 from unittest.mock import patch
+from typing import cast, TypedDict, Literal
+
+from tests.test_utils.mock_types import CallArgs
+
+
+class HandlerKwargs(TypedDict, total=False):
+    """Type definition for handler keyword arguments."""
+    mode: Literal['a', 'w']
+    maxBytes: int
+    backupCount: int
+    # Add any other possible keyword arguments here
 
 import pytest
 
@@ -328,7 +339,9 @@ class TestLogger:
 
                 # Verify FileHandler was called with mode='a'
                 mock_file_handler.assert_called_once()
-                _, kwargs = mock_file_handler.call_args
+                call_args = cast(CallArgs, mock_file_handler.call_args)
+                _, kwargs = call_args
+                # Use direct dictionary access instead of casting
                 assert kwargs.get('mode') == 'a'
 
             # Test write/overwrite mode ('w')
@@ -346,7 +359,9 @@ class TestLogger:
 
                 # Verify FileHandler was called with mode='w'
                 mock_file_handler.assert_called_once()
-                _, kwargs = mock_file_handler.call_args
+                call_args = cast(CallArgs, mock_file_handler.call_args)
+                _, kwargs = call_args
+                # Use direct dictionary access instead of casting
                 assert kwargs.get('mode') == 'w'
 
     def test_rotating_file_handler_modes(self) -> None:
@@ -371,7 +386,9 @@ class TestLogger:
 
                 # Verify RotatingFileHandler was called with mode='a'
                 mock_handler.assert_called_once()
-                _, kwargs = mock_handler.call_args
+                call_args = cast(CallArgs, mock_handler.call_args)
+                _, kwargs = call_args
+                # Use direct dictionary access instead of casting
                 assert kwargs.get('mode') == 'a'
 
             # Test write/overwrite mode ('w')
@@ -389,7 +406,9 @@ class TestLogger:
 
                 # Verify RotatingFileHandler was called with mode='w'
                 mock_handler.assert_called_once()
-                _, kwargs = mock_handler.call_args
+                call_args = cast(CallArgs, mock_handler.call_args)
+                _, kwargs = call_args
+                # Use direct dictionary access instead of casting
                 assert kwargs.get('mode') == 'w'
 
     def test_configure_from_dict(self, temp_log_file: Path) -> None:

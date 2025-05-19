@@ -4,13 +4,51 @@ Tests for the process utility module.
 This module contains tests for the process detection functionality.
 """
 
+# pyright: reportAny=false
+
 import os
 import sys
 import subprocess
 from collections.abc import Generator
+from typing import cast, TypedDict, Protocol
 import pytest
 import psutil
 from unittest.mock import patch, MagicMock
+
+
+class ProcessInfo(TypedDict, total=False):
+    """Type definition for process info dictionary."""
+    name: str
+    pid: int
+    exe: str
+
+
+class InfoGetItem(Protocol):
+    """Protocol for __getitem__ method."""
+    def __call__(self, key: str) -> str | int: ...
+    side_effect: Exception | None
+
+
+class InfoProtocol(Protocol):
+    """Protocol for process info dictionary-like objects."""
+    __getitem__: InfoGetItem
+    def __contains__(self, key: str) -> bool: ...
+
+
+class MockDebugMethod(Protocol):
+    """Protocol for mock debug method."""
+    def __call__(self, msg: str) -> None: ...
+    def assert_any_call(self, msg: str) -> None: ...
+
+
+class MockLoggerProtocol(Protocol):
+    """Protocol for mock logger objects."""
+    debug: MockDebugMethod
+    info: MockDebugMethod
+    warning: MockDebugMethod
+    error: MockDebugMethod
+    critical: MockDebugMethod
+    exception: MockDebugMethod
 
 # Add the parent directory to the path so we can import the module under test
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -258,15 +296,21 @@ def test_find_process_by_name_exception_handling() -> None:
 
     # First process raises NoSuchProcess
     mock_process_no_such = MagicMock()
-    mock_process_no_such.info.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+    mock_info_no_such = MagicMock(spec=InfoProtocol)
+    mock_info_no_such.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+    mock_process_no_such.info = mock_info_no_such
 
     # Second process raises AccessDenied
     mock_process_access_denied = MagicMock()
-    mock_process_access_denied.info.__getitem__.side_effect = psutil.AccessDenied()
+    mock_info_access_denied = MagicMock(spec=InfoProtocol)
+    mock_info_access_denied.__getitem__.side_effect = psutil.AccessDenied()
+    mock_process_access_denied.info = mock_info_access_denied
 
     # Third process raises ZombieProcess
     mock_process_zombie = MagicMock()
-    mock_process_zombie.info.__getitem__.side_effect = psutil.ZombieProcess(pid=5678)
+    mock_info_zombie = MagicMock(spec=InfoProtocol)
+    mock_info_zombie.__getitem__.side_effect = psutil.ZombieProcess(pid=5678)
+    mock_process_zombie.info = mock_info_zombie
 
     # Set up process_iter to return our mock processes
     with patch('psutil.process_iter', return_value=[
@@ -291,7 +335,9 @@ def test_find_process_by_name_with_exception(_: MagicMock) -> None:
 
     # Create a mock process that raises an exception
     mock_process = MagicMock()
-    mock_process.info.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+    mock_info = MagicMock(spec=InfoProtocol)
+    mock_info.__getitem__.side_effect = psutil.NoSuchProcess(pid=1234)
+    mock_process.info = mock_info
 
     # Set up process_iter to return our mock process
     with patch('psutil.process_iter', return_value=[mock_process]):
@@ -318,14 +364,19 @@ def test_find_mover_process_with_exception(mock_logger: MagicMock) -> None:
             return 'mover'  # This will make the name check pass
         return None
 
-    mock_process.info.__getitem__.side_effect = mock_getitem
+    # Create a properly typed info object
+    mock_info = MagicMock(spec=InfoProtocol)
+    mock_info.__getitem__.side_effect = mock_getitem
 
     # Define a proper __contains__ method
     def mock_contains(_self: object, key: str) -> bool:
         return key in ('name', 'exe')
 
     # Assign the method
-    mock_process.info.__contains__ = mock_contains
+    mock_info.__contains__ = mock_contains
+
+    # Assign the info object to the process
+    mock_process.info = mock_info
     mock_process.pid = 1234
 
     # Set up process_iter to return our mock process
@@ -339,7 +390,8 @@ def test_find_mover_process_with_exception(mock_logger: MagicMock) -> None:
             assert len(processes) == 0
 
             # Verify that the logger was called with the error message
-            mock_logger.debug.assert_any_call(f"Error accessing process: {psutil.NoSuchProcess(pid=1234)}")
+            mock_logger_typed = cast(MockLoggerProtocol, mock_logger)
+            mock_logger_typed.debug.assert_any_call(f"Error accessing process: {psutil.NoSuchProcess(pid=1234)}")
 
             # Verify that the fallback message was logged
-            mock_logger.debug.assert_any_call("No mover processes found by direct checks, falling back to name search")
+            mock_logger_typed.debug.assert_any_call("No mover processes found by direct checks, falling back to name search")
