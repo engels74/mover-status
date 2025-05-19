@@ -5,5 +5,17 @@ This package provides the implementation of the Telegram notification provider.
 """
 
 from .defaults import TELEGRAM_DEFAULTS
+from .formatter import (
+    format_html_text,
+    format_telegram_eta,
+    format_telegram_message,
+    format_timestamp_for_telegram,
+)
 
-__all__ = ["TELEGRAM_DEFAULTS"]
+__all__ = [
+    "TELEGRAM_DEFAULTS",
+    "format_html_text",
+    "format_telegram_eta",
+    "format_telegram_message",
+    "format_timestamp_for_telegram",
+]

@@ -239,18 +239,18 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/telegram/formatter.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review Telegram-specific formatting
-  - [ ] **Feature: Telegram Message Formatting**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Format message with HTML tags
-      - [ ] Test case: Format ETA for Telegram
-      - [ ] Test case: Use common formatter for basic ETA conversion then apply Telegram-specific formatting
-      - [ ] Test case: Format valid timestamp into human-readable format for Telegram
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_telegram.py`
-    - [ ] **Implementation:** Create Telegram-specific formatting functions that leverage common formatters
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/telegram/formatter.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review Telegram-specific formatting
+  - [x] **Feature: Telegram Message Formatting**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Format message with HTML tags
+      - [x] Test case: Format ETA for Telegram
+      - [x] Test case: Use common formatter for basic ETA conversion then apply Telegram-specific formatting
+      - [x] Test case: Format valid timestamp into human-readable format for Telegram
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_telegram.py`
+    - [x] **Implementation:** Create Telegram-specific formatting functions that leverage common formatters
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/telegram/provider.py`**
   - [ ] **Analyze `moverStatus.sh`:** Review Telegram notification logic
