@@ -8,6 +8,10 @@ the formatter module and the provider implementation.
 # pyright: reportTypedDictNotRequiredAccess=false
 
 import time
+from unittest.mock import patch, MagicMock
+
+import pytest
+import requests
 
 from mover_status.notification.formatter import RawValues
 from mover_status.notification.providers.discord.formatter import (
@@ -16,6 +20,10 @@ from mover_status.notification.providers.discord.formatter import (
     format_markdown_text,
     format_timestamp_for_discord,
     create_embed,
+)
+from mover_status.notification.providers.discord.provider import (
+    DiscordProvider,
+    DiscordConfig,
 )
 
 
@@ -187,3 +195,253 @@ class TestDiscordFormatter:
         assert "<t:" in embed["description"]  # Contains Discord timestamp format
         assert embed["color"] == 16753920
         assert embed["footer"]["text"] == "Version: v0.1.0"
+
+
+class TestDiscordProvider:
+    """Test cases for the Discord notification provider."""
+
+    def test_init(self) -> None:
+        """Test initialization of the Discord provider."""
+        # Create a config dictionary
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+            "message_template": "Test message: {percent}%",
+            "use_embeds": True,
+            "embed_title": "Test Title",
+            "embed_colors": {
+                "low_progress": 16711680,  # Red
+                "mid_progress": 16776960,  # Yellow
+                "high_progress": 65280,    # Green
+                "complete": 65535,         # Cyan
+            },
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Check that the provider was initialized correctly
+        assert provider.name == "discord"
+        assert provider.enabled is True
+        assert provider.webhook_url == "https://discord.com/api/webhooks/123456789/abcdefg"
+        assert provider.username == "Test Bot"
+        assert provider.message_template == "Test message: {percent}%"
+        assert provider.use_embeds is True
+        assert provider.embed_title == "Test Title"
+        assert provider.embed_colors["low_progress"] == 16711680
+        assert provider.embed_colors["mid_progress"] == 16776960
+        assert provider.embed_colors["high_progress"] == 65280
+        assert provider.embed_colors["complete"] == 65535
+
+    def test_validate_config_valid(self) -> None:
+        """Test validation of a valid configuration."""
+        # Create a valid config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Validate the config
+        errors = provider.validate_config()
+
+        # Check that there are no errors
+        assert len(errors) == 0
+
+    def test_validate_config_invalid_webhook_url(self) -> None:
+        """Test validation of an invalid webhook URL."""
+        # Create a config with an invalid webhook URL
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "invalid-url",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Validate the config
+        errors = provider.validate_config()
+
+        # Check that there is an error for the webhook URL
+        assert len(errors) == 1
+        assert "webhook_url" in errors[0].lower()
+
+    def test_validate_config_missing_webhook_url(self) -> None:
+        """Test validation of a missing webhook URL."""
+        # Create a config with a missing webhook URL
+        config: DiscordConfig = {
+            "enabled": True,
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Validate the config
+        errors = provider.validate_config()
+
+        # Check that there is an error for the missing webhook URL
+        assert len(errors) == 1
+        assert "webhook_url" in errors[0].lower()
+
+    @patch("requests.post")
+    def test_send_notification_success(self, mock_post: MagicMock) -> None:
+        """Test sending a notification successfully."""
+        # Create a mock response
+        mock_response = MagicMock()
+        mock_response.status_code = 204  # Discord returns 204 No Content on success
+        mock_post.return_value = mock_response
+
+        # Create a config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+            "message_template": "Test message: {percent}%",
+            "use_embeds": True,
+            "embed_title": "Test Title",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Send a notification
+        result = provider.send_notification("Test message")
+
+        # Check that the notification was sent successfully
+        assert result is True
+        mock_post.assert_called_once()
+
+        # Check that the request was made with the correct URL
+        args, kwargs = mock_post.call_args
+        assert kwargs["url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
+
+    @patch("requests.post")
+    def test_send_notification_with_raw_values(self, mock_post: MagicMock) -> None:
+        """Test sending a notification with raw values."""
+        # Create a mock response
+        mock_response = MagicMock()
+        mock_response.status_code = 204  # Discord returns 204 No Content on success
+        mock_post.return_value = mock_response
+
+        # Create a config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+            "message_template": "Progress: {percent}%, Remaining: {remaining_data}",
+            "use_embeds": True,
+            "embed_title": "Test Title",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Define raw values
+        raw_values: RawValues = {
+            "percent": 50,
+            "remaining_bytes": 1073741824,  # 1 GB
+            "eta": None,
+        }
+
+        # Send a notification with raw values
+        result = provider.send_notification("", raw_values=raw_values)
+
+        # Check that the notification was sent successfully
+        assert result is True
+        mock_post.assert_called_once()
+
+        # Check that the request was made with the correct data
+        args, kwargs = mock_post.call_args
+        assert "Progress: 50%" in str(kwargs["json"])
+        assert "1.0 GB" in str(kwargs["json"])
+
+    @patch("requests.post")
+    def test_send_notification_api_error(self, mock_post: MagicMock) -> None:
+        """Test handling of API errors when sending a notification."""
+        # Create a mock response for an API error
+        mock_response = MagicMock()
+        mock_response.status_code = 400  # Bad Request
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("400 Bad Request")
+        mock_post.return_value = mock_response
+
+        # Create a config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Send a notification
+        result = provider.send_notification("Test message")
+
+        # Check that the notification failed
+        assert result is False
+        mock_post.assert_called_once()
+
+    @patch("requests.post")
+    def test_send_notification_network_error(self, mock_post: MagicMock) -> None:
+        """Test handling of network errors when sending a notification."""
+        # Create a mock for a network error
+        mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+
+        # Create a config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Send a notification
+        result = provider.send_notification("Test message")
+
+        # Check that the notification failed
+        assert result is False
+        mock_post.assert_called_once()
+
+    def test_send_notification_disabled(self) -> None:
+        """Test that notifications are not sent when the provider is disabled."""
+        # Create a config with the provider disabled
+        config: DiscordConfig = {
+            "enabled": False,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Send a notification
+        result = provider.send_notification("Test message")
+
+        # Check that the notification was not sent
+        assert result is False
+
+    def test_send_notification_invalid_config(self) -> None:
+        """Test that notifications are not sent with an invalid configuration."""
+        # Create an invalid config
+        config: DiscordConfig = {
+            "enabled": True,
+            "webhook_url": "invalid-url",
+            "username": "Test Bot",
+        }
+
+        # Initialize the provider
+        provider = DiscordProvider(config)
+
+        # Send a notification
+        result = provider.send_notification("Test message")
+
+        # Check that the notification was not sent
+        assert result is False

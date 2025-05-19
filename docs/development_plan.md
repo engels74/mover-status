@@ -278,17 +278,17 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/discord/provider.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review Discord notification logic
-  - [ ] **Feature: Discord Notification Provider**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Send notification to Discord webhook
-      - [ ] Test case: Handle API errors
-      - [ ] Test case: Validate webhook URL
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_notification/providers/test_discord.py`
-    - [ ] **Implementation:** Create `DiscordProvider` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/discord/provider.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review Discord notification logic
+  - [x] **Feature: Discord Notification Provider**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Send notification to Discord webhook
+      - [x] Test case: Handle API errors
+      - [x] Test case: Validate webhook URL
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_notification/providers/test_discord.py`
+    - [x] **Implementation:** Create `DiscordProvider` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/manager.py`**
   - [ ] **Analyze Requirements:** Define notification management needs
