@@ -3,16 +3,25 @@ Tests for the dry run simulation module.
 
 This module contains tests for the dry run functionality, which simulates
 a monitoring session without actually monitoring the mover process.
-
-Note: This file contains intentional type warnings related to MagicMock objects,
-which are expected and can be safely ignored in test files.
 """
 
+# pyright: reportAny=false
+
 from unittest.mock import MagicMock, patch
-from typing import override
+from typing import Protocol, override
 
 from mover_status.notification.manager import NotificationManager
 from mover_status.notification.base import NotificationProvider
+from tests.test_utils.mock_types import CallArgs
+
+
+class MockNotificationManager(Protocol):
+    """Protocol for mocked NotificationManager."""
+    def send_notification(self, message: str, **kwargs: object) -> bool: ...
+    def assert_called_once(self) -> None: ...
+    def assert_not_called(self) -> None: ...
+    call_args: CallArgs
+    call_count: int
 
 
 class TestDryRunSimulation:
@@ -49,7 +58,7 @@ class TestDryRunSimulation:
         notification_manager.send_notification.assert_called_once()
 
         # Verify the raw values in the notification
-        args, kwargs = notification_manager.send_notification.call_args
+        _, kwargs = notification_manager.send_notification.call_args
         assert "raw_values" in kwargs
         raw_values = kwargs["raw_values"]
         assert "progress" in raw_values
@@ -93,7 +102,7 @@ class TestDryRunSimulation:
         notification_manager.send_notification.assert_called_once()
 
         # Verify the raw values in the notification
-        args, kwargs = notification_manager.send_notification.call_args
+        _, kwargs = notification_manager.send_notification.call_args
         raw_values = kwargs["raw_values"]
         assert raw_values["progress"] == 75
         assert raw_values["remaining_size"] == 250 * 1024 * 1024
