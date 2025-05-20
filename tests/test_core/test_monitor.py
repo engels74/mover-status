@@ -32,6 +32,8 @@ class TestMonitorSession:
         assert session.last_notification_progress == -1
         assert session.poll_interval == 1.0
         assert session.max_wait_time == 300
+        assert session.progress_history == []
+        assert session.total_data_moved == 0
 
     def test_init_custom_values(self) -> None:
         """Test that MonitorSession initializes with custom values."""
@@ -58,6 +60,8 @@ class TestMonitorSession:
         assert session.last_notification_progress == -1
         assert session.poll_interval == 5.0
         assert session.max_wait_time == 600
+        assert session.progress_history == []
+        assert session.total_data_moved == 0
 
     @patch("mover_status.core.monitor.is_mover_running")
     @patch("mover_status.core.monitor.get_directory_size")
@@ -78,6 +82,8 @@ class TestMonitorSession:
         assert session.last_check_time is not None
         assert session.last_size == 1000
         assert session.last_progress == 0
+        assert session.progress_history == [(session.start_time, 0)]
+        assert session.total_data_moved == 0
 
         # Verify mocks were called correctly
         mock_is_mover_running.assert_called_once_with("/usr/local/sbin/mover")
@@ -111,6 +117,8 @@ class TestMonitorSession:
         session.last_check_time = time.time()
         session.last_size = 500
         session.last_progress = 50
+        session.progress_history = [(session.start_time, 0), (session.last_check_time, 50)]
+        session.total_data_moved = 500
 
         # Stop monitoring
         session.stop_monitoring()
@@ -122,6 +130,8 @@ class TestMonitorSession:
         assert session.last_check_time is not None
         assert session.last_size == 500
         assert session.last_progress == 50
+        assert len(session.progress_history) == 2
+        assert session.total_data_moved == 500
 
     def test_reset_monitoring(self) -> None:
         """Test resetting the monitoring session."""
@@ -134,6 +144,8 @@ class TestMonitorSession:
         session.last_size = 500
         session.last_progress = 50
         session.last_notification_progress = 50
+        session.progress_history = [(session.start_time, 0), (session.last_check_time, 50)]
+        session.total_data_moved = 500
 
         # Reset monitoring
         session.reset_monitoring()
@@ -146,6 +158,8 @@ class TestMonitorSession:
         assert session.last_size is None
         assert session.last_progress is None
         assert session.last_notification_progress == -1
+        assert session.progress_history == []
+        assert session.total_data_moved == 0
 
     @patch("mover_status.core.monitor.get_directory_size")
     @patch("mover_status.core.monitor.calculate_progress")
@@ -163,6 +177,8 @@ class TestMonitorSession:
         session.last_check_time = time.time() - 10  # 10 seconds ago
         session.last_size = 600
         session.last_progress = 40
+        session.progress_history = [(session.start_time, 0), (session.last_check_time, 40)]
+        session.total_data_moved = 400
 
         # Update progress
         session.update_progress()
@@ -171,6 +187,9 @@ class TestMonitorSession:
         assert session.last_size == 500
         assert session.last_progress == 50
         assert session.last_check_time is not None
+        assert len(session.progress_history) == 3
+        assert session.progress_history[2][1] == 50
+        assert session.total_data_moved == 500
 
         # Verify mocks were called correctly
         mock_get_dir_size.assert_called_once_with("/mnt/cache", [])
@@ -309,3 +328,91 @@ class TestMonitorSession:
 
         # Verify mock was called correctly
         mock_get_dir_size.assert_called_once_with("/custom/cache", ["/custom/cache/exclude"])
+
+    @patch("mover_status.core.monitor.time.time")
+    @patch("mover_status.core.monitor.calculate_eta")
+    def test_track_progress_over_time(self, mock_calculate_eta: MagicMock, mock_time: MagicMock) -> None:
+        """Test tracking progress over time."""
+        # Setup mocks
+        current_time = 1000.0
+        mock_time.return_value = current_time
+        mock_calculate_eta.return_value = current_time + 300  # ETA is 5 minutes from now
+
+        # Create session with monitoring values set
+        session = MonitorSession()
+        session.is_monitoring = True
+        session.initial_size = 1000
+        session.start_time = current_time - 300  # Started 5 minutes ago
+        session.last_check_time = current_time - 60  # Last check was 1 minute ago
+        session.last_size = 600
+        session.last_progress = 40
+        session.progress_history = [
+            (session.start_time, 0),
+            (session.start_time + 60, 10),
+            (session.start_time + 120, 20),
+            (session.start_time + 180, 30),
+            (session.last_check_time, 40)
+        ]
+        session.total_data_moved = 400
+
+        # Call the method
+        eta = session.get_estimated_completion_time()
+
+        # Verify the result
+        assert eta == current_time + 300
+
+        # Verify mocks were called correctly
+        mock_calculate_eta.assert_called_once_with(session.start_time, current_time, 40)
+
+    def test_get_progress_rate(self) -> None:
+        """Test calculating the progress rate."""
+        # Create session with progress history
+        session = MonitorSession()
+        session.is_monitoring = True
+        session.start_time = 1000.0
+        session.progress_history = [
+            (1000.0, 0),    # Start time, 0%
+            (1060.0, 10),   # 1 minute later, 10%
+            (1120.0, 20),   # 2 minutes later, 20%
+            (1180.0, 30),   # 3 minutes later, 30%
+            (1240.0, 40)    # 4 minutes later, 40%
+        ]
+
+        # Call the method
+        rate = session.get_progress_rate()
+
+        # Verify the result (40% in 4 minutes = 10% per minute = 0.167% per second)
+        assert 0.16 <= rate <= 0.17
+
+        # Test with empty history
+        session.progress_history = []
+        assert session.get_progress_rate() == 0.0
+
+        # Test with only one entry
+        session.progress_history = [(1000.0, 0)]
+        assert session.get_progress_rate() == 0.0
+
+    def test_get_notification_thresholds(self) -> None:
+        """Test determining notification thresholds."""
+        # Create session with notification increment of 25%
+        session = MonitorSession(notification_increment=25)
+
+        # Call the method
+        thresholds = session.get_notification_thresholds()
+
+        # Verify the result
+        assert thresholds == [0, 25, 50, 75, 100]
+
+        # Test with different increment
+        session.notification_increment = 10
+        thresholds = session.get_notification_thresholds()
+        assert thresholds == [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+        # Test with invalid increment (should default to 25%)
+        session.notification_increment = 0
+        thresholds = session.get_notification_thresholds()
+        assert thresholds == [0, 25, 50, 75, 100]
+
+        session.notification_increment = -10
+        thresholds = session.get_notification_thresholds()
+        assert thresholds == [0, 25, 50, 75, 100]

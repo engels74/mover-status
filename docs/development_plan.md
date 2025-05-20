@@ -328,15 +328,15 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Progress Tracking**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Track progress over time
-      - [ ] Test case: Calculate percentage complete
-      - [ ] Test case: Determine notification thresholds
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
-    - [ ] **Implementation:** Add progress tracking methods
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Progress Tracking**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Track progress over time
+      - [x] Test case: Calculate percentage complete
+      - [x] Test case: Determine notification thresholds
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
+    - [x] **Implementation:** Add progress tracking methods
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
   - [ ] **Feature: Main Monitoring Loop**
     - [ ] **TDD: Define Test Cases:**

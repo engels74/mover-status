@@ -11,6 +11,7 @@ import logging
 from mover_status.utils.process import is_mover_running
 from mover_status.utils.data import get_directory_size
 from mover_status.core.calculation.progress import calculate_progress
+from mover_status.core.calculation.time import calculate_eta
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class MonitorSession:
         last_size: Size of the cache directory at the last check.
         last_progress: Progress percentage at the last check.
         last_notification_progress: Progress percentage at the last notification.
+        progress_history: List of (timestamp, progress) tuples tracking progress over time.
+        total_data_moved: Total bytes moved from cache to array.
     """
 
     def __init__(
@@ -76,6 +79,8 @@ class MonitorSession:
         self.last_size: int | None = None
         self.last_progress: int | None = None
         self.last_notification_progress: int = -1  # Initialize to -1 to ensure 0% notification
+        self.progress_history: list[tuple[float, int]] = []
+        self.total_data_moved: int = 0
 
     def start_monitoring(self) -> None:
         """
@@ -105,6 +110,8 @@ class MonitorSession:
         self.last_check_time = current_time
         self.last_size = initial_size
         self.last_progress = 0
+        self.progress_history = [(current_time, 0)]
+        self.total_data_moved = 0
 
         logger.info(f"Started monitoring mover process. Initial cache size: {initial_size} bytes")
 
@@ -132,6 +139,8 @@ class MonitorSession:
         self.last_size = None
         self.last_progress = None
         self.last_notification_progress = -1
+        self.progress_history = []
+        self.total_data_moved = 0
 
         logger.info("Reset monitoring session")
 
@@ -140,7 +149,8 @@ class MonitorSession:
         Update the progress of the monitoring session.
 
         This method calculates the current size of the cache directory and
-        updates the progress percentage.
+        updates the progress percentage. It also updates the progress history
+        and total data moved for tracking progress over time.
 
         Raises:
             RuntimeError: If the monitoring session is not active.
@@ -165,7 +175,13 @@ class MonitorSession:
         self.last_progress = progress
         self.last_check_time = current_time
 
-        logger.debug(f"Updated progress: {progress}%, current size: {current_size} bytes")
+        # Update progress history
+        self.progress_history.append((current_time, progress))
+
+        # Update total data moved
+        self.total_data_moved = self.initial_size - current_size
+
+        logger.debug(f"Updated progress: {progress}%, current size: {current_size} bytes, total moved: {self.total_data_moved} bytes")
 
     def should_send_notification(self) -> bool:
         """
@@ -265,3 +281,89 @@ class MonitorSession:
 
         logger.info(f"Initial cache size: {initial_size} bytes")
         return initial_size
+
+    def get_estimated_completion_time(self) -> float | None:
+        """
+        Calculate the estimated completion time based on current progress.
+
+        This method uses the progress history and current progress to estimate
+        when the mover process will complete.
+
+        Returns:
+            float | None: The estimated completion time as a Unix timestamp,
+                         or None if progress is 0% (still calculating).
+
+        Raises:
+            RuntimeError: If the monitoring session is not active.
+        """
+        if not self.is_monitoring:
+            raise RuntimeError("Monitoring session is not active")
+
+        if self.start_time is None or self.last_progress is None:
+            raise RuntimeError("Monitoring session not properly initialized")
+
+        # Use the calculate_eta function from the time module
+        current_time = time.time()
+        return calculate_eta(self.start_time, current_time, self.last_progress)
+
+    def get_progress_rate(self) -> float:
+        """
+        Calculate the rate of progress in percentage points per second.
+
+        This method analyzes the progress history to determine how quickly
+        the mover process is progressing.
+
+        Returns:
+            float: The progress rate in percentage points per second.
+                  Returns 0.0 if there's not enough history to calculate.
+
+        Raises:
+            RuntimeError: If the monitoring session is not active.
+        """
+        if not self.is_monitoring:
+            raise RuntimeError("Monitoring session is not active")
+
+        # Need at least two data points to calculate rate
+        if len(self.progress_history) < 2:
+            return 0.0
+
+        # Get the first and last entries in the progress history
+        first_time, first_progress = self.progress_history[0]
+        last_time, last_progress = self.progress_history[-1]
+
+        # Calculate time elapsed and progress made
+        time_elapsed = last_time - first_time
+        progress_made = last_progress - first_progress
+
+        # Avoid division by zero
+        if time_elapsed <= 0:
+            return 0.0
+
+        # Calculate rate (percentage points per second)
+        rate = progress_made / time_elapsed
+
+        return rate
+
+    def get_notification_thresholds(self) -> list[int]:
+        """
+        Get a list of progress percentage thresholds for notifications.
+
+        This method calculates the notification thresholds based on the
+        notification increment. It always includes 0% and 100%.
+
+        Returns:
+            List[int]: A list of progress percentage thresholds.
+        """
+        # Use a default of 25% if the increment is invalid
+        increment = self.notification_increment
+        if increment <= 0:
+            increment = 25
+
+        # Generate thresholds from 0% to 100% in steps of increment
+        thresholds = list(range(0, 101, increment))
+
+        # Make sure 100% is included
+        if 100 not in thresholds:
+            thresholds.append(100)
+
+        return thresholds
