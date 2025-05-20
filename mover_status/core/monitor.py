@@ -12,6 +12,7 @@ from mover_status.utils.process import is_mover_running
 from mover_status.utils.data import get_directory_size
 from mover_status.core.calculation.progress import calculate_progress
 from mover_status.core.calculation.time import calculate_eta
+from mover_status.notification.manager import NotificationManager
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -367,3 +368,138 @@ class MonitorSession:
             thresholds.append(100)
 
         return thresholds
+
+    def handle_process_completion(self, notification_manager: NotificationManager) -> None:
+        """
+        Handle the completion of the mover process.
+
+        This method sends a completion notification and stops the monitoring session.
+
+        Args:
+            notification_manager: The notification manager to use for sending notifications.
+        """
+        logger.info("Mover process has completed")
+
+        # Send completion notification
+        _ = notification_manager.send_notification(
+            "Mover process completed",
+            raw_values={
+                "progress": 100,
+                "remaining_size": self.last_size,
+                "initial_size": self.initial_size,
+                "eta": None,
+                "total_moved": self.total_data_moved
+            }
+        )
+
+        # Stop monitoring
+        self.stop_monitoring()
+
+    def send_progress_notification(self, notification_manager: NotificationManager) -> None:
+        """
+        Send a progress notification if needed.
+
+        This method checks if a notification should be sent based on the current progress
+        and sends it if necessary. It also updates the last notification progress.
+
+        Args:
+            notification_manager: The notification manager to use for sending notifications.
+        """
+        if not self.should_send_notification():
+            return
+
+        # Get estimated completion time
+        eta = self.get_estimated_completion_time()
+
+        # Send notification
+        logger.info(f"Sending progress notification: {self.last_progress}%")
+        _ = notification_manager.send_notification(
+            "Mover progress update",
+            raw_values={
+                "progress": self.last_progress,
+                "remaining_size": self.last_size,
+                "initial_size": self.initial_size,
+                "eta": eta,
+                "total_moved": self.total_data_moved
+            }
+        )
+
+        # Update last notification progress
+        if self.last_progress is not None:
+            self.last_notification_progress = (self.last_progress // self.notification_increment) * self.notification_increment
+
+    def run_monitoring_loop(
+        self,
+        notification_manager: NotificationManager,
+        max_cycles: int | None = None,
+        restart_delay: float = 10.0
+    ) -> None:
+        """
+        Run the main monitoring loop.
+
+        This method continuously monitors the mover process, updating progress
+        and sending notifications as needed. It can run indefinitely or for a
+        specified number of cycles.
+
+        Args:
+            notification_manager: The notification manager to use for sending notifications.
+            max_cycles: Maximum number of monitoring cycles to run. None for unlimited.
+            restart_delay: Time in seconds to wait before restarting monitoring after completion.
+        """
+        cycle_count = 0
+
+        logger.info("Starting main monitoring loop")
+
+        while max_cycles is None or cycle_count < max_cycles:
+            logger.info(f"Starting monitoring cycle {cycle_count + 1}")
+
+            # Wait for mover process to start
+            logger.info("Waiting for mover process to start")
+            if not self.wait_for_mover_start():
+                logger.warning("Timed out waiting for mover process to start")
+                break
+
+            # Calculate initial size and start monitoring
+            try:
+                # Calculate initial size and start monitoring
+                _ = self.calculate_initial_size()
+                self.start_monitoring()
+
+                # Send initial notification
+                self.send_progress_notification(notification_manager)
+
+                # Main monitoring loop
+                while self.is_monitoring:
+                    # Check if mover process has ended
+                    if self.is_mover_process_ended():
+                        logger.info("Mover process has ended")
+                        self.handle_process_completion(notification_manager)
+                        break
+
+                    # Update progress
+                    self.update_progress()
+
+                    # Send notification if needed
+                    self.send_progress_notification(notification_manager)
+
+                    # Sleep to prevent excessive CPU usage
+                    time.sleep(self.poll_interval)
+
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                self.stop_monitoring()
+
+            # Reset for next cycle
+            self.reset_monitoring()
+
+            # Increment cycle count
+            cycle_count += 1
+
+            # If we've reached max cycles, exit
+            if max_cycles is not None and cycle_count >= max_cycles:
+                logger.info(f"Reached maximum cycle count ({max_cycles}), exiting")
+                break
+
+            # Wait before restarting monitoring
+            logger.info(f"Waiting {restart_delay} seconds before restarting monitoring")
+            time.sleep(restart_delay)

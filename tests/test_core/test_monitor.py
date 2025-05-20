@@ -5,11 +5,15 @@ This module contains tests for the MonitorSession class, which is responsible
 for tracking the state of the mover process monitoring.
 """
 
+# pyright: reportUnusedParameter=false
+# pyright: reportAny=false
+
 import time
 import pytest
 from unittest.mock import patch, MagicMock, call
 
 from mover_status.core.monitor import MonitorSession
+from mover_status.notification.manager import NotificationManager
 
 
 class TestMonitorSession:
@@ -416,3 +420,119 @@ class TestMonitorSession:
         session.notification_increment = -10
         thresholds = session.get_notification_thresholds()
         assert thresholds == [0, 25, 50, 75, 100]
+
+    @patch("mover_status.core.monitor.is_mover_running")
+    @patch("mover_status.core.monitor.get_directory_size")
+    @patch("mover_status.core.monitor.time.sleep")
+    def test_run_monitoring_loop_single_cycle(
+        self, mock_sleep: MagicMock, mock_get_dir_size: MagicMock, mock_is_mover_running: MagicMock
+    ) -> None:
+        """Test running the monitoring loop for a single cycle."""
+        # Setup mocks
+        # First call to is_mover_running returns False, then True for a while, then False again
+        mock_is_mover_running.side_effect = [False, True, True, True, True, False]
+
+        # Directory size decreases over time
+        mock_get_dir_size.side_effect = [1000, 800, 600, 400, 200, 0]
+
+        # Create notification manager mock
+        notification_manager = MagicMock(spec=NotificationManager)
+
+        # Create session
+        session = MonitorSession(poll_interval=0.1)
+
+        # Run the monitoring loop with max_cycles=1 to ensure it exits after one cycle
+        session.run_monitoring_loop(notification_manager, max_cycles=1)
+
+        # Verify that monitoring was started and stopped
+        assert mock_is_mover_running.call_count >= 3
+        assert mock_get_dir_size.call_count >= 2
+
+        # MagicMock attributes are dynamically generated
+        assert notification_manager.send_notification.call_count >= 2  # At least initial and completion
+
+        # Verify that sleep was called to prevent CPU overuse
+        assert mock_sleep.call_count > 0
+
+    @patch("mover_status.core.monitor.is_mover_running")
+    @patch("mover_status.core.monitor.get_directory_size")
+    @patch("mover_status.core.monitor.time.sleep")
+    def test_handle_process_completion(
+        self, mock_sleep: MagicMock, mock_get_dir_size: MagicMock, mock_is_mover_running: MagicMock
+    ) -> None:
+        """Test handling process completion in the monitoring loop."""
+        # Setup mocks
+        # Mover starts, runs for a while, then completes
+        mock_is_mover_running.side_effect = [True, True, True, False]
+
+        # Directory size decreases over time
+        mock_get_dir_size.side_effect = [1000, 500, 0]
+
+        # Create notification manager mock
+        notification_manager = MagicMock(spec=NotificationManager)
+
+        # Create session
+        session = MonitorSession(poll_interval=0.1)
+
+        # Start monitoring manually to set up the state
+        session.start_monitoring()
+
+        # Run the monitoring loop with process_ended=True to simulate completion
+        session.handle_process_completion(notification_manager)
+
+        # Verify that a completion notification was sent
+        notification_manager.send_notification.assert_called_with(
+            "Mover process completed",
+            raw_values={
+                "progress": 100,
+                "remaining_size": session.last_size,
+                "initial_size": session.initial_size,
+                "eta": None,
+                "total_moved": session.total_data_moved
+            }
+        )
+
+        # Verify that monitoring was stopped
+        assert session.is_monitoring is False
+
+    @patch("mover_status.core.monitor.is_mover_running")
+    @patch("mover_status.core.monitor.get_directory_size")
+    @patch("mover_status.core.monitor.time.sleep")
+    def test_restart_monitoring(
+        self, mock_sleep: MagicMock, mock_get_dir_size: MagicMock, mock_is_mover_running: MagicMock
+    ) -> None:
+        """Test restarting monitoring after completion."""
+        # Setup mocks
+        # First cycle: mover starts, runs, completes
+        # Second cycle: mover starts again, runs, completes
+        mock_is_mover_running.side_effect = [
+            # First cycle
+            False, True, True, False,
+            # Second cycle
+            False, True, True, False
+        ]
+
+        # Directory size decreases over time for both cycles
+        mock_get_dir_size.side_effect = [
+            # First cycle
+            1000, 500, 0,
+            # Second cycle
+            2000, 1000, 0
+        ]
+
+        # Create notification manager mock
+        notification_manager = MagicMock(spec=NotificationManager)
+
+        # Create session
+        session = MonitorSession(poll_interval=0.1)
+
+        # Run the monitoring loop with max_cycles=2 to test restart
+        session.run_monitoring_loop(notification_manager, max_cycles=2)
+
+        # Verify that monitoring was started, stopped, and restarted
+        assert mock_is_mover_running.call_count >= 6
+        assert mock_get_dir_size.call_count >= 4
+        assert notification_manager.send_notification.call_count >= 4  # At least initial and completion for both cycles
+
+        # Verify that sleep was called between cycles
+        assert mock_sleep.call_count > 0

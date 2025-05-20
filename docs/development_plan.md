@@ -338,18 +338,18 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Main Monitoring Loop**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Run monitoring loop
-      - [ ] Test case: Handle process completion
-      - [ ] Test case: Restart monitoring
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
-    - [ ] **Implementation:** Create main monitoring loop
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Main Monitoring Loop**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Run monitoring loop
+      - [x] Test case: Handle process completion
+      - [x] Test case: Restart monitoring
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
+    - [x] **Implementation:** Create main monitoring loop
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/core/__init__.py`**
-  - [ ] Export core classes and functions
+- [x] **Module: `mover_status/core/__init__.py`**
+  - [x] Export core classes and functions
 
 ## Phase 8: Dry Run Mode
 
