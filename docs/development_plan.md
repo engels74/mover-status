@@ -307,16 +307,16 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 7: Core Monitoring Logic
 
-- [ ] **Module: `mover_status/core/monitor.py`**
-  - [ ] **Analyze `moverStatus.sh`:** Review the main monitoring loop
-  - [ ] **Feature: Monitor Session Class**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Initialize monitoring session
-      - [ ] Test case: Track monitoring state
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_monitor.py`
-    - [ ] **Implementation:** Create `MonitorSession` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/monitor.py`**
+  - [x] **Analyze `moverStatus.sh`:** Review the main monitoring loop
+  - [x] **Feature: Monitor Session Class**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Initialize monitoring session
+      - [x] Test case: Track monitoring state
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_core/test_monitor.py`
+    - [x] **Implementation:** Create `MonitorSession` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
   - [ ] **Feature: Process Detection and Monitoring**
     - [ ] **TDD: Define Test Cases:**

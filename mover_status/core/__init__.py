@@ -12,6 +12,7 @@ from mover_status.core.version import (
     compare_versions,
     check_for_updates,
 )
+from mover_status.core.monitor import MonitorSession
 
 __all__ = [
     # Calculation functions
@@ -22,4 +23,7 @@ __all__ = [
     "get_latest_version",
     "compare_versions",
     "check_for_updates",
+
+    # Monitoring classes
+    "MonitorSession",
 ]
