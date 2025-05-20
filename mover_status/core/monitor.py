@@ -30,6 +30,8 @@ class MonitorSession:
         cache_path: Path to the cache directory being monitored.
         exclusions: List of paths to exclude from size calculations.
         notification_increment: Percentage increment for notifications.
+        poll_interval: Time in seconds between checks for mover process.
+        max_wait_time: Maximum time in seconds to wait for mover process to start.
         initial_size: Initial size of the cache directory in bytes.
         start_time: Timestamp when monitoring started.
         last_check_time: Timestamp of the last progress check.
@@ -43,7 +45,9 @@ class MonitorSession:
         mover_path: str = "/usr/local/sbin/mover",
         cache_path: str = "/mnt/cache",
         exclusions: list[str] | None = None,
-        notification_increment: int = 25
+        notification_increment: int = 25,
+        poll_interval: float = 1.0,
+        max_wait_time: int = 300
     ) -> None:
         """
         Initialize a new monitoring session.
@@ -53,12 +57,16 @@ class MonitorSession:
             cache_path: Path to the cache directory to monitor. Defaults to "/mnt/cache".
             exclusions: List of paths to exclude from size calculations. Defaults to None.
             notification_increment: Percentage increment for notifications. Defaults to 25.
+            poll_interval: Time in seconds between checks for mover process. Defaults to 1.0.
+            max_wait_time: Maximum time in seconds to wait for mover process to start. Defaults to 300.
         """
         # Configuration parameters
         self.mover_path: str = mover_path
         self.cache_path: str = cache_path
         self.exclusions: list[str] = exclusions or []
         self.notification_increment: int = notification_increment
+        self.poll_interval: float = poll_interval
+        self.max_wait_time: int = max_wait_time
 
         # Monitoring state
         self.is_monitoring: bool = False
@@ -193,3 +201,67 @@ class MonitorSession:
             return True
 
         return False
+
+    def wait_for_mover_start(self) -> bool:
+        """
+        Wait for the mover process to start.
+
+        This method polls for the mover process at regular intervals until
+        it is detected or the maximum wait time is reached.
+
+        Returns:
+            bool: True if the mover process was detected, False if the wait timed out.
+        """
+        logger.info(f"Waiting for mover process to start (max wait: {self.max_wait_time}s)")
+
+        start_wait_time = time.time()
+
+        while True:
+            # Check if mover is running
+            if is_mover_running(self.mover_path):
+                logger.info("Mover process detected")
+                return True
+
+            # Check if we've exceeded the maximum wait time
+            current_time = time.time()
+            if current_time - start_wait_time > self.max_wait_time:
+                logger.warning(f"Timed out waiting for mover process after {self.max_wait_time}s")
+                return False
+
+            # Wait before checking again
+            time.sleep(self.poll_interval)
+
+    def is_mover_process_ended(self) -> bool:
+        """
+        Check if the mover process has ended.
+
+        Returns:
+            bool: True if the mover process is no longer running, False otherwise.
+        """
+        # Check if mover is still running
+        is_running = is_mover_running(self.mover_path)
+
+        # Return the opposite (True if not running)
+        return not is_running
+
+    def calculate_initial_size(self) -> int:
+        """
+        Calculate the initial size of the cache directory.
+
+        This method is used to determine the starting point for progress tracking
+        when the mover process begins.
+
+        Returns:
+            int: The size of the cache directory in bytes.
+
+        Raises:
+            FileNotFoundError: If the cache directory does not exist.
+            RuntimeError: If the directory size calculation fails.
+        """
+        logger.info(f"Calculating initial size of {self.cache_path}")
+
+        # Get the directory size
+        initial_size = get_directory_size(self.cache_path, self.exclusions)
+
+        logger.info(f"Initial cache size: {initial_size} bytes")
+        return initial_size

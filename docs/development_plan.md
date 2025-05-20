@@ -318,15 +318,15 @@ The plan is organized into logical phases that build upon each other, ensuring a
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Process Detection and Monitoring**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Detect mover process start
-      - [ ] Test case: Detect mover process end
-      - [ ] Test case: Calculate initial size
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
-    - [ ] **Implementation:** Add process monitoring methods
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Process Detection and Monitoring**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Detect mover process start
+      - [x] Test case: Detect mover process end
+      - [x] Test case: Calculate initial size
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_core/test_monitor.py`
+    - [x] **Implementation:** Add process monitoring methods
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
   - [ ] **Feature: Progress Tracking**
     - [ ] **TDD: Define Test Cases:**
