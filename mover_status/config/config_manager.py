@@ -15,7 +15,7 @@ configuration values throughout the application.
 import os
 from collections.abc import Mapping
 import yaml
-from typing import TypedDict, final, cast, TypeVar
+from typing import TypedDict, final, cast, TypeVar, NotRequired
 
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.notification.providers.telegram.defaults import TELEGRAM_DEFAULTS
@@ -60,6 +60,12 @@ class NotificationConfig(TypedDict):
     notification_increment: int
     enabled_providers: list[str]
     providers: ProvidersConfig
+    # Fields accessed from other sections for validation
+    mover_executable: NotRequired[str]
+    cache_directory: NotRequired[str]
+    poll_interval: NotRequired[int]
+    dry_run: NotRequired[bool]
+    enable_debug: NotRequired[bool]
 
 
 class MonitoringConfig(TypedDict):
@@ -67,22 +73,53 @@ class MonitoringConfig(TypedDict):
     mover_executable: str
     cache_directory: str
     poll_interval: int
+    # Fields accessed from other sections for validation
+    notification_increment: NotRequired[int]
+    enabled_providers: NotRequired[list[str]]
+    providers: NotRequired[ProvidersConfig]
+    dry_run: NotRequired[bool]
+    enable_debug: NotRequired[bool]
 
 
 class MessagesConfig(TypedDict):
     """Message templates configuration."""
     completion: str
+    # Fields accessed from other sections for validation
+    notification_increment: NotRequired[int]
+    enabled_providers: NotRequired[list[str]]
+    providers: NotRequired[ProvidersConfig]
+    mover_executable: NotRequired[str]
+    cache_directory: NotRequired[str]
+    poll_interval: NotRequired[int]
+    dry_run: NotRequired[bool]
+    enable_debug: NotRequired[bool]
 
 
 class PathsConfig(TypedDict):
     """Path settings configuration."""
     exclude: list[str]
+    # Fields accessed from other sections for validation
+    notification_increment: NotRequired[int]
+    enabled_providers: NotRequired[list[str]]
+    providers: NotRequired[ProvidersConfig]
+    mover_executable: NotRequired[str]
+    cache_directory: NotRequired[str]
+    poll_interval: NotRequired[int]
+    dry_run: NotRequired[bool]
+    enable_debug: NotRequired[bool]
 
 
 class DebugConfig(TypedDict):
     """Debug settings configuration."""
     dry_run: bool
     enable_debug: bool
+    # Fields accessed from other sections for validation
+    notification_increment: NotRequired[int]
+    enabled_providers: NotRequired[list[str]]
+    providers: NotRequired[ProvidersConfig]
+    mover_executable: NotRequired[str]
+    cache_directory: NotRequired[str]
+    poll_interval: NotRequired[int]
 
 
 # Define a type for the complete configuration structure
@@ -566,7 +603,9 @@ class ConfigManager:
 
         # Check notification section required fields
         if "notification" in self.config:
-            notification = self.config["notification"]
+            # Get the notification section and cast it to the correct type
+            notification = cast(NotificationConfig, self.config["notification"])
+
             if "notification_increment" not in notification:
                 errors.append("Missing required field: notification.notification_increment")
             if "enabled_providers" not in notification:
@@ -574,11 +613,14 @@ class ConfigManager:
 
             # Check provider-specific required fields
             if "providers" in notification:
+                # Get the providers section
                 providers = notification["providers"]
 
                 # Check Telegram provider required fields
                 if "telegram" in providers:
+                    # Get the telegram section
                     telegram = providers["telegram"]
+
                     if "enabled" in telegram and telegram["enabled"]:
                         if "bot_token" not in telegram or not telegram["bot_token"]:
                             errors.append("Missing required field: notification.providers.telegram.bot_token")
@@ -587,14 +629,18 @@ class ConfigManager:
 
                 # Check Discord provider required fields
                 if "discord" in providers:
+                    # Get the discord section
                     discord = providers["discord"]
+
                     if "enabled" in discord and discord["enabled"]:
                         if "webhook_url" not in discord or not discord["webhook_url"]:
                             errors.append("Missing required field: notification.providers.discord.webhook_url")
 
         # Check monitoring section required fields
         if "monitoring" in self.config:
-            monitoring = self.config["monitoring"]
+            # Cast to the correct type
+            monitoring = cast(MonitoringConfig, self.config["monitoring"])
+
             if "mover_executable" not in monitoring:
                 errors.append("Missing required field: monitoring.mover_executable")
             if "cache_directory" not in monitoring:
@@ -615,7 +661,8 @@ class ConfigManager:
 
         # Check notification section field types
         if "notification" in self.config:
-            notification = self.config["notification"]
+            # Cast to the correct type
+            notification = cast(NotificationConfig, self.config["notification"])
 
             # Check notification_increment type
             if "notification_increment" in notification and not isinstance(notification["notification_increment"], int):
@@ -627,10 +674,12 @@ class ConfigManager:
 
             # Check provider-specific field types
             if "providers" in notification:
+                # Get the providers section
                 providers = notification["providers"]
 
                 # Check Telegram provider field types
                 if "telegram" in providers:
+                    # Get the telegram section
                     telegram = providers["telegram"]
                     if "enabled" in telegram and not isinstance(telegram["enabled"], bool):
                         errors.append("Field notification.providers.telegram.enabled must be a boolean")
@@ -641,6 +690,7 @@ class ConfigManager:
 
                 # Check Discord provider field types
                 if "discord" in providers:
+                    # Get the discord section
                     discord = providers["discord"]
                     if "enabled" in discord and not isinstance(discord["enabled"], bool):
                         errors.append("Field notification.providers.discord.enabled must be a boolean")
@@ -651,7 +701,9 @@ class ConfigManager:
 
         # Check monitoring section field types
         if "monitoring" in self.config:
-            monitoring = self.config["monitoring"]
+            # Cast to the correct type
+            monitoring = cast(MonitoringConfig, self.config["monitoring"])
+
             if "mover_executable" in monitoring and not isinstance(monitoring["mover_executable"], str):
                 errors.append("Field monitoring.mover_executable must be a string")
             if "cache_directory" in monitoring and not isinstance(monitoring["cache_directory"], str):
@@ -661,7 +713,9 @@ class ConfigManager:
 
         # Check debug section field types
         if "debug" in self.config:
-            debug = self.config["debug"]
+            # Cast to the correct type
+            debug = cast(DebugConfig, self.config["debug"])
+
             if "dry_run" in debug and not isinstance(debug["dry_run"], bool):
                 errors.append("Field debug.dry_run must be a boolean")
             if "enable_debug" in debug and not isinstance(debug["enable_debug"], bool):
@@ -680,7 +734,8 @@ class ConfigManager:
 
         # Check notification section field values
         if "notification" in self.config:
-            notification = self.config["notification"]
+            # Cast to the correct type
+            notification = cast(NotificationConfig, self.config["notification"])
 
             # Check notification_increment value
             if (
@@ -699,10 +754,12 @@ class ConfigManager:
 
             # Check provider-specific field values
             if "providers" in notification:
+                # Get the providers section
                 providers = notification["providers"]
 
                 # Check Telegram provider field values
                 if "telegram" in providers:
+                    # Get the telegram section
                     telegram = providers["telegram"]
                     if (
                         "enabled" in telegram
@@ -721,6 +778,7 @@ class ConfigManager:
 
                 # Check Discord provider field values
                 if "discord" in providers:
+                    # Get the discord section
                     discord = providers["discord"]
                     if (
                         "enabled" in discord
@@ -732,7 +790,8 @@ class ConfigManager:
 
         # Check monitoring section field values
         if "monitoring" in self.config:
-            monitoring = self.config["monitoring"]
+            # Cast to the correct type
+            monitoring = cast(MonitoringConfig, self.config["monitoring"])
 
             # Check poll_interval value
             if (
