@@ -8,6 +8,7 @@ initialization functionality in the main module.
 import sys
 import argparse
 import pytest
+from typing import Any, cast
 from unittest.mock import patch, MagicMock, call
 
 # Import the module directly to allow for better patching
@@ -273,20 +274,130 @@ class TestMainFunction:
 
     def test_main_version(self) -> None:
         """Test main function with version flag."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch.object(sys, 'argv', ['mover-status', '--version']), \
+             patch('mover_status.__main__.handle_version_command') as mock_version:
+            main()
+            mock_version.assert_called_once()
 
     def test_main_help(self) -> None:
         """Test main function with help flag."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch.object(sys, 'argv', ['mover-status', '--help']), \
+             patch('mover_status.__main__.handle_help_command') as mock_help:
+            main()
+            mock_help.assert_called_once()
 
     def test_main_dry_run(self) -> None:
         """Test main function with dry run flag."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch.object(sys, 'argv', ['mover-status', '--dry-run']), \
+             patch('mover_status.__main__.initialize_app') as mock_init, \
+             patch('mover_status.__main__.run_dry_mode') as mock_dry_run:
+
+            # Setup mocks
+            mock_config = MagicMock()
+            mock_notification = MagicMock()
+            mock_init.return_value = (mock_config, mock_notification)
+
+            # Call the function
+            main()
+
+            # Verify mocks were called correctly
+            mock_init.assert_called_once()
+            mock_dry_run.assert_called_once_with(mock_notification)
 
     def test_main_normal_run(self) -> None:
         """Test main function with normal run."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch.object(sys, 'argv', ['mover-status']), \
+             patch('mover_status.__main__.initialize_app') as mock_init, \
+             patch('mover_status.__main__.MonitorSession') as mock_monitor_session:
+
+            # Setup mocks
+            mock_config = MagicMock()
+            mock_notification = MagicMock()
+            mock_init.return_value = (mock_config, mock_notification)
+
+            # Mock config values
+            mock_config.config.get_nested_value.side_effect = lambda key: {
+                "monitoring.mover_executable": "/test/mover",
+                "monitoring.cache_directory": "/test/cache",
+                "paths.exclude": ["/test/exclude"],
+                "notification.notification_increment": 20,
+                "monitoring.poll_interval": 2.5
+            }.get(key, None)
+
+            # Mock monitor session
+            mock_session = MagicMock()
+            mock_monitor_session.return_value = mock_session
+
+            # Call the function
+            main()
+
+            # Verify mocks were called correctly
+            mock_init.assert_called_once()
+            mock_monitor_session.assert_called_once_with(
+                mover_path="/test/mover",
+                cache_path="/test/cache",
+                exclusions=["/test/exclude"],
+                notification_increment=20,
+                poll_interval=2.5
+            )
+            mock_session.run_monitoring_loop.assert_called_once_with(mock_notification)
+
+    def test_main_keyboard_interrupt(self) -> None:
+        """Test main function handling keyboard interrupt."""
+        with patch.object(sys, 'argv', ['mover-status']), \
+             patch('mover_status.__main__.initialize_app') as mock_init, \
+             patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
+             patch('logging.getLogger') as mock_logger:
+
+            # Setup mocks
+            mock_config = MagicMock()
+            mock_notification = MagicMock()
+            mock_init.return_value = (mock_config, mock_notification)
+
+            # Mock config values
+            mock_config.config.get_nested_value.return_value = "/test/path"
+
+            # Mock monitor session to raise KeyboardInterrupt
+            mock_session = MagicMock()
+            mock_session.run_monitoring_loop.side_effect = KeyboardInterrupt()
+            mock_monitor_session.return_value = mock_session
+
+            # Mock logger
+            mock_logger_instance = MagicMock()
+            mock_logger.return_value = mock_logger_instance
+
+            # Call the function
+            main()
+
+            # Verify logger was called with the expected message
+            mock_logger_instance.info.assert_any_call("Received keyboard interrupt, shutting down")
+
+    def test_main_exception_handling(self) -> None:
+        """Test main function handling exceptions."""
+        with patch.object(sys, 'argv', ['mover-status']), \
+             patch('mover_status.__main__.initialize_app') as mock_init, \
+             patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
+             patch('logging.getLogger') as mock_logger:
+
+            # Setup mocks
+            mock_config = MagicMock()
+            mock_notification = MagicMock()
+            mock_init.return_value = (mock_config, mock_notification)
+
+            # Mock config values
+            mock_config.config.get_nested_value.return_value = "/test/path"
+
+            # Mock monitor session to raise an exception
+            mock_session = MagicMock()
+            mock_session.run_monitoring_loop.side_effect = RuntimeError("Test error")
+            mock_monitor_session.return_value = mock_session
+
+            # Mock logger
+            mock_logger_instance = MagicMock()
+            mock_logger.return_value = mock_logger_instance
+
+            # Call the function
+            main()
+
+            # Verify logger was called with the expected message
+            mock_logger_instance.error.assert_called_once()
