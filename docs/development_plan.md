@@ -366,18 +366,18 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 9: Main Application Entry Point
 
-- [ ] **Module: `mover_status/__main__.py`**
-  - [ ] **Analyze Requirements:** Define CLI interface
-  - [ ] **Feature: Command Line Interface**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Parse command line arguments
-      - [ ] Test case: Handle help command
-      - [ ] Test case: Handle version command
-      - [ ] Test case: Handle configuration file path
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_main.py`
-    - [ ] **Implementation:** Create CLI argument parser
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/__main__.py`**
+  - [x] **Analyze Requirements:** Define CLI interface
+  - [x] **Feature: Command Line Interface**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Parse command line arguments
+      - [x] Test case: Handle help command
+      - [x] Test case: Handle version command
+      - [x] Test case: Handle configuration file path
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_main.py`
+    - [x] **Implementation:** Create CLI argument parser
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
   - [ ] **Feature: Application Initialization**
     - [ ] **TDD: Define Test Cases:**
