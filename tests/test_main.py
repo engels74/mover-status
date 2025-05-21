@@ -5,14 +5,13 @@ This module contains tests for the command line interface and application
 initialization functionality in the main module.
 """
 
+# pyright: reportAny=false
+
 import sys
 import argparse
-import pytest
-from typing import Any, cast
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 # Import the module directly to allow for better patching
-import mover_status.__main__
 from mover_status.__main__ import (
     parse_args,
     handle_version_command,
@@ -22,8 +21,8 @@ from mover_status.__main__ import (
 )
 from mover_status import __version__
 from mover_status.utils.logger import LogLevel, LogFormat
-from mover_status.notification.providers.telegram.provider import TelegramProvider
-from mover_status.notification.providers.discord.provider import DiscordProvider
+# We're using the mock_types module for type checking in comments
+# but not directly in the code, so we don't need to import it
 
 
 class TestCommandLineInterface:
@@ -32,6 +31,7 @@ class TestCommandLineInterface:
     def test_parse_args_default(self) -> None:
         """Test parsing command line arguments with default values."""
         with patch.object(sys, 'argv', ['mover-status']):
+            # We need to cast the result to our type for type checking
             args = parse_args()
             assert args.config is None
             assert not args.version
@@ -137,7 +137,7 @@ class TestApplicationInitialization:
             mock_notification_manager.return_value = mock_notification_instance
 
             # Call the function
-            config_manager, notification_manager = initialize_app(None, False)
+            _, notification_manager = initialize_app(None, False)
 
             # Verify ConfigManager was initialized correctly
             mock_config_manager.assert_called_once_with(None)
@@ -190,34 +190,38 @@ class TestApplicationInitialization:
             mock_discord_provider.return_value = mock_discord_provider_instance
 
             # Mock enabled providers list with valid configurations
-            mock_config_instance.config.get_nested_value.side_effect = lambda key: {
-                "notification.enabled_providers": ["telegram", "discord"],
-                "notification.providers.telegram": {
-                    "enabled": True,
-                    "bot_token": "test_token",
-                    "chat_id": "test_id",
-                    "message_template": "test message",
-                    "parse_mode": "HTML",
-                    "disable_notification": False
-                },
-                "notification.providers.discord": {
-                    "enabled": True,
-                    "webhook_url": "https://discord.com/api/webhooks/test",
-                    "username": "Test Bot",
-                    "message_template": "test message",
-                    "use_embeds": True,
-                    "embed_title": "Test Title",
-                    "embed_colors": {
-                        "low_progress": 123,
-                        "mid_progress": 456,
-                        "high_progress": 789,
-                        "complete": 101112
+            def get_config_value(key_str: str) -> list[str] | dict[str, object] | list[object]:
+                config_values: dict[str, list[str] | dict[str, object]] = {
+                    "notification.enabled_providers": ["telegram", "discord"],
+                    "notification.providers.telegram": {
+                        "enabled": True,
+                        "bot_token": "test_token",
+                        "chat_id": "test_id",
+                        "message_template": "test message",
+                        "parse_mode": "HTML",
+                        "disable_notification": False
+                    },
+                    "notification.providers.discord": {
+                        "enabled": True,
+                        "webhook_url": "https://discord.com/api/webhooks/test",
+                        "username": "Test Bot",
+                        "message_template": "test message",
+                        "use_embeds": True,
+                        "embed_title": "Test Title",
+                        "embed_colors": {
+                            "low_progress": 123,
+                            "mid_progress": 456,
+                            "high_progress": 789,
+                            "complete": 101112
+                        }
                     }
                 }
-            }.get(key, [])
+                return config_values.get(key_str, [])
+
+            mock_config_instance.config.get_nested_value.side_effect = get_config_value
 
             # Call the function
-            config_manager, notification_manager = initialize_app("test_config.yaml", False)
+            _, notification_manager = initialize_app("test_config.yaml", False)
 
             # Verify ConfigManager was initialized correctly
             mock_config_manager.assert_called_once_with("test_config.yaml")
@@ -256,7 +260,7 @@ class TestApplicationInitialization:
             mock_notification_manager.return_value = mock_notification_instance
 
             # Call the function with debug=True
-            config_manager, notification_manager = initialize_app(None, True)
+            _, notification_manager = initialize_app(None, True)
 
             # Verify logger was set up with debug settings
             mock_setup_logger.assert_called_once()
@@ -316,13 +320,17 @@ class TestMainFunction:
             mock_init.return_value = (mock_config, mock_notification)
 
             # Mock config values
-            mock_config.config.get_nested_value.side_effect = lambda key: {
-                "monitoring.mover_executable": "/test/mover",
-                "monitoring.cache_directory": "/test/cache",
-                "paths.exclude": ["/test/exclude"],
-                "notification.notification_increment": 20,
-                "monitoring.poll_interval": 2.5
-            }.get(key, None)
+            def get_monitor_config(key_str: str) -> str | list[str] | int | float | None:
+                config_values = {
+                    "monitoring.mover_executable": "/test/mover",
+                    "monitoring.cache_directory": "/test/cache",
+                    "paths.exclude": ["/test/exclude"],
+                    "notification.notification_increment": 20,
+                    "monitoring.poll_interval": 2.5
+                }
+                return config_values.get(key_str, None)
+
+            mock_config.config.get_nested_value.side_effect = get_monitor_config
 
             # Mock monitor session
             mock_session = MagicMock()
