@@ -17,8 +17,12 @@ from mover_status.__main__ import (
     handle_version_command,
     handle_help_command,
     main,
+    initialize_app,
 )
 from mover_status import __version__
+from mover_status.utils.logger import LogLevel, LogFormat
+from mover_status.notification.providers.telegram.provider import TelegramProvider
+from mover_status.notification.providers.discord.provider import DiscordProvider
 
 
 class TestCommandLineInterface:
@@ -113,18 +117,155 @@ class TestApplicationInitialization:
 
     def test_initialize_app_default(self) -> None:
         """Test initializing the application with default settings."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
+             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
+             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
+             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+
+            # Setup mocks
+            mock_config_instance = MagicMock()
+            mock_config_manager.return_value = mock_config_instance
+            mock_config_instance.load.return_value = mock_config_instance
+            mock_config_instance.config.get_nested_value.return_value = []
+
+            # Mock check_for_updates to avoid network calls
+            mock_check_updates.return_value = False
+
+            # Create a mock for the notification manager
+            mock_notification_instance = MagicMock()
+            mock_notification_manager.return_value = mock_notification_instance
+
+            # Call the function
+            config_manager, notification_manager = initialize_app(None, False)
+
+            # Verify ConfigManager was initialized correctly
+            mock_config_manager.assert_called_once_with(None)
+            mock_config_instance.load.assert_called_once()
+
+            # Verify logger was set up correctly
+            mock_setup_logger.assert_called_once()
+            logger_config = mock_setup_logger.call_args[0][1]
+            assert logger_config.console_enabled is True
+            assert logger_config.level == LogLevel.INFO
+            assert logger_config.format == LogFormat.SIMPLE
+
+            # Verify NotificationManager was initialized
+            mock_notification_manager.assert_called_once()
+            assert notification_manager == mock_notification_instance
+
+            # Verify no providers were registered (default behavior)
+            assert mock_notification_instance.register_provider.call_count == 0
 
     def test_initialize_app_with_config(self) -> None:
         """Test initializing the application with a config file path."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
+             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
+             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
+             patch('mover_status.__main__.TelegramProvider') as mock_telegram_provider, \
+             patch('mover_status.__main__.DiscordProvider') as mock_discord_provider, \
+             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+
+            # Setup mocks
+            mock_config_instance = MagicMock()
+            mock_config_manager.return_value = mock_config_instance
+            mock_config_instance.load.return_value = mock_config_instance
+
+            # Mock check_for_updates to avoid network calls
+            mock_check_updates.return_value = False
+
+            # Create a mock for the notification manager
+            mock_notification_instance = MagicMock()
+            mock_notification_manager.return_value = mock_notification_instance
+
+            # Mock the validate_config method to return empty list (no errors)
+            mock_telegram_provider_instance = MagicMock()
+            mock_telegram_provider_instance.validate_config.return_value = []
+            mock_telegram_provider_instance.enabled = True
+            mock_telegram_provider.return_value = mock_telegram_provider_instance
+
+            mock_discord_provider_instance = MagicMock()
+            mock_discord_provider_instance.validate_config.return_value = []
+            mock_discord_provider_instance.enabled = True
+            mock_discord_provider.return_value = mock_discord_provider_instance
+
+            # Mock enabled providers list with valid configurations
+            mock_config_instance.config.get_nested_value.side_effect = lambda key: {
+                "notification.enabled_providers": ["telegram", "discord"],
+                "notification.providers.telegram": {
+                    "enabled": True,
+                    "bot_token": "test_token",
+                    "chat_id": "test_id",
+                    "message_template": "test message",
+                    "parse_mode": "HTML",
+                    "disable_notification": False
+                },
+                "notification.providers.discord": {
+                    "enabled": True,
+                    "webhook_url": "https://discord.com/api/webhooks/test",
+                    "username": "Test Bot",
+                    "message_template": "test message",
+                    "use_embeds": True,
+                    "embed_title": "Test Title",
+                    "embed_colors": {
+                        "low_progress": 123,
+                        "mid_progress": 456,
+                        "high_progress": 789,
+                        "complete": 101112
+                    }
+                }
+            }.get(key, [])
+
+            # Call the function
+            config_manager, notification_manager = initialize_app("test_config.yaml", False)
+
+            # Verify ConfigManager was initialized correctly
+            mock_config_manager.assert_called_once_with("test_config.yaml")
+            mock_config_instance.load.assert_called_once()
+
+            # Verify logger was set up correctly
+            mock_setup_logger.assert_called_once()
+
+            # Verify NotificationManager was initialized
+            mock_notification_manager.assert_called_once()
+            assert notification_manager == mock_notification_instance
+
+            # Verify providers were registered
+            assert mock_notification_instance.register_provider.call_count == 2
+            mock_telegram_provider.assert_called_once()
+            mock_discord_provider.assert_called_once()
 
     def test_initialize_app_with_debug(self) -> None:
         """Test initializing the application with debug mode enabled."""
-        # Skip this test for now as we're focusing on the CLI interface
-        pass
+        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
+             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
+             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
+             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+
+            # Setup mocks
+            mock_config_instance = MagicMock()
+            mock_config_manager.return_value = mock_config_instance
+            mock_config_instance.load.return_value = mock_config_instance
+            mock_config_instance.config.get_nested_value.return_value = []
+
+            # Mock check_for_updates to avoid network calls
+            mock_check_updates.return_value = False
+
+            # Create a mock for the notification manager
+            mock_notification_instance = MagicMock()
+            mock_notification_manager.return_value = mock_notification_instance
+
+            # Call the function with debug=True
+            config_manager, notification_manager = initialize_app(None, True)
+
+            # Verify logger was set up with debug settings
+            mock_setup_logger.assert_called_once()
+            logger_config = mock_setup_logger.call_args[0][1]
+            assert logger_config.level == LogLevel.DEBUG
+            assert logger_config.format == LogFormat.DETAILED
+
+            # Verify NotificationManager was initialized
+            mock_notification_manager.assert_called_once()
+            assert notification_manager == mock_notification_instance
 
 
 class TestMainFunction:

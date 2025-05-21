@@ -186,7 +186,10 @@ class MoverStatusConfig:
                  (e.g., "notification.providers.telegram.enabled")
 
         Returns:
-            The configuration value at the specified path
+            The configuration value at the specified path. The return type depends on the path:
+            - For paths ending with ".enabled_providers": list[str]
+            - For paths ending with ".telegram" or ".discord": dict[str, object]
+            - For other paths: str, int, bool, list, dict, or None
 
         Raises:
             KeyError: If any part of the path does not exist
@@ -503,6 +506,10 @@ class ConfigManager:
 
         Returns:
             The configuration value, or the default if the key does not exist.
+            The return type depends on the key path:
+            - For paths ending with ".enabled_providers": list[str]
+            - For paths ending with ".telegram" or ".discord": dict[str, object]
+            - For other paths: str, int, bool, list, dict, or None
         """
         # If the key is None or empty, return the default
         if key is None or key == "":
