@@ -405,10 +405,10 @@ The plan is organized into logical phases that build upon each other, ensuring a
 
 ## Phase 10: Packaging and Installation
 
-- [ ] **Complete `pyproject.toml`**
-  - [ ] Add all dependencies
-  - [ ] Configure build system
-  - [ ] Set up entry points
+- [x] **Complete `pyproject.toml`**
+  - [x] Add all dependencies
+  - [x] Configure build system
+  - [x] Set up entry points
 
 - [ ] **Create Installation Script**
   - [ ] **Analyze Requirements:** Review installation needs for Unraid
