@@ -2,10 +2,10 @@
 Tests for the configuration manager module.
 """
 
-# pyright: reportGeneralTypeIssues=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
-# This directive is necessary because the tests access TypedDict fields in a way
-# that is valid at runtime but that the static type checker cannot verify.
-# We also disable unknown variable and argument type reporting for test data.
+# pyright: reportTypedDictNotRequiredAccess=false
+# This directive is necessary because tests access NotRequired fields in TypedDict objects.
+# We use a targeted directive rather than multiple global ignores to maintain type safety
+# while allowing tests to verify runtime behavior.
 
 import os
 import yaml
@@ -231,18 +231,18 @@ class TestConfigManager:
 
         # Check that the saved configuration matches the expected values
         assert "notification" in saved_config_raw
-        notification = saved_config_raw["notification"]
+        notification = cast(dict[str, object], saved_config_raw["notification"])
         assert isinstance(notification, dict)
 
         assert "notification_increment" in notification
         assert notification["notification_increment"] == 10
 
         assert "providers" in notification
-        providers = notification["providers"]
+        providers = cast(dict[str, object], notification["providers"])
         assert isinstance(providers, dict)
 
         assert "telegram" in providers
-        telegram = providers["telegram"]
+        telegram = cast(dict[str, object], providers["telegram"])
         assert isinstance(telegram, dict)
 
         assert "enabled" in telegram
@@ -390,7 +390,8 @@ class TestConfigManager:
         config_manager = ConfigManager(config_path=config_path)
 
         # Create a valid configuration
-        valid_config = {
+        # Use explicit type to ensure type safety
+        valid_config: dict[str, object] = {
             "notification": {
                 "notification_increment": 25,
                 "enabled_providers": ["telegram"],
