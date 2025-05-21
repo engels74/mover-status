@@ -23,15 +23,9 @@ class ProcessInfo(TypedDict, total=False):
     exe: str
 
 
-class InfoGetItem(Protocol):
-    """Protocol for __getitem__ method."""
-    def __call__(self, key: str) -> str | int: ...
-    side_effect: Exception | None
-
-
 class InfoProtocol(Protocol):
     """Protocol for process info dictionary-like objects."""
-    __getitem__: InfoGetItem
+    def __getitem__(self, key: str) -> str | int: ...
     def __contains__(self, key: str) -> bool: ...
 
 

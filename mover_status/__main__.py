@@ -355,11 +355,13 @@ def main() -> None:
     _ = parser.add_argument("-v", "--version", help="Show version information and exit", action="store_true")
     _ = parser.add_argument("-h", "--help", help="Show this help message and exit", action="store_true")
 
-    # Handle information commands
+    # Handle information commands - return early if these flags are set
     if getattr(args, 'version', False):
         handle_version_command()
+        return  # Return early after handling version command
     if getattr(args, 'help', False):
         handle_help_command(parser)
+        return  # Return early after handling help command
 
     # Initialize application
     config_manager, notification_manager = initialize_app(

@@ -347,7 +347,7 @@ class TestMainFunction:
         with patch.object(sys, 'argv', ['mover-status']), \
              patch('mover_status.__main__.initialize_app') as mock_init, \
              patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
-             patch('logging.getLogger') as mock_logger:
+             patch('mover_status.__main__.logger') as mock_logger:
 
             # Setup mocks
             mock_config = MagicMock()
@@ -362,22 +362,18 @@ class TestMainFunction:
             mock_session.run_monitoring_loop.side_effect = KeyboardInterrupt()
             mock_monitor_session.return_value = mock_session
 
-            # Mock logger
-            mock_logger_instance = MagicMock()
-            mock_logger.return_value = mock_logger_instance
-
             # Call the function
             main()
 
             # Verify logger was called with the expected message
-            mock_logger_instance.info.assert_any_call("Received keyboard interrupt, shutting down")
+            mock_logger.info.assert_any_call("Received keyboard interrupt, shutting down")
 
     def test_main_exception_handling(self) -> None:
         """Test main function handling exceptions."""
         with patch.object(sys, 'argv', ['mover-status']), \
              patch('mover_status.__main__.initialize_app') as mock_init, \
              patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
-             patch('logging.getLogger') as mock_logger:
+             patch('mover_status.__main__.logger') as mock_logger:
 
             # Setup mocks
             mock_config = MagicMock()
@@ -392,12 +388,8 @@ class TestMainFunction:
             mock_session.run_monitoring_loop.side_effect = RuntimeError("Test error")
             mock_monitor_session.return_value = mock_session
 
-            # Mock logger
-            mock_logger_instance = MagicMock()
-            mock_logger.return_value = mock_logger_instance
-
             # Call the function
             main()
 
             # Verify logger was called with the expected message
-            mock_logger_instance.error.assert_called_once()
+            mock_logger.error.assert_called_once()
