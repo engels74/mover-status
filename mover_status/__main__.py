@@ -6,9 +6,6 @@ for the Mover Status Monitor. It handles command line arguments, initializes
 the application components, and runs the monitoring loop.
 """
 
-# pyright: reportUnknownMemberType=false
-# pyright: reportUnknownArgumentType=false
-# pyright: reportUnknownVariableType=false
 # The above directives are necessary because this module handles configuration data
 # loaded from YAML files, which have dynamic types that cannot be fully typed statically.
 # We use runtime type checking with isinstance() to ensure type safety.
@@ -16,7 +13,7 @@ the application components, and runs the monitoring loop.
 import sys
 import argparse
 import logging
-from typing import TypedDict
+from typing import TypedDict, cast, Any
 
 from mover_status import __version__
 from mover_status.config.config_manager import ConfigManager
@@ -177,8 +174,9 @@ def initialize_app(config_path: str | None, debug: bool) -> tuple[ConfigManager,
             return config_manager, notification_manager
 
         # Convert to a list of strings, filtering out non-string items
+        typed_enabled_providers_obj = cast(list[Any], enabled_providers_obj)  # pyright: ignore[reportExplicitAny]
         enabled_providers: list[str] = []
-        for item in enabled_providers_obj:
+        for item in typed_enabled_providers_obj:  # pyright: ignore[reportAny]
             # Use type checking to ensure we only add strings
             if isinstance(item, str):
                 enabled_providers.append(item)
@@ -189,45 +187,46 @@ def initialize_app(config_path: str | None, debug: bool) -> tuple[ConfigManager,
         for provider_name in enabled_providers:
             if provider_name == "telegram":
                 # Get Telegram configuration
-                telegram_config_obj = config_manager.config.get_nested_value("notification.providers.telegram")
-                if isinstance(telegram_config_obj, dict):
+                telegram_config_obj_any = config_manager.config.get_nested_value("notification.providers.telegram")
+                if isinstance(telegram_config_obj_any, dict):
+                    telegram_config_obj = cast(dict[str, Any], telegram_config_obj_any)  # pyright: ignore[reportExplicitAny]
                     # Create the properly typed config dictionary with safe type conversions
                     telegram_config: TelegramConfig = {}
 
                     # Add required fields with proper type conversion
                     if "enabled" in telegram_config_obj:
 
-                        telegram_config["enabled"] = bool(telegram_config_obj.get("enabled", False))
+                        telegram_config["enabled"] = bool(telegram_config_obj.get("enabled", False))  # pyright: ignore[reportAny]
                     else:
                         telegram_config["enabled"] = False
 
                     if "bot_token" in telegram_config_obj:
                         token_value = telegram_config_obj.get("bot_token")
-                        telegram_config["bot_token"] = str(token_value) if token_value is not None else ""
+                        telegram_config["bot_token"] = str(token_value) if token_value is not None else ""  # pyright: ignore[reportAny]
                     else:
                         telegram_config["bot_token"] = ""
 
                     if "chat_id" in telegram_config_obj:
                         chat_id_value = telegram_config_obj.get("chat_id")
-                        telegram_config["chat_id"] = str(chat_id_value) if chat_id_value is not None else ""
+                        telegram_config["chat_id"] = str(chat_id_value) if chat_id_value is not None else ""  # pyright: ignore[reportAny]
                     else:
                         telegram_config["chat_id"] = ""
 
                     if "message_template" in telegram_config_obj:
                         template_value = telegram_config_obj.get("message_template")
-                        telegram_config["message_template"] = str(template_value) if template_value is not None else ""
+                        telegram_config["message_template"] = str(template_value) if template_value is not None else ""  # pyright: ignore[reportAny]
                     else:
                         telegram_config["message_template"] = ""
 
                     if "parse_mode" in telegram_config_obj:
                         parse_mode_value = telegram_config_obj.get("parse_mode")
-                        telegram_config["parse_mode"] = str(parse_mode_value) if parse_mode_value is not None else "HTML"
+                        telegram_config["parse_mode"] = str(parse_mode_value) if parse_mode_value is not None else "HTML"  # pyright: ignore[reportAny]
                     else:
                         telegram_config["parse_mode"] = "HTML"
 
                     if "disable_notification" in telegram_config_obj:
                         disable_notif_value = telegram_config_obj.get("disable_notification")
-                        telegram_config["disable_notification"] = bool(disable_notif_value) if disable_notif_value is not None else False
+                        telegram_config["disable_notification"] = bool(disable_notif_value) if disable_notif_value is not None else False  # pyright: ignore[reportAny]
                     else:
                         telegram_config["disable_notification"] = False
 
@@ -248,8 +247,9 @@ def initialize_app(config_path: str | None, debug: bool) -> tuple[ConfigManager,
 
             elif provider_name == "discord":
                 # Get Discord configuration
-                discord_config_obj = config_manager.config.get_nested_value("notification.providers.discord")
-                if isinstance(discord_config_obj, dict):
+                discord_config_obj_any = config_manager.config.get_nested_value("notification.providers.discord")
+                if isinstance(discord_config_obj_any, dict):
+                    discord_config_obj = cast(dict[str, Any], discord_config_obj_any)  # pyright: ignore[reportExplicitAny]
                     # Create a properly typed EmbedColorsType with default values
                     embed_colors: EmbedColorsType = {
                         "low_progress": 16744576,  # Light Red (0-34%)
@@ -260,8 +260,9 @@ def initialize_app(config_path: str | None, debug: bool) -> tuple[ConfigManager,
 
                     # Handle embed colors with proper typing
                     if "embed_colors" in discord_config_obj:
-                        embed_colors_raw = discord_config_obj.get("embed_colors")
-                        if isinstance(embed_colors_raw, dict):
+                        embed_colors_raw_any = discord_config_obj.get("embed_colors")
+                        if isinstance(embed_colors_raw_any, dict):
+                            embed_colors_raw = cast(dict[str, Any], embed_colors_raw_any)  # pyright: ignore[reportExplicitAny]
                             # Update each color if it exists in the configuration
                             for color_key in ["low_progress", "mid_progress", "high_progress", "complete"]:
                                 if color_key in embed_colors_raw:
@@ -275,37 +276,37 @@ def initialize_app(config_path: str | None, debug: bool) -> tuple[ConfigManager,
                     # Add required fields with proper type conversion
                     if "enabled" in discord_config_obj:
                         enabled_value = discord_config_obj.get("enabled")
-                        discord_config["enabled"] = bool(enabled_value) if enabled_value is not None else False
+                        discord_config["enabled"] = bool(enabled_value) if enabled_value is not None else False  # pyright: ignore[reportAny]
                     else:
                         discord_config["enabled"] = False
 
                     if "webhook_url" in discord_config_obj:
                         webhook_value = discord_config_obj.get("webhook_url")
-                        discord_config["webhook_url"] = str(webhook_value) if webhook_value is not None else ""
+                        discord_config["webhook_url"] = str(webhook_value) if webhook_value is not None else ""  # pyright: ignore[reportAny]
                     else:
                         discord_config["webhook_url"] = ""
 
                     if "username" in discord_config_obj:
                         username_value = discord_config_obj.get("username")
-                        discord_config["username"] = str(username_value) if username_value is not None else "Mover Bot"
+                        discord_config["username"] = str(username_value) if username_value is not None else "Mover Bot"  # pyright: ignore[reportAny]
                     else:
                         discord_config["username"] = "Mover Bot"
 
                     if "message_template" in discord_config_obj:
                         template_value = discord_config_obj.get("message_template")
-                        discord_config["message_template"] = str(template_value) if template_value is not None else ""
+                        discord_config["message_template"] = str(template_value) if template_value is not None else ""  # pyright: ignore[reportAny]
                     else:
                         discord_config["message_template"] = ""
 
                     if "use_embeds" in discord_config_obj:
                         embeds_value = discord_config_obj.get("use_embeds")
-                        discord_config["use_embeds"] = bool(embeds_value) if embeds_value is not None else True
+                        discord_config["use_embeds"] = bool(embeds_value) if embeds_value is not None else True  # pyright: ignore[reportAny]
                     else:
                         discord_config["use_embeds"] = True
 
                     if "embed_title" in discord_config_obj:
                         title_value = discord_config_obj.get("embed_title")
-                        discord_config["embed_title"] = str(title_value) if title_value is not None else "Mover: Moving Data"
+                        discord_config["embed_title"] = str(title_value) if title_value is not None else "Mover: Moving Data"  # pyright: ignore[reportAny]
                     else:
                         discord_config["embed_title"] = "Mover: Moving Data"
 
@@ -389,10 +390,10 @@ def main() -> None:
                 # Convert to a list of strings, filtering out non-string items
                 exclusions = []
                 # Use the object directly
-                exclusions_list = exclusions_obj
+                exclusions_list = cast(list[Any], exclusions_obj)  # pyright: ignore[reportExplicitAny]
 
                 # Process each item, checking its type
-                for item in exclusions_list:
+                for item in exclusions_list:  # pyright: ignore[reportAny]
                     if isinstance(item, str):
                         exclusions.append(item)
 
