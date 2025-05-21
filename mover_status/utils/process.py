@@ -46,7 +46,7 @@ def find_process_by_name(name: str, case_sensitive: bool = False) -> list[psutil
     """
     matching_processes: list[psutil.Process] = []
 
-    for process in psutil.process_iter(['pid', 'name']):
+    for process in psutil.process_iter(['pid', 'name'], ad_value=None):  # pyright: ignore[reportUnknownMemberType]
         try:
             process_name = cast(str, process.info['name'])
 
@@ -87,7 +87,7 @@ def find_mover_process(mover_path: str = "/usr/local/sbin/mover") -> list[psutil
     # Try to find by exact executable path first (more reliable in container with --pid=host)
     processes: list[psutil.Process] = []
 
-    for proc in psutil.process_iter(['pid', 'name', 'exe']):
+    for proc in psutil.process_iter(['pid', 'name', 'exe'], ad_value=None):  # pyright: ignore[reportUnknownMemberType]
         try:
             # Check if the process executable matches the mover path
             if 'exe' in proc.info and proc.info['exe'] == mover_path:
