@@ -135,17 +135,17 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/config/loader.py`**
-  - [ ] **Analyze Requirements:** Define configuration loading needs
-  - [ ] **Feature: Configuration Loading**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Load configuration from file
-      - [ ] Test case: Merge with defaults
-      - [ ] Test case: Handle missing or invalid files
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_loader.py`
-    - [ ] **Implementation:** Create `ConfigLoader` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/config/loader.py`**
+  - [x] **Analyze Requirements:** Define configuration loading needs
+  - [x] **Feature: Configuration Loading**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Load configuration from file
+      - [x] Test case: Merge with defaults
+      - [x] Test case: Handle missing or invalid files
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_loader.py`
+    - [x] **Implementation:** Create `ConfigLoader` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/config/validator.py`**
   - [ ] **Analyze Requirements:** Define configuration validation needs
