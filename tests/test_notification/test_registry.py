@@ -135,7 +135,7 @@ class TestProviderRegistry:
         # Mock entry points
         mock_entry_point = Mock()
         mock_entry_point.name = "test_provider"
-        mock_entry_point.load.return_value = MockProviderClass
+        mock_entry_point.load.return_value = MockProviderClass  # pyright: ignore[reportAny]
 
         with patch('importlib.metadata.entry_points') as mock_entry_points:
             mock_entry_points.return_value = [mock_entry_point]
@@ -154,12 +154,12 @@ class TestProviderRegistry:
         # Mock entry point that fails to load
         mock_entry_point_fail = Mock()
         mock_entry_point_fail.name = "failing_provider"
-        mock_entry_point_fail.load.side_effect = ImportError("Module not found")
+        mock_entry_point_fail.load.side_effect = ImportError("Module not found")  # pyright: ignore[reportAny]
 
         # Mock entry point that loads invalid provider
         mock_entry_point_invalid = Mock()
         mock_entry_point_invalid.name = "invalid_provider"
-        mock_entry_point_invalid.load.return_value = "not_a_provider"
+        mock_entry_point_invalid.load.return_value = "not_a_provider"  # pyright: ignore[reportAny]
 
         with patch('importlib.metadata.entry_points') as mock_entry_points:
             mock_entry_points.return_value = [mock_entry_point_fail, mock_entry_point_invalid]
@@ -183,7 +183,7 @@ class TestProviderRegistry:
 
         with patch('importlib.import_module') as mock_import:
             mock_module = Mock()
-            mock_module.get_provider_class.return_value = mock_provider_class
+            mock_module.get_provider_class.return_value = mock_provider_class  # pyright: ignore[reportAny]
             mock_import.return_value = mock_module
 
             provider = registry.load_provider_module("test.module")

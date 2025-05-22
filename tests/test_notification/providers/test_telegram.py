@@ -236,15 +236,15 @@ class TestTelegramProvider:
         expected_request_json: TelegramRequestJSON = {
             "chat_id": "12345678",
             "text": "Test message",
-            "parse_mode": "HTML", 
+            "parse_mode": "HTML",
             "disable_notification": False
         }
 
         # Mock the requests.post method to return a successful response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = TelegramResponseDict(
-            ok=True, 
+        mock_response.json.return_value = TelegramResponseDict(  # pyright: ignore[reportAny]
+            ok=True,
             result=TelegramMessageResult(message_id=123)
         )
 
@@ -257,7 +257,7 @@ class TestTelegramProvider:
 
             # Check that requests.post was called with the correct arguments
             mock_post.assert_called_once()
-            
+
             # Extract the URL from the mock call
             api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
             mock_post.assert_called_with(
@@ -324,8 +324,8 @@ class TestTelegramProvider:
         # Mock the requests.post method to return an error response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = TelegramResponseDict(
-            ok=False, 
+        mock_response.json.return_value = TelegramResponseDict(  # pyright: ignore[reportAny]
+            ok=False,
             description="Bad Request: chat not found"
         )
 
@@ -353,15 +353,15 @@ class TestTelegramProvider:
         expected_request_json: TelegramRequestJSON = {
             "chat_id": "12345678",
             "text": "Progress: <b>50%</b> complete",
-            "parse_mode": "HTML", 
+            "parse_mode": "HTML",
             "disable_notification": False
         }
 
         # Mock the requests.post method to return a successful response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = TelegramResponseDict(
-            ok=True, 
+        mock_response.json.return_value = TelegramResponseDict(  # pyright: ignore[reportAny]
+            ok=True,
             result=TelegramMessageResult(message_id=123)
         )
 
@@ -375,7 +375,7 @@ class TestTelegramProvider:
 
             # Check that requests.post was called with the correct arguments
             mock_post.assert_called_once()
-            
+
             # Extract the URL from the mock call
             api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
             mock_post.assert_called_with(
