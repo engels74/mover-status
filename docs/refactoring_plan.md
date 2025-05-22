@@ -123,17 +123,17 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/config/registry.py`**
-  - [ ] **Analyze Requirements:** Define configuration registry needs
-  - [ ] **Feature: Configuration Registry**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Register provider configuration schemas
-      - [ ] Test case: Get registered schemas
-      - [ ] Test case: Validate configuration against schemas
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_registry.py`
-    - [ ] **Implementation:** Create `ConfigRegistry` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/config/registry.py`**
+  - [x] **Analyze Requirements:** Define configuration registry needs
+  - [x] **Feature: Configuration Registry**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Register provider configuration schemas
+      - [x] Test case: Get registered schemas
+      - [x] Test case: Validate configuration against schemas
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_config/test_registry.py`
+    - [x] **Implementation:** Create `ConfigRegistry` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/config/loader.py`**
   - [ ] **Analyze Requirements:** Define configuration loading needs

@@ -255,3 +255,58 @@ class TestConfigRegistry:
         assert len(registry.get_all_schemas()) == 0
         assert not registry.has_schema("provider1")
         assert not registry.has_schema("provider2")
+
+    def test_integration_with_existing_provider_schemas(self) -> None:
+        """Test integration with existing provider configuration schemas."""
+        # Import existing provider schemas
+        from mover_status.notification.providers.telegram.config import get_telegram_schema
+        from mover_status.notification.providers.discord.config import get_discord_schema
+
+        # Create a registry
+        registry = ConfigRegistry()
+
+        # Register existing provider schemas
+        telegram_schema = get_telegram_schema()
+        discord_schema = get_discord_schema()
+
+        registry.register_schema("telegram", telegram_schema)
+        registry.register_schema("discord", discord_schema)
+
+        # Verify they're registered
+        assert registry.has_schema("telegram")
+        assert registry.has_schema("discord")
+
+        # Test validation with real provider configurations
+        telegram_config = {
+            "enabled": True,
+            "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+            "chat_id": "-1001234567890",
+            "parse_mode": "HTML",
+            "disable_notification": False,
+            "message_template": "Test message: {percent}%"
+        }
+
+        discord_config = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+            "message_template": "Test message: {percent}%",
+            "use_embeds": True,
+            "embed_title": "Test Title",
+            "embed_colors": {
+                "low_progress": 16744576,
+                "mid_progress": 16753920,
+                "high_progress": 9498256,
+                "complete": 65280
+            }
+        }
+
+        # Validate configurations
+        validated_telegram = registry.validate_config("telegram", telegram_config)
+        validated_discord = registry.validate_config("discord", discord_config)
+
+        # Verify validation succeeded and returned expected values
+        assert validated_telegram["enabled"] is True
+        assert validated_telegram["bot_token"] == "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        assert validated_discord["enabled"] is True
+        assert validated_discord["webhook_url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
