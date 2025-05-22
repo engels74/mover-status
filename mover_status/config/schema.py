@@ -10,8 +10,13 @@ configuration structures. It supports:
 """
 
 from enum import Enum
-from typing import Any, final
+from typing import TypeVar, final
 from collections.abc import Mapping
+
+# Type alias for configuration values - using object for maximum flexibility
+# while maintaining type safety through runtime validation
+ConfigValue = object
+T = TypeVar("T")
 
 
 class FieldType(Enum):
@@ -60,7 +65,7 @@ class SchemaField:
         name: str,
         field_type: FieldType,
         required: bool = True,
-        default_value: Any = None,  # pyright: ignore[reportExplicitAny]
+        default_value: ConfigValue = None,
         description: str = "",
         item_type: FieldType | None = None,
         value_type: FieldType | None = None,
@@ -85,7 +90,7 @@ class SchemaField:
         self.item_type = item_type
         self.value_type = value_type
 
-    def validate_value(self, value: Any) -> Any:  # pyright: ignore[reportExplicitAny]
+    def validate_value(self, value: ConfigValue) -> ConfigValue:
         """
         Validate a value against this field's requirements.
 
@@ -112,14 +117,16 @@ class SchemaField:
             )
 
         # Additional validation for list and dict types
-        if self.field_type == FieldType.LIST and self.item_type:
-            self._validate_list_items(value)
-        elif self.field_type == FieldType.DICT and self.value_type:
-            self._validate_dict_values(value)
+        if self.field_type == FieldType.LIST and self.item_type and isinstance(value, list):
+            # Type narrowing: we know value is a list here
+            self._validate_list_items(value)  # pyright: ignore[reportUnknownArgumentType]
+        elif self.field_type == FieldType.DICT and self.value_type and isinstance(value, dict):
+            # Type narrowing: we know value is a dict here
+            self._validate_dict_values(value)  # pyright: ignore[reportUnknownArgumentType]
 
-        return value
+        return value  # pyright: ignore[reportUnknownVariableType]
 
-    def _is_valid_type(self, value: Any, field_type: FieldType) -> bool:  # pyright: ignore[reportExplicitAny]
+    def _is_valid_type(self, value: ConfigValue, field_type: FieldType) -> bool:
         """Check if a value matches the expected field type."""
         type_mapping = {
             FieldType.STRING: str,
@@ -133,7 +140,7 @@ class SchemaField:
         expected_types = type_mapping[field_type]
         return isinstance(value, expected_types)
 
-    def _validate_list_items(self, value: list[Any]) -> None:  # pyright: ignore[reportExplicitAny]
+    def _validate_list_items(self, value: list[object]) -> None:
         """Validate items in a list field."""
         if not self.item_type:
             return
@@ -146,7 +153,7 @@ class SchemaField:
                     f"Field '{self.name}' item {i} expected type {expected_type}, got {actual_type}"
                 )
 
-    def _validate_dict_values(self, value: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
+    def _validate_dict_values(self, value: dict[str, object]) -> None:
         """Validate values in a dictionary field."""
         if not self.value_type:
             return
@@ -220,7 +227,7 @@ class ConfigSchema:
 
         return all_fields
 
-    def validate(self, config: Mapping[str, Any]) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    def validate(self, config: Mapping[str, ConfigValue]) -> dict[str, ConfigValue]:
         """
         Validate a configuration against this schema.
 
@@ -234,7 +241,7 @@ class ConfigSchema:
             SchemaValidationError: If the configuration is invalid.
         """
         errors: list[str] = []
-        validated_config: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        validated_config: dict[str, ConfigValue] = {}
         all_fields = self.get_all_fields()
 
         # Validate each field
