@@ -1,4 +1,4 @@
-# Mover Status Monitor - Python 3.13 Project Overview
+# Mover Status Monitor - Python 3.13 Project Overview (Updated)
 
 ## Project Structure
 
@@ -10,65 +10,134 @@ mover_status/
 ├── .gitignore               # Git ignore file
 │
 ├── mover_status/            # Main package
-│   ├── __init__.py          # Package initialization
+│   ├── __init__.py          # Package initialization with clean public API
 │   ├── __main__.py          # Entry point for running as module
+│   ├── application.py       # Main application class
+│   ├── cli.py               # Command line interface handling
 │   │
 │   ├── config/              # Configuration management
 │   │   ├── __init__.py
-│   │   ├── config_manager.py  # Manage configuration loading/saving
-│   │   └── default_config.py  # Default configuration values
+│   │   ├── loader.py        # Configuration loading/saving
+│   │   ├── validator.py     # Configuration validation
+│   │   ├── registry.py      # Configuration schema registry
+│   │   ├── schema.py        # Configuration schema system
+│   │   └── default_config.py # Core default configuration values
 │   │
 │   ├── core/                # Core functionality
 │   │   ├── __init__.py
-│   │   ├── monitor.py          # Main monitoring logic
-│   │   ├── version.py          # Version checking
+│   │   ├── monitor.py       # Main monitoring logic
+│   │   ├── version.py       # Version checking
 │   │   │
-│   │   └── calculation/        # Separate calculation module
+│   │   └── calculation/     # Separate calculation module
 │   │       ├── __init__.py
-│   │       ├── progress.py     # Calculate progress percentages
-│   │       ├── time.py         # ETA and time-related calculations
-│   │       └── size.py         # Data size formatting and calculations
+│   │       ├── progress.py  # Calculate progress percentages
+│   │       ├── time.py      # ETA and time-related calculations
+│   │       └── size.py      # Data size formatting and calculations
 │   │
 │   ├── notification/        # Notification system
 │   │   ├── __init__.py
-│   │   ├── base.py             # Abstract base class for notifications
-│   │   ├── manager.py          # Manages notification providers
-│   │   ├── formatter.py        # Common message formatting
+│   │   ├── base.py          # Abstract base class for notifications
+│   │   ├── manager.py       # Manages notification providers
+│   │   ├── formatter.py     # Common message formatting
+│   │   ├── registry.py      # Provider registry for discovery
 │   │   │
-│   │   └── providers/          # Individual notification providers
-│   │       ├── __init__.py
+│   │   └── providers/       # Individual notification providers
+│   │       ├── __init__.py  # Provider discovery mechanism
+│   │       ├── base_provider.py    # Base provider with common functionality
+│   │       ├── webhook_provider.py # Base class for webhook-based providers
+│   │       ├── api_provider.py     # Base class for API-based providers
+│   │       │
+│   │       ├── template/    # Template for creating new providers
+│   │       │   ├── __init__.py     # Provider registration
+│   │       │   ├── provider.py     # Provider implementation
+│   │       │   ├── formatter.py    # Provider-specific formatting
+│   │       │   ├── config.py       # Provider configuration schema
+│   │       │   ├── defaults.py     # Default configuration values
+│   │       │   └── manifest.py     # Provider plugin manifest
+│   │       │
 │   │       ├── telegram/
-│   │       │   ├── __init__.py
+│   │       │   ├── __init__.py     # Provider registration
 │   │       │   ├── provider.py     # Telegram implementation
-│   │       │   └── formatter.py    # Telegram-specific formatting
+│   │       │   ├── formatter.py    # Telegram-specific formatting
+│   │       │   ├── config.py       # Telegram configuration schema
+│   │       │   ├── defaults.py     # Default configuration values
+│   │       │   └── manifest.py     # Telegram plugin manifest
 │   │       │
 │   │       └── discord/
-│   │           ├── __init__.py
+│   │           ├── __init__.py     # Provider registration
 │   │           ├── provider.py     # Discord implementation
-│   │           └── formatter.py    # Discord-specific formatting
+│   │           ├── formatter.py    # Discord-specific formatting
+│   │           ├── config.py       # Discord configuration schema
+│   │           ├── defaults.py     # Default configuration values
+│   │           └── manifest.py     # Discord plugin manifest
+│   │
+│   ├── plugin/              # Plugin system
+│   │   ├── __init__.py
+│   │   ├── base.py          # Plugin base class
+│   │   ├── registry.py      # Plugin registry
+│   │   ├── manager.py       # Plugin lifecycle management
+│   │   └── config.py        # Plugin configuration
 │   │
 │   └── utils/               # Utility functions
 │       ├── __init__.py
-│       ├── logger.py         # Logging utilities
-│       ├── data.py           # Data size conversion utilities
-│       └── process.py        # Process monitoring utilities
+│       ├── logger.py        # Logging utilities
+│       ├── data.py          # Data size conversion utilities
+│       └── process.py       # Process monitoring utilities
 │
 ├── tests/                   # Test suite
 │   ├── __init__.py
-│   ├── conftest.py           # Test fixtures and configuration
-│   ├── test_config/          # Tests for configuration
-│   ├── test_core/            # Tests for core functionality
+│   ├── conftest.py          # Test fixtures and configuration
+│   ├── test_application.py  # Tests for application class
+│   ├── test_cli.py          # Tests for CLI
+│   ├── test_init.py         # Tests for package initialization
+│   │
+│   ├── test_config/         # Tests for configuration
+│   │   ├── test_loader.py
+│   │   ├── test_validator.py
+│   │   ├── test_registry.py
+│   │   ├── test_schema.py
+│   │   └── test_default_config.py
+│   │
+│   ├── test_core/           # Tests for core functionality
+│   │   ├── test_monitor.py
+│   │   ├── test_version.py
 │   │   └── test_calculation/
 │   │       ├── test_progress.py
 │   │       ├── test_time.py
 │   │       └── test_size.py
-│   ├── test_notification/    # Tests for notification system
+│   │
+│   ├── test_notification/   # Tests for notification system
 │   │   ├── test_base.py
 │   │   ├── test_manager.py
+│   │   ├── test_formatter.py
+│   │   ├── test_registry.py
+│   │   │
 │   │   └── providers/
+│   │       ├── test_base_provider.py
+│   │       ├── test_webhook_provider.py
+│   │       ├── test_api_provider.py
+│   │       ├── test_structure.py
+│   │       ├── test_template.py
 │   │       ├── test_telegram.py
-│   │       └── test_discord.py
-│   └── test_utils/           # Tests for utilities
+│   │       ├── test_discord.py
+│   │       └── test_*_manifest.py
+│   │
+│   ├── test_plugin/         # Tests for plugin system
+│   │   ├── test_base.py
+│   │   ├── test_registry.py
+│   │   ├── test_manager.py
+│   │   └── test_config.py
+│   │
+│   └── test_utils/          # Tests for utilities
+│       ├── test_logger.py
+│       ├── test_data.py
+│       └── test_process.py
+│
+└── docs/                    # Documentation
+    ├── development_plan.md
+    ├── project_overview.md
+    ├── refactoring_plan.md
+    └── provider_development_guide.md
 ```
 
 ## File Descriptions
@@ -83,21 +152,25 @@ mover_status/
 
 #### Root Files
 
-- **mover_status/\_\_init\_\_.py**: Package initialization, defines package version and public interface.
+- **mover_status/\_\_init\_\_.py**: Package initialization with a clean public API that doesn't contain hardcoded provider references.
 - **mover_status/\_\_main\_\_.py**: Entry point that allows running the package as a module with `python -m mover_status`.
+- **mover_status/application.py**: Main application class that handles initialization, provider loading, and application lifecycle.
+- **mover_status/cli.py**: Command line interface handling with support for provider-specific options.
 
-#### Configuration
+#### Configuration System
 
 - **config/\_\_init\_\_.py**: Exports configuration functionality.
-- **config/config_manager.py**: Handles loading, validation, and saving of configuration from YAML files. Aggregates default configurations from all providers.
-- **config/default_config.py**: Defines core default configuration values and structure (non-provider specific).
+- **config/loader.py**: Handles loading and saving configuration from YAML files.
+- **config/validator.py**: Validates configuration against schemas.
+- **config/registry.py**: Manages provider-specific configuration schemas.
+- **config/schema.py**: Configuration schema system for validation.
+- **config/default_config.py**: Defines core default configuration values without provider-specific types.
 
 #### Core Functionality
 
 - **core/\_\_init\_\_.py**: Exports core monitoring functionality.
 - **core/monitor.py**: Implements the main monitoring loop that watches the mover process and tracks progress.
 - **core/version.py**: Handles version checking and update notifications.
-
 - **core/calculation/\_\_init\_\_.py**: Exports calculation functions.
 - **core/calculation/progress.py**: Calculates progress percentages based on current/initial data sizes.
 - **core/calculation/time.py**: Calculates estimated completion times based on progress rate.
@@ -109,16 +182,27 @@ mover_status/
 - **notification/base.py**: Abstract base class defining the interface all notification providers must implement.
 - **notification/manager.py**: Manages the lifecycle of notification providers and routes messages.
 - **notification/formatter.py**: Common message formatting logic shared across providers.
+- **notification/registry.py**: Provider registry for discovery and registration.
 
-- **notification/providers/\_\_init\_\_.py**: Provider registry for auto-discovery of notification backends.
-- **notification/providers/telegram/\_\_init\_\_.py**: Package initialization for Telegram provider.
-- **notification/providers/telegram/provider.py**: Telegram-specific implementation of the notification interface.
-- **notification/providers/telegram/formatter.py**: Telegram-specific message formatting (HTML).
-- **notification/providers/telegram/defaults.py**: Default configuration values specific to Telegram.
-- **notification/providers/discord/\_\_init\_\_.py**: Package initialization for Discord provider.
-- **notification/providers/discord/provider.py**: Discord-specific implementation using webhooks.
-- **notification/providers/discord/formatter.py**: Discord-specific message formatting (embeds/markdown).
-- **notification/providers/discord/defaults.py**: Default configuration values specific to Discord.
+- **notification/providers/\_\_init\_\_.py**: Provider discovery mechanism.
+- **notification/providers/base_provider.py**: Base provider with common functionality.
+- **notification/providers/webhook_provider.py**: Base class for webhook-based providers.
+- **notification/providers/api_provider.py**: Base class for API-based providers.
+
+- **notification/providers/{provider}/\_\_init\_\_.py**: Provider registration with the registry.
+- **notification/providers/{provider}/provider.py**: Provider-specific implementation.
+- **notification/providers/{provider}/formatter.py**: Provider-specific message formatting.
+- **notification/providers/{provider}/config.py**: Provider configuration schema.
+- **notification/providers/{provider}/defaults.py**: Default configuration values.
+- **notification/providers/{provider}/manifest.py**: Provider plugin manifest.
+
+#### Plugin System
+
+- **plugin/\_\_init\_\_.py**: Exports plugin functionality.
+- **plugin/base.py**: Plugin base class defining the interface all plugins must implement.
+- **plugin/registry.py**: Plugin registry for discovery and registration.
+- **plugin/manager.py**: Plugin lifecycle management (load, initialize, validate, run).
+- **plugin/config.py**: Plugin configuration system.
 
 #### Utilities
 
@@ -133,107 +217,9 @@ mover_status/
 - **tests/conftest.py**: PyTest fixtures and test configuration.
 - **tests/test_\*/**: Test modules that mirror the package structure.
 
-### Scripts
+### Documentation
 
-- **scripts/install.sh**: Installation script for Unraid systems.
-
-## Key Design Features
-
-### Notification System
-
-The notification system employs a provider-based architecture using dependency injection and the strategy pattern. A centralized notification manager orchestrates multiple provider instances, each implementing a common interface. This design allows:
-
-- Adding new notification providers without modifying existing code
-- Configuring multiple instances of the same provider with different settings
-- Handling provider-specific formatting requirements through adapter classes
-- Testing notification logic in isolation with mock providers
-
-The notification formatting follows a layered approach:
-- Common formatters handle basic conversions of raw calculation values (e.g., converting None to "Calculating..." for 0% progress)
-- Provider-specific formatters apply platform-specific formatting (e.g., Discord's timestamp format, Telegram's HTML)
-- This hybrid approach maintains separation of concerns while avoiding code duplication
-
-### Calculation Logic
-
-The calculation subsystem applies the single responsibility principle by isolating mathematical operations and conversions. Each calculation module has a specific focus:
-
-- Progress calculation determines completion percentage from file system metrics
-- Time calculation handles rate-of-change analysis and ETA prediction
-- Size formatting manages human-readable conversions of byte values
-
-Calculation functions return platform-agnostic values (e.g., timestamps, byte counts) rather than formatted strings. This clean separation between calculation and formatting allows:
-
-- Core calculation logic to remain independent of display concerns
-- Consistent handling of special cases (e.g., 0% progress) through common formatters
-- Provider-specific formatters to focus on their unique formatting requirements
-
-This separation facilitates unit testing and allows algorithm improvements without affecting the monitoring logic or notification formatting.
-
-### Monitoring Loop
-
-The monitoring subsystem employs an event-driven observer pattern. It:
-
-- Maintains a stateful monitoring session
-- Polls the system at configurable intervals
-- Triggers notifications based on configurable thresholds
-- Handles process detection, termination, and restart scenarios
-- Manages throttling and rate limiting of notifications
-
-### Configuration Management
-
-The configuration system uses a layered approach with:
-
-- Modular, provider-specific default configurations
-- Core defaults for shared settings
-- File-based configuration in YAML format
-- Command-line argument overrides
-- Dynamic configuration validation
-- Type checking and schema enforcement
-
-Each notification provider defines its own default configuration in a dedicated file, which is aggregated by the configuration manager. This approach ensures:
-
-- Provider-specific settings remain isolated and maintainable
-- Adding or removing providers automatically updates the available configuration options
-- The core configuration remains clean and focused on shared settings
-- Each provider is responsible for its own configuration schema and validation
-
-## Understanding Unraid's Mover
-
-The Unraid mover is a background process that moves files from the faster cache drives to the array. Here's how it works:
-
-### Mover Execution Flow
-
-1. **Entry Point (`/usr/local/sbin/mover`)**: A simple bash script that calls the PHP implementation with current process context.
-
-   ```bash
-   #!/bin/bash
-   PPPID=$(ps h -o ppid= "$PPID" 2>/dev/null)
-   P_COMMAND=$(ps h -o %c "$PPPID" 2>/dev/null)
-   /usr/local/emhttp/plugins/ca.mover.tuning/mover.php "$P_COMMAND" "$*"
-   ```
-
-2. **Implementation (`mover.php`)**: The PHP script that contains the actual mover logic:
-   - Determines if it was called by cron or manually
-   - Checks if conditions allow the mover to run (parity check not in progress, etc.)
-   - Applies nice/ionice settings for CPU/IO priority
-   - Executes the mover process with appropriate arguments
-
-3. **Execution Control**: The script can be triggered in several ways:
-   - Cron job at scheduled times
-   - Manual triggering via the UI
-   - With special arguments like "force" or "stop"
-
-4. **Logging**: The script logs its activities through the system logger for troubleshooting.
-
-### Monitoring Approach
-
-Our Python 3.13 rewrite monitors this process by:
-
-1. Watching for the mover process to start
-2. Calculating the initial size of the cache directory
-3. Periodically checking the remaining size to determine progress
-4. Calculating percentage complete and ETA based on rate of change
-5. Sending notifications at configured intervals
-6. Detecting when the process completes and sending a final notification
-
-By observing the cache directory size changes rather than parsing process output, this approach works regardless of how the mover is invoked or configured.
+- **docs/development_plan.md**: Original development plan.
+- **docs/project_overview.md**: Project structure and design overview.
+- **docs/refactoring_plan.md**: Refactoring plan with TDD approach.
+- **docs/provider_development_guide.md**: Guide for developing new notification providers.
