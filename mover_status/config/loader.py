@@ -77,7 +77,8 @@ class ConfigLoader:
 
             # Load the YAML file
             with open(file_path, "r") as f:
-                raw_config = yaml.safe_load(f)
+                # yaml.safe_load inherently returns Any since YAML can contain any data type
+                raw_config: object = yaml.safe_load(f)  # pyright: ignore[reportAny]
 
             # Handle empty or None content
             if raw_config is None:
@@ -85,7 +86,9 @@ class ConfigLoader:
 
             # Ensure we have a dictionary
             if not isinstance(raw_config, dict):
-                raise LoaderError(f"Configuration file must contain a dictionary, got {type(raw_config).__name__}")
+                # Type narrowing: after isinstance check, raw_config is known to not be dict
+                raw_config_type_name = type(raw_config).__name__
+                raise LoaderError(f"Configuration file must contain a dictionary, got {raw_config_type_name}")
 
             # Cast to proper type and load/validate the configuration
             typed_config = cast(Mapping[str, object], raw_config)
@@ -111,7 +114,8 @@ class ConfigLoader:
         """
         try:
             # Parse the YAML content
-            raw_config = yaml.safe_load(yaml_content)
+            # yaml.safe_load inherently returns Any since YAML can contain any data type
+            raw_config: object = yaml.safe_load(yaml_content)  # pyright: ignore[reportAny]
 
             # Handle empty or None content
             if raw_config is None:
@@ -119,7 +123,9 @@ class ConfigLoader:
 
             # Ensure we have a dictionary
             if not isinstance(raw_config, dict):
-                raise LoaderError(f"Configuration must be a dictionary, got {type(raw_config).__name__}")
+                # Type narrowing: after isinstance check, raw_config is known to not be dict
+                raw_config_type_name = type(raw_config).__name__
+                raise LoaderError(f"Configuration must be a dictionary, got {raw_config_type_name}")
 
             # Cast to proper type and load/validate the configuration
             typed_config = cast(Mapping[str, object], raw_config)
