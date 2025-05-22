@@ -8,5 +8,19 @@ configuration data for the application.
 from mover_status.config.config_manager import ConfigManager
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.config.validation_error import ValidationError
+from mover_status.config.schema import (
+    ConfigSchema,
+    SchemaField,
+    SchemaValidationError,
+    FieldType,
+)
 
-__all__ = ["ConfigManager", "DEFAULT_CONFIG", "ValidationError"]
+__all__ = [
+    "ConfigManager",
+    "DEFAULT_CONFIG",
+    "ValidationError",
+    "ConfigSchema",
+    "SchemaField",
+    "SchemaValidationError",
+    "FieldType",
+]
