@@ -7,6 +7,7 @@ and implement the required methods.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 
 
 class NotificationProvider(ABC):
@@ -18,16 +19,19 @@ class NotificationProvider(ABC):
 
     Attributes:
         name: The name of the notification provider.
+        metadata: Optional metadata about the provider (version, description, etc.).
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, metadata: Mapping[str, object] | None = None) -> None:
         """
         Initialize the notification provider.
 
         Args:
             name: The name of the notification provider.
+            metadata: Optional metadata about the provider.
         """
         self.name: str = name
+        self.metadata: Mapping[str, object] | None = metadata
 
     @abstractmethod
     def send_notification(self, message: str, **kwargs: object) -> bool:

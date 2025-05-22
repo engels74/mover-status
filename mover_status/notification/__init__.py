@@ -16,10 +16,24 @@ from mover_status.notification.formatter import (
     format_raw_values,
 )
 from mover_status.notification.manager import NotificationManager
+from mover_status.notification.registry import ProviderRegistry
+from mover_status.notification.providers import (
+    discover_provider_packages,
+    register_discovered_providers,
+    auto_discover_and_register,
+    load_provider_class,
+    validate_provider_package,
+)
 
 __all__ = [
     "NotificationProvider",
     "NotificationManager",
+    "ProviderRegistry",
+    "discover_provider_packages",
+    "register_discovered_providers",
+    "auto_discover_and_register",
+    "load_provider_class",
+    "validate_provider_package",
     "format_message",
     "format_eta",
     "format_bytes_for_display",
