@@ -316,16 +316,21 @@ The refactoring will follow these key principles:
 
 ## Phase 5: File Structure Reorganization
 
-- [ ] **Module: `mover_status/config/` (Reorganize)**
-  - [ ] **Analyze Requirements:** Define configuration module structure
-  - [ ] **Feature: Configuration Module Structure**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Import and use reorganized modules
-      - [ ] Test case: Backward compatibility
-    - [ ] **TDD: Write Failing Tests:** Update `tests/test_config/`
-    - [ ] **Implementation:** Break `config_manager.py` into smaller modules
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/config/` (Reorganize)**
+  - [x] **Analyze Requirements:** Define configuration module structure
+  - [x] **Feature: Configuration Module Structure**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Import and use reorganized modules
+      - [x] Test case: Backward compatibility
+    - [x] **TDD: Write Failing Tests:** Update `tests/test_config/`
+    - [x] **Implementation:** Break `config_manager.py` into smaller modules:
+      - [x] `mover_status/config/types.py` - TypedDict definitions
+      - [x] `mover_status/config/models.py` - MoverStatusConfig class
+      - [x] `mover_status/config/manager.py` - ConfigManager class
+      - [x] `mover_status/config/manager_validation.py` - Validation mixin
+      - [x] `mover_status/config/config_manager.py` - Backward compatibility imports
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/` (Standardize)**
   - [ ] **Analyze Requirements:** Define provider package structure

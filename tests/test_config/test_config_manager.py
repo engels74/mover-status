@@ -24,6 +24,158 @@ from mover_status.config.config_manager import ConfigManager
 from mover_status.config.validation_error import ValidationError
 
 
+class TestConfigModuleReorganization:
+    """Test cases for the reorganized configuration modules."""
+
+    def test_import_reorganized_types(self) -> None:
+        """Test that reorganized type definitions can be imported and used."""
+        # Test importing from the new types module
+        from mover_status.config.types import (
+            TelegramConfig, DiscordConfig, ProvidersConfig,
+            NotificationConfig, MonitoringConfig, MessagesConfig,
+            PathsConfig, DebugConfig, ConfigSections
+        )
+
+        # Test that types can be used for type checking
+        telegram_config: TelegramConfig = {
+            "enabled": True,
+            "bot_token": "test_token",
+            "chat_id": "test_chat",
+            "message_template": "test",
+            "parse_mode": "HTML",
+            "disable_notification": False
+        }
+
+        assert telegram_config["enabled"] is True
+        assert telegram_config["bot_token"] == "test_token"
+
+    def test_import_reorganized_models(self) -> None:
+        """Test that reorganized model classes can be imported and used."""
+        # Test importing from the new models module
+        from mover_status.config.models import MoverStatusConfig
+        from mover_status.config.types import NotificationConfig, MonitoringConfig
+
+        # Test that the model can be instantiated
+        notification: NotificationConfig = {
+            "notification_increment": 25,
+            "enabled_providers": ["telegram"],
+            "providers": {
+                "telegram": {
+                    "enabled": True,
+                    "bot_token": "test",
+                    "chat_id": "test",
+                    "message_template": "test",
+                    "parse_mode": "HTML",
+                    "disable_notification": False
+                },
+                "discord": {
+                    "enabled": False,
+                    "webhook_url": "",
+                    "username": "test",
+                    "message_template": "test",
+                    "use_embeds": False,
+                    "embed_title": "test",
+                    "embed_colors": {}
+                }
+            }
+        }
+
+        monitoring: MonitoringConfig = {
+            "mover_executable": "/usr/local/sbin/mover",
+            "cache_directory": "/mnt/cache",
+            "poll_interval": 1
+        }
+
+        config = MoverStatusConfig(
+            notification=notification,
+            monitoring=monitoring,
+            messages={"completion": "test"},
+            paths={"exclude": []},
+            debug={"dry_run": False, "enable_debug": False}
+        )
+
+        assert config["notification"]["notification_increment"] == 25
+        assert config["monitoring"]["mover_executable"] == "/usr/local/sbin/mover"
+
+    def test_import_reorganized_manager(self) -> None:
+        """Test that reorganized manager class can be imported and used."""
+        # Test importing from the new manager module
+        from mover_status.config.manager import ConfigManager
+
+        # Test that the manager can be instantiated and used
+        manager = ConfigManager()
+        assert manager.config_path is None
+        assert hasattr(manager, 'config')
+        assert hasattr(manager, 'load')
+        assert hasattr(manager, 'save')
+        assert hasattr(manager, 'get')
+
+    def test_backward_compatibility_imports(self) -> None:
+        """Test that existing imports still work for backward compatibility."""
+        # Test that old imports still work
+        from mover_status.config.config_manager import ConfigManager, MoverStatusConfig
+        from mover_status.config.config_manager import (
+            TelegramConfig, DiscordConfig, ProvidersConfig,
+            NotificationConfig, MonitoringConfig, MessagesConfig,
+            PathsConfig, DebugConfig, ConfigSections
+        )
+
+        # Test that classes work as expected
+        manager = ConfigManager()
+        assert isinstance(manager.config, MoverStatusConfig)
+
+        # Test type definitions work
+        telegram_config: TelegramConfig = {
+            "enabled": False,
+            "bot_token": "",
+            "chat_id": "",
+            "message_template": "",
+            "parse_mode": "HTML",
+            "disable_notification": False
+        }
+        assert telegram_config["enabled"] is False
+
+    def test_config_init_exports_reorganized_modules(self) -> None:
+        """Test that config/__init__.py exports the reorganized modules correctly."""
+        # Test that the main config module exports everything needed
+        from mover_status.config import (
+            ConfigManager, MoverStatusConfig,
+            TelegramConfig, DiscordConfig, ProvidersConfig,
+            NotificationConfig, MonitoringConfig, MessagesConfig,
+            PathsConfig, DebugConfig, ConfigSections
+        )
+
+        # Test that imports work correctly
+        manager = ConfigManager()
+        assert isinstance(manager.config, MoverStatusConfig)
+
+        # Test that type definitions are available
+        notification_config: NotificationConfig = {
+            "notification_increment": 25,
+            "enabled_providers": [],
+            "providers": {
+                "telegram": {
+                    "enabled": False,
+                    "bot_token": "",
+                    "chat_id": "",
+                    "message_template": "",
+                    "parse_mode": "HTML",
+                    "disable_notification": False
+                },
+                "discord": {
+                    "enabled": False,
+                    "webhook_url": "",
+                    "username": "",
+                    "message_template": "",
+                    "use_embeds": False,
+                    "embed_title": "",
+                    "embed_colors": {}
+                }
+            }
+        }
+        assert notification_config["notification_increment"] == 25
+
+
 class TestConfigManager:
     """Test cases for the configuration manager."""
 
