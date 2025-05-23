@@ -172,27 +172,27 @@ The refactoring will follow these key principles:
 
 ## Phase 3: Main Application Refactoring
 
-- [ ] **Module: `mover_status/application.py`**
-  - [ ] **Analyze Requirements:** Define application class needs
-  - [ ] **Feature: Application Class**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Initialize application with configuration
-      - [ ] Test case: Load and register providers
-      - [ ] Test case: Application lifecycle (start, run, stop)
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_application.py`
-    - [ ] **Implementation:** Create `Application` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/application.py`**
+  - [x] **Analyze Requirements:** Define application class needs
+  - [x] **Feature: Application Class**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Initialize application with configuration
+      - [x] Test case: Load and register providers
+      - [x] Test case: Application lifecycle (start, run, stop)
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_application.py`
+    - [x] **Implementation:** Create `Application` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Provider Plugin System**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Load provider plugins
-      - [ ] Test case: Initialize plugins with configuration
-      - [ ] Test case: Plugin lifecycle management
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_application.py`
-    - [ ] **Implementation:** Add plugin system to `Application` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Provider Plugin System**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Load provider plugins
+      - [x] Test case: Initialize plugins with configuration
+      - [x] Test case: Plugin lifecycle management
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_application.py`
+    - [x] **Implementation:** Add plugin system to `Application` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/__init__.py` (Update)**
   - [ ] **Analyze Requirements:** Define clean public API
