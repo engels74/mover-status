@@ -6,12 +6,13 @@ which sends notifications to Telegram using the Bot API.
 """
 
 import logging
-from typing import NotRequired, TypedDict, cast, override
+from typing import NotRequired, TypedDict, cast, override, Any
+from collections.abc import Mapping
 
 import requests
 
-from mover_status.notification.base import NotificationProvider
 from mover_status.notification.formatter import RawValues
+from mover_status.notification.providers.api_provider import ApiProvider
 from mover_status.notification.providers.telegram.formatter import format_telegram_message
 
 # Get logger for this module
@@ -41,7 +42,7 @@ class TelegramResponseData(TypedDict):
     description: NotRequired[str]
 
 
-class TelegramProvider(NotificationProvider):
+class TelegramProvider(ApiProvider):
     """
     Telegram notification provider.
 
@@ -58,20 +59,29 @@ class TelegramProvider(NotificationProvider):
         enabled: Whether the provider is enabled.
     """
 
-    def __init__(self, config: TelegramConfig) -> None:
+    def __init__(
+        self,
+        name: str,
+        config: Mapping[str, Any],  # pyright: ignore[reportExplicitAny]
+        metadata: Mapping[str, object] | None = None
+    ) -> None:
         """
         Initialize the Telegram notification provider.
 
         Args:
+            name: The name of the notification provider.
             config: The provider configuration.
+            metadata: Optional metadata about the provider.
         """
-        super().__init__("telegram")
-        self.bot_token: str = config.get("bot_token", "")
-        self.chat_id: str = config.get("chat_id", "")
-        self.parse_mode: str = config.get("parse_mode", "HTML")
-        self.disable_notification: bool = config.get("disable_notification", False)
-        self.message_template: str = config.get("message_template", "")
-        self.enabled: bool = config.get("enabled", False)
+        # Initialize the parent class
+        super().__init__(name, config, metadata)
+
+        # Extract Telegram-specific configuration values
+        self.bot_token: str = str(self._get_config_value("bot_token", ""))
+        self.chat_id: str = str(self._get_config_value("chat_id", ""))
+        self.parse_mode: str = str(self._get_config_value("parse_mode", "HTML"))
+        self.disable_notification: bool = bool(self._get_config_value("disable_notification", False))
+        self.message_template: str = str(self._get_config_value("message_template", ""))
 
     @override
     def validate_config(self) -> list[str]:
@@ -99,142 +109,148 @@ class TelegramProvider(NotificationProvider):
         return errors
 
     @override
-    def send_notification(self, message: str, **kwargs: object) -> bool:
+    def _get_api_url(self, **kwargs: object) -> str:
         """
-        Send a notification to Telegram.
+        Get the Telegram API URL for sending messages.
+
+        Args:
+            **kwargs: Additional parameters (not used for Telegram).
+
+        Returns:
+            The Telegram API URL with the bot token.
+        """
+        return TELEGRAM_API_URL.format(token=self.bot_token)
+
+    @override
+    def _prepare_request_data(
+        self,
+        message: str,
+        raw_values: RawValues,
+        **kwargs: object
+    ) -> dict[str, object]:
+        """
+        Prepare the request data for the Telegram API.
 
         Args:
             message: The message to send.
-            **kwargs: Additional arguments.
-                raw_values: Optional raw values to format the message with.
+            raw_values: Extracted and validated raw values.
+            **kwargs: Additional provider-specific arguments.
 
         Returns:
-            True if the notification was sent successfully, False otherwise.
+            A dictionary containing the request data for the Telegram API.
         """
-        if not self.enabled:
-            logger.info("Telegram notifications are disabled")
-            return False
-
-        # Validate configuration
-        errors = self.validate_config()
-        if errors:
-            logger.error("Invalid Telegram configuration: %s", ", ".join(errors))
-            return False
-
-        # Format the message if raw_values are provided
-        raw_values: RawValues = {}
-
-        if "raw_values" in kwargs and isinstance(kwargs["raw_values"], dict):
-            # We need to handle the raw_values dictionary carefully since it comes from kwargs
-            # and its exact structure is not known at compile time.
-
-            # Get the raw values dictionary from kwargs and cast it to a known type
-            # We know it's a dict from the isinstance check above
-            raw_dict = cast(dict[str, object], kwargs["raw_values"])
-
-            # Use a sentinel value to distinguish between missing keys and None values
-            sentinel = object()
-
-            try:
-                # Extract and validate percent value
-                percent_val = raw_dict.get("percent", sentinel)
-
-                if percent_val is not sentinel:
-                    # Runtime type checking for percent
-                    if isinstance(percent_val, (int, float)):
-                        # After runtime type checking, we know this is safe to assign
-                        raw_values["percent"] = percent_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting percent value from raw_values")
-
-            try:
-                # Extract and validate remaining_bytes value
-                bytes_val = raw_dict.get("remaining_bytes", sentinel)
-
-                if bytes_val is not sentinel:
-                    # Runtime type checking for remaining_bytes
-                    if isinstance(bytes_val, int):
-                        raw_values["remaining_bytes"] = bytes_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting remaining_bytes value from raw_values")
-
-            try:
-                # Extract and validate eta value
-                eta_val = raw_dict.get("eta", sentinel)
-
-                if eta_val is not sentinel:
-                    # Runtime type checking for eta
-                    if eta_val is None or isinstance(eta_val, float):
-                        # After runtime type checking, we know this is safe to assign
-                        raw_values["eta"] = eta_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting eta value from raw_values")
-
-            # Use the message template if the message is empty
-            template = message if message else self.message_template
-            message = format_telegram_message(template, raw_values)
-
-        # Prepare the API URL
-        api_url = TELEGRAM_API_URL.format(token=self.bot_token)
+        # Format the message if raw_values are provided and we have a template
+        formatted_message = message
+        if raw_values and self.message_template:
+            formatted_message = format_telegram_message(
+                self.message_template,
+                raw_values
+            )
+        elif self.message_template and not raw_values:
+            # Use the template as-is if no raw values provided
+            formatted_message = self.message_template
 
         # Prepare the request payload
-        payload = {
+        return {
             "chat_id": self.chat_id,
-            "text": message,
+            "text": formatted_message,
             "parse_mode": self.parse_mode,
             "disable_notification": self.disable_notification,
         }
 
+    @override
+    def _send_api_request(self, data: dict[str, object], **kwargs: object) -> bool:
+        """
+        Send the API request with Telegram-specific response validation.
+
+        Args:
+            data: The prepared request data.
+            **kwargs: Additional parameters for URL construction.
+
+        Returns:
+            True if the request was successful, False otherwise.
+        """
         try:
-            # Send the request to the Telegram API
-            logger.debug("Sending notification to Telegram: %s", api_url)
-            response = requests.post(api_url, json=payload, timeout=10)
+            # Get the API URL
+            url = self._get_api_url(**kwargs)
+
+            # Prepare headers
+            request_headers = self.headers.copy()
+            request_headers.update(self._prepare_auth_headers())
+
+            # Ensure Content-Type is set for JSON requests
+            if self.http_method in ("POST", "PUT", "PATCH") and "Content-Type" not in request_headers:
+                request_headers["Content-Type"] = "application/json"
+
+            # Send the request with proper typing
+            self._logger.debug("Sending %s request to API: %s", self.http_method, url)
+
+            # Send POST request to Telegram API
+            response = requests.request(
+                method=self.http_method,
+                url=url,
+                json=data,
+                timeout=self.timeout,
+                headers=request_headers,
+                verify=self.verify_ssl
+            )
+
+            # Raise an exception for HTTP error status codes
             response.raise_for_status()
 
-            # Check the response
-            # The response.json() returns a dictionary for Telegram API responses,
-            # but the type checker doesn't know the exact structure at compile time.
-            # We need to handle this carefully with runtime type checking.
-            try:
-                # Parse the JSON response and cast it to a known type
-                # This helps the type checker understand what we're working with
-                response_json = cast(dict[str, object], response.json())
+            # Validate Telegram-specific response
+            return self._validate_api_response(response)
 
-                # Create our typed dict with proper validation
-                response_data: TelegramResponseData = {
-                    # Always convert to bool to ensure type safety
-                    "ok": bool(response_json.get("ok", False)),
-                }
+        except requests.exceptions.RequestException as e:
+            self._logger.error("HTTP error sending API request: %s", e)
+            return False
+        except Exception as e:
+            self._logger.error("Unexpected error sending API request: %s", e)
+            return False
 
-                # Only add result if it exists and is a dictionary
-                if "result" in response_json and isinstance(response_json["result"], dict):
-                    # We've verified it's a dict at runtime
-                    result_dict = cast(dict[str, object], response_json["result"])
-                    # Now we can safely assign it to our typed dict
-                    response_data["result"] = result_dict
+    def _validate_api_response(self, response: requests.Response) -> bool:
+        """
+        Validate the Telegram API response.
 
-                # Only add description if it exists
-                if "description" in response_json:
-                    # Get the description value and convert to string
-                    description_raw = response_json.get("description", "")
-                    # Convert to string to ensure type safety
-                    response_data["description"] = str(description_raw)
-            except (ValueError, TypeError) as e:
-                # Handle JSON parsing errors
-                logger.error("Error parsing Telegram API response: %s", e)
-                return False
+        Args:
+            response: The HTTP response from the Telegram API.
+
+        Returns:
+            True if the response indicates success, False otherwise.
+        """
+        try:
+            # Parse the JSON response and cast it to a known type
+            response_json = cast(dict[str, object], response.json())
+
+            # Create our typed dict with proper validation
+            response_data: TelegramResponseData = {
+                # Always convert to bool to ensure type safety
+                "ok": bool(response_json.get("ok", False)),
+            }
+
+            # Only add result if it exists and is a dictionary
+            if "result" in response_json and isinstance(response_json["result"], dict):
+                # We've verified it's a dict at runtime
+                result_dict = cast(dict[str, object], response_json["result"])
+                # Now we can safely assign it to our typed dict
+                response_data["result"] = result_dict
+
+            # Only add description if it exists
+            if "description" in response_json:
+                # Get the description value and convert to string
+                description_raw = response_json.get("description", "")
+                # Convert to string to ensure type safety
+                response_data["description"] = str(description_raw)
 
             if not response_data["ok"]:
                 description = response_data.get("description", "Unknown error")
-                logger.error("Telegram API error: %s", description)
+                self._logger.error("Telegram API error: %s", description)
                 return False
 
-            logger.info("Notification sent to Telegram successfully")
+            self._logger.info("Notification sent to Telegram successfully")
             return True
 
-        except requests.exceptions.RequestException as e:
-            logger.error("Error sending notification to Telegram: %s", e)
+        except (ValueError, TypeError) as e:
+            # Handle JSON parsing errors
+            self._logger.error("Error parsing Telegram API response: %s", e)
             return False

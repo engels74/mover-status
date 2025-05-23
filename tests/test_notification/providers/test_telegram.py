@@ -20,6 +20,7 @@ from mover_status.notification.providers.telegram.formatter import (
     format_timestamp_for_telegram,
 )
 from mover_status.notification.providers.telegram.provider import TelegramProvider, TelegramConfig
+from mover_status.notification.registry import ProviderRegistry
 
 
 class TestTelegramFormatter:
@@ -131,7 +132,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Check that the provider was initialized correctly
         assert provider.name == "telegram"
@@ -153,7 +154,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -171,7 +172,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -190,7 +191,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -210,7 +211,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -230,7 +231,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Create expected request JSON for type checking
         expected_request_json: TelegramRequestJSON = {
@@ -248,23 +249,23 @@ class TestTelegramProvider:
             result=TelegramMessageResult(message_id=123)
         )
 
-        with patch("requests.post", return_value=mock_response) as mock_post:
+        with patch("requests.request", return_value=mock_response) as mock_request:
             # Send a notification
             result = provider.send_notification("Test message")
 
             # Check that the notification was sent successfully
             assert result is True
 
-            # Check that requests.post was called with the correct arguments
-            mock_post.assert_called_once()
+            # Check that requests.request was called with the correct arguments
+            mock_request.assert_called_once()
 
             # Extract the URL from the mock call
             api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
-            mock_post.assert_called_with(
-                api_url,
-                json=expected_request_json,
-                timeout=10
-            )
+            call_args = mock_request.call_args
+            assert call_args.kwargs["method"] == "POST"
+            assert call_args.kwargs["url"] == api_url
+            assert call_args.kwargs["json"] == expected_request_json
+            assert call_args.kwargs["timeout"] == 10
 
     def test_send_notification_http_error(self) -> None:
         """Test handling HTTP errors when sending a notification."""
@@ -277,10 +278,10 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
-        # Mock the requests.post method to raise an HTTPError
-        with patch("requests.post", side_effect=requests.exceptions.HTTPError("404 Client Error")):
+        # Mock the requests.request method to raise an HTTPError
+        with patch("requests.request", side_effect=requests.exceptions.HTTPError("404 Client Error")):
             # Send a notification
             result = provider.send_notification("Test message")
 
@@ -298,10 +299,10 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
-        # Mock the requests.post method to raise a ConnectionError
-        with patch("requests.post", side_effect=requests.exceptions.ConnectionError("Connection refused")):
+        # Mock the requests.request method to raise a ConnectionError
+        with patch("requests.request", side_effect=requests.exceptions.ConnectionError("Connection refused")):
             # Send a notification
             result = provider.send_notification("Test message")
 
@@ -319,7 +320,7 @@ class TestTelegramProvider:
             "message_template": "Test message",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Mock the requests.post method to return an error response
         mock_response = MagicMock()
@@ -329,7 +330,7 @@ class TestTelegramProvider:
             description="Bad Request: chat not found"
         )
 
-        with patch("requests.post", return_value=mock_response):
+        with patch("requests.request", return_value=mock_response):
             # Send a notification
             result = provider.send_notification("Test message")
 
@@ -347,7 +348,7 @@ class TestTelegramProvider:
             "message_template": "Progress: <b>{percent}</b> complete",
             "enabled": True
         }
-        provider = TelegramProvider(config)
+        provider = TelegramProvider("telegram", config)
 
         # Create expected request JSON for type checking
         expected_request_json: TelegramRequestJSON = {
@@ -365,7 +366,7 @@ class TestTelegramProvider:
             result=TelegramMessageResult(message_id=123)
         )
 
-        with patch("requests.post", return_value=mock_response) as mock_post:
+        with patch("requests.request", return_value=mock_response) as mock_request:
             # Send a notification with raw values
             raw_values: RawValues = {"percent": 50}
             result = provider.send_notification("", raw_values=raw_values)
@@ -373,13 +374,110 @@ class TestTelegramProvider:
             # Check that the notification was sent successfully
             assert result is True
 
-            # Check that requests.post was called with the correct arguments
-            mock_post.assert_called_once()
+            # Check that requests.request was called with the correct arguments
+            mock_request.assert_called_once()
 
             # Extract the URL from the mock call
             api_url = f"https://api.telegram.org/bot{config['bot_token']}/sendMessage"
-            mock_post.assert_called_with(
-                api_url,
-                json=expected_request_json,
-                timeout=10
-            )
+            call_args = mock_request.call_args
+            assert call_args.kwargs["method"] == "POST"
+            assert call_args.kwargs["url"] == api_url
+            assert call_args.kwargs["json"] == expected_request_json
+            assert call_args.kwargs["timeout"] == 10
+
+
+class TestTelegramProviderRefactored:
+    """Test cases for the refactored Telegram provider using new base classes."""
+
+    def test_telegram_provider_using_new_base_classes(self) -> None:
+        """Test that Telegram provider uses new base classes correctly."""
+        from mover_status.notification.providers.api_provider import ApiProvider
+
+        # Create a provider with valid config
+        config = {
+            "enabled": True,
+            "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+            "chat_id": "12345678",
+            "parse_mode": "HTML",
+            "disable_notification": False,
+            "message_template": "Test message"
+        }
+        provider = TelegramProvider("telegram", config)
+
+        # Verify that the provider inherits from ApiProvider
+        assert isinstance(provider, ApiProvider)
+
+        # Verify that the provider has the expected name
+        assert provider.name == "telegram"
+
+        # Verify that the provider is enabled
+        assert provider.enabled is True
+
+        # Verify that the provider can be initialized
+        assert provider.initialize() is True
+
+    def test_self_registration_with_provider_registry(self) -> None:
+        """Test that Telegram provider can self-register with provider registry."""
+        # Create a provider registry
+        registry = ProviderRegistry()
+
+        # Create a provider with valid config
+        config = {
+            "enabled": True,
+            "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+            "chat_id": "12345678",
+            "parse_mode": "HTML",
+            "disable_notification": False,
+            "message_template": "Test message"
+        }
+
+        # Create provider with metadata for registration
+        metadata = {
+            "version": "1.0.0",
+            "description": "Telegram notification provider",
+            "author": "MoverStatus Team"
+        }
+        provider = TelegramProvider("telegram", config, metadata)
+
+        # Register the provider
+        registry.register_provider("telegram", provider)
+
+        # Verify that the provider is registered
+        registered_providers = registry.get_registered_providers()
+        assert "telegram" in registered_providers
+        assert registered_providers["telegram"] == provider
+
+    def test_configuration_schema_validation(self) -> None:
+        """Test that Telegram provider configuration schema validation works."""
+        from mover_status.notification.providers.telegram.config import validate_telegram_config
+
+        # Test valid configuration
+        valid_config: dict[str, object] = {
+            "enabled": True,
+            "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+            "chat_id": "12345678",
+            "parse_mode": "HTML",
+            "disable_notification": False,
+            "message_template": "Test message"
+        }
+
+        # Validate the configuration - should not raise an exception
+        validated_config = validate_telegram_config(valid_config)
+        assert validated_config["enabled"] is True
+        assert validated_config["bot_token"] == "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        assert validated_config["chat_id"] == "12345678"
+
+        # Test configuration with missing required fields
+        invalid_config: dict[str, object] = {
+            "enabled": True,
+            "parse_mode": "HTML"
+            # Missing bot_token and chat_id
+        }
+
+        # Validate the configuration - should raise an exception
+        try:
+            _ = validate_telegram_config(invalid_config)
+            assert False, "Expected SchemaValidationError to be raised"
+        except Exception as e:
+            # Should raise a validation error
+            assert "bot_token" in str(e) or "chat_id" in str(e)

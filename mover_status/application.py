@@ -146,7 +146,7 @@ class Application:
                 "chat_id": chat_id
             }
 
-            return TelegramProvider(cast(TelegramConfig, cast(object, config)))
+            return TelegramProvider("telegram", cast(TelegramConfig, cast(object, config)))
 
         except Exception as e:
             logger.error(f"Failed to create Telegram provider: {e}")
