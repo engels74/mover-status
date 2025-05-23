@@ -206,27 +206,27 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/cli.py`**
-  - [ ] **Analyze Requirements:** Define CLI needs
-  - [ ] **Feature: Command Line Interface**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Parse command line arguments
-      - [ ] Test case: Handle help and version commands
-      - [ ] Test case: Support provider-specific options
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_cli.py`
-    - [ ] **Implementation:** Create CLI module
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/cli.py`**
+  - [x] **Analyze Requirements:** Define CLI needs
+  - [x] **Feature: Command Line Interface**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Parse command line arguments
+      - [x] Test case: Handle help and version commands
+      - [x] Test case: Support provider-specific options
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_cli.py`
+    - [x] **Implementation:** Create CLI module
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
-  - [ ] **Feature: Provider-Specific CLI Options**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Register provider-specific CLI options
-      - [ ] Test case: Parse provider-specific options
-      - [ ] Test case: Pass options to provider initialization
-    - [ ] **TDD: Write Failing Tests:** Add to `tests/test_cli.py`
-    - [ ] **Implementation:** Add support for provider-specific CLI options
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+  - [x] **Feature: Provider-Specific CLI Options**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Register provider-specific CLI options
+      - [x] Test case: Parse provider-specific options
+      - [x] Test case: Pass options to provider initialization
+    - [x] **TDD: Write Failing Tests:** Add to `tests/test_cli.py`
+    - [x] **Implementation:** Add support for provider-specific CLI options
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/__main__.py` (Update)**
   - [ ] **Analyze Requirements:** Define main entry point needs
