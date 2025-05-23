@@ -23,7 +23,6 @@ from mover_status.notification.providers.discord.formatter import (
 )
 from mover_status.notification.providers.discord.provider import (
     DiscordProvider,
-    DiscordConfig,
 )
 
 
@@ -203,7 +202,7 @@ class TestDiscordProvider:
     def test_init(self) -> None:
         """Test initialization of the Discord provider."""
         # Create a config dictionary
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
@@ -218,8 +217,8 @@ class TestDiscordProvider:
             },
         }
 
-        # Initialize the provider
-        provider = DiscordProvider(config)
+        # Initialize the provider with new signature
+        provider = DiscordProvider("discord", config)
 
         # Check that the provider was initialized correctly
         assert provider.name == "discord"
@@ -237,14 +236,14 @@ class TestDiscordProvider:
     def test_validate_config_valid(self) -> None:
         """Test validation of a valid configuration."""
         # Create a valid config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -255,14 +254,14 @@ class TestDiscordProvider:
     def test_validate_config_invalid_webhook_url(self) -> None:
         """Test validation of an invalid webhook URL."""
         # Create a config with an invalid webhook URL
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "invalid-url",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -274,13 +273,13 @@ class TestDiscordProvider:
     def test_validate_config_missing_webhook_url(self) -> None:
         """Test validation of a missing webhook URL."""
         # Create a config with a missing webhook URL
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Validate the config
         errors = provider.validate_config()
@@ -289,7 +288,7 @@ class TestDiscordProvider:
         assert len(errors) == 1
         assert "webhook_url" in errors[0].lower()
 
-    @patch("requests.post")
+    @patch("mover_status.notification.providers.webhook_provider.requests.post")
     def test_send_notification_success(self, mock_post: MagicMock) -> None:
         """Test sending a notification successfully."""
         # Create a mock response
@@ -298,7 +297,7 @@ class TestDiscordProvider:
         mock_post.return_value = mock_response
 
         # Create a config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
@@ -308,7 +307,7 @@ class TestDiscordProvider:
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Send a notification
         result = provider.send_notification("Test message")
@@ -318,10 +317,11 @@ class TestDiscordProvider:
         mock_post.assert_called_once()
 
         # Check that the request was made with the correct URL
-        _, kwargs = mock_post.call_args
-        assert kwargs["url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
+        call_args = mock_post.call_args
+        assert call_args is not None
+        assert call_args.kwargs["url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
 
-    @patch("requests.post")
+    @patch("mover_status.notification.providers.webhook_provider.requests.post")
     def test_send_notification_with_raw_values(self, mock_post: MagicMock) -> None:
         """Test sending a notification with raw values."""
         # Create a mock response
@@ -330,7 +330,7 @@ class TestDiscordProvider:
         mock_post.return_value = mock_response
 
         # Create a config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
@@ -340,7 +340,7 @@ class TestDiscordProvider:
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Define raw values
         raw_values: RawValues = {
@@ -357,11 +357,12 @@ class TestDiscordProvider:
         mock_post.assert_called_once()
 
         # Check that the request was made with the correct data
-        _, kwargs = mock_post.call_args
-        assert "Progress: 50%" in str(kwargs["json"])
-        assert "1.0 GB" in str(kwargs["json"])
+        call_args = mock_post.call_args
+        assert call_args is not None
+        assert "Progress: 50%" in str(call_args.kwargs["data"])
+        assert "1.0 GB" in str(call_args.kwargs["data"])
 
-    @patch("requests.post")
+    @patch("mover_status.notification.providers.webhook_provider.requests.post")
     def test_send_notification_api_error(self, mock_post: MagicMock) -> None:
         """Test handling of API errors when sending a notification."""
         # Create a mock response for an API error
@@ -371,14 +372,14 @@ class TestDiscordProvider:
         mock_post.return_value = mock_response
 
         # Create a config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Send a notification
         result = provider.send_notification("Test message")
@@ -387,21 +388,21 @@ class TestDiscordProvider:
         assert result is False
         mock_post.assert_called_once()
 
-    @patch("requests.post")
+    @patch("mover_status.notification.providers.webhook_provider.requests.post")
     def test_send_notification_network_error(self, mock_post: MagicMock) -> None:
         """Test handling of network errors when sending a notification."""
         # Create a mock for a network error
         mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
 
         # Create a config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Send a notification
         result = provider.send_notification("Test message")
@@ -413,14 +414,14 @@ class TestDiscordProvider:
     def test_send_notification_disabled(self) -> None:
         """Test that notifications are not sent when the provider is disabled."""
         # Create a config with the provider disabled
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": False,
             "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Send a notification
         result = provider.send_notification("Test message")
@@ -431,17 +432,117 @@ class TestDiscordProvider:
     def test_send_notification_invalid_config(self) -> None:
         """Test that notifications are not sent with an invalid configuration."""
         # Create an invalid config
-        config: DiscordConfig = {
+        config: dict[str, object] = {
             "enabled": True,
             "webhook_url": "invalid-url",
             "username": "Test Bot",
         }
 
         # Initialize the provider
-        provider = DiscordProvider(config)
+        provider = DiscordProvider("discord", config)
 
         # Send a notification
         result = provider.send_notification("Test message")
 
         # Check that the notification was not sent
         assert result is False
+
+
+class TestDiscordProviderRefactored:
+    """Test cases for the refactored Discord notification provider."""
+
+    def test_discord_provider_using_new_base_classes(self) -> None:
+        """Test that Discord provider uses new base classes."""
+        from mover_status.notification.providers.webhook_provider import WebhookProvider
+        from mover_status.notification.providers.base_provider import BaseProvider
+
+        # Create a Discord provider with minimal configuration
+        config = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg"
+        }
+
+        # Create provider with metadata for registry compatibility
+        metadata = {
+            "version": "1.0.0",
+            "description": "Discord webhook notification provider",
+            "provider_type": "webhook"
+        }
+
+        provider = DiscordProvider("discord", config, metadata)
+
+        # Verify inheritance hierarchy
+        assert isinstance(provider, WebhookProvider)
+        assert isinstance(provider, BaseProvider)
+
+        # Verify provider has required attributes from base classes
+        assert hasattr(provider, 'webhook_url')
+        assert hasattr(provider, 'timeout')
+        assert hasattr(provider, 'verify_ssl')
+        assert hasattr(provider, '_send_notification_impl')
+        assert hasattr(provider, '_prepare_payload')
+
+        # Verify provider configuration
+        assert provider.name == "discord"
+        assert provider.enabled is True
+        assert provider.webhook_url == "https://discord.com/api/webhooks/123456789/abcdefg"
+
+    def test_self_registration_with_provider_registry(self) -> None:
+        """Test that Discord provider can self-register with provider registry."""
+        from mover_status.notification.registry import ProviderRegistry
+
+        # Create a provider registry
+        registry = ProviderRegistry()
+
+        # Create a Discord provider with metadata
+        config = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg"
+        }
+
+        metadata = {
+            "version": "1.0.0",
+            "description": "Discord webhook notification provider",
+            "provider_type": "webhook"
+        }
+
+        provider = DiscordProvider("discord", config, metadata)
+
+        # Register the provider
+        registry.register_provider("discord", provider)
+
+        # Verify registration
+        registered_providers = registry.get_registered_providers()
+        assert "discord" in registered_providers
+        assert registered_providers["discord"] is provider
+
+        # Verify provider metadata
+        assert provider.metadata is not None
+        assert provider.metadata["version"] == "1.0.0"
+        assert provider.metadata["description"] == "Discord webhook notification provider"
+
+    def test_configuration_schema_validation(self) -> None:
+        """Test that Discord provider validates configuration against schema."""
+        from mover_status.notification.providers.discord.config import validate_discord_config
+
+        # Test valid configuration
+        valid_config: dict[str, object] = {
+            "enabled": True,
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg",
+            "username": "Test Bot",
+            "use_embeds": True
+        }
+
+        # This should not raise an exception
+        validated_config = validate_discord_config(valid_config)
+        assert validated_config["enabled"] is True
+        assert validated_config["webhook_url"] == "https://discord.com/api/webhooks/123456789/abcdefg"
+
+        # Test configuration with defaults applied
+        minimal_config: dict[str, object] = {
+            "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefg"
+        }
+
+        validated_minimal = validate_discord_config(minimal_config)
+        assert "enabled" in validated_minimal  # Should have default value
+        assert "username" in validated_minimal  # Should have default value

@@ -14,7 +14,7 @@ from mover_status.notification.registry import ProviderRegistry
 from mover_status.config.registry import ConfigRegistry
 from mover_status.notification.base import NotificationProvider
 from mover_status.notification.providers.telegram.provider import TelegramProvider, TelegramConfig
-from mover_status.notification.providers.discord.provider import DiscordProvider, DiscordConfig
+from mover_status.notification.providers.discord.provider import DiscordProvider
 from mover_status.core.monitor import MonitorSession
 from mover_status.utils.logger import setup_logger
 
@@ -167,7 +167,7 @@ class Application:
                 "webhook_url": webhook_url
             }
 
-            return DiscordProvider(cast(DiscordConfig, cast(object, config)))
+            return DiscordProvider("discord", config)
 
         except Exception as e:
             logger.error(f"Failed to create Discord provider: {e}")

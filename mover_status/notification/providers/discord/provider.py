@@ -8,12 +8,11 @@ which sends notifications to Discord using webhooks.
 import logging
 import re
 from datetime import datetime
-from typing import TypedDict, cast, override
+from typing import TypedDict, cast, override, Any
+from collections.abc import Mapping
 
-import requests
-
-from mover_status.notification.base import NotificationProvider
 from mover_status.notification.formatter import RawValues
+from mover_status.notification.providers.webhook_provider import WebhookProvider
 from mover_status.notification.providers.discord.formatter import (
     create_embed,
     format_discord_message,
@@ -45,11 +44,11 @@ class DiscordConfig(TypedDict, total=False):
     embed_colors: EmbedColorsType
 
 
-class DiscordProvider(NotificationProvider):
+class DiscordProvider(WebhookProvider):
     """
     Discord notification provider.
 
-    This class implements the NotificationProvider interface for sending
+    This class implements the WebhookProvider interface for sending
     notifications to Discord using webhooks.
 
     Attributes:
@@ -63,26 +62,45 @@ class DiscordProvider(NotificationProvider):
         enabled: Whether the provider is enabled.
     """
 
-    def __init__(self, config: DiscordConfig) -> None:
+    # Class-level attribute declarations
+    embed_colors: EmbedColorsType
+
+    def __init__(
+        self,
+        name: str,
+        config: Mapping[str, Any],  # pyright: ignore[reportExplicitAny]
+        metadata: Mapping[str, object] | None = None
+    ) -> None:
         """
         Initialize the Discord notification provider.
 
         Args:
+            name: The name of the notification provider.
             config: The provider configuration.
+            metadata: Optional metadata about the provider.
         """
-        super().__init__("discord")
-        self.webhook_url: str = config.get("webhook_url", "")
-        self.username: str = config.get("username", "Mover Bot")
-        self.message_template: str = config.get("message_template", "")
-        self.use_embeds: bool = config.get("use_embeds", True)
-        self.embed_title: str = config.get("embed_title", "Mover: Moving Data")
-        self.embed_colors: EmbedColorsType = config.get("embed_colors", {
+        # Initialize the parent class
+        super().__init__(name, config, metadata)
+
+        # Extract Discord-specific configuration values
+        self.username: str = str(self._get_config_value("username", "Mover Bot"))
+        self.message_template: str = str(self._get_config_value("message_template", ""))
+        self.use_embeds: bool = bool(self._get_config_value("use_embeds", True))
+        self.embed_title: str = str(self._get_config_value("embed_title", "Mover: Moving Data"))
+
+        # Handle embed colors with proper type conversion
+        default_colors: EmbedColorsType = {
             "low_progress": 16744576,  # Light Red (0-34%)
             "mid_progress": 16753920,  # Light Orange (35-65%)
             "high_progress": 9498256,  # Light Green (66-99%)
             "complete": 65280,         # Green (100%)
-        })
-        self.enabled: bool = config.get("enabled", False)
+        }
+        embed_colors_raw = self._get_config_value("embed_colors", default_colors)
+        if isinstance(embed_colors_raw, dict):
+            # Convert to proper type after runtime validation
+            self.embed_colors = cast(EmbedColorsType, embed_colors_raw)
+        else:
+            self.embed_colors = default_colors
 
     @override
     def validate_config(self) -> list[str]:
@@ -94,7 +112,7 @@ class DiscordProvider(NotificationProvider):
         """
         errors: list[str] = []
 
-        # Check required fields
+        # Check required fields using the webhook_url from the parent class
         if not self.webhook_url:
             errors.append("Discord webhook_url is required")
         elif not re.match(DISCORD_WEBHOOK_URL_PATTERN, self.webhook_url):
@@ -102,102 +120,33 @@ class DiscordProvider(NotificationProvider):
 
         return errors
 
-    def _get_color_for_progress(self, percent: int) -> int:
-        """
-        Get the color for the given progress percentage.
-
-        Args:
-            percent: The progress percentage.
-
-        Returns:
-            The color code for the progress.
-        """
-        if percent >= 100:
-            return self.embed_colors["complete"]
-        elif percent >= 66:
-            return self.embed_colors["high_progress"]
-        elif percent >= 35:
-            return self.embed_colors["mid_progress"]
-        else:
-            return self.embed_colors["low_progress"]
-
     @override
-    def send_notification(self, message: str, **kwargs: object) -> bool:
+    def _prepare_payload(
+        self,
+        message: str,
+        raw_values: RawValues,
+        **kwargs: object
+    ) -> dict[str, object]:
         """
-        Send a notification to Discord.
+        Prepare the payload for the Discord webhook request.
 
         Args:
             message: The message to send.
-            **kwargs: Additional arguments.
-                raw_values: Optional raw values to format the message with.
+            raw_values: Extracted and validated raw values.
+            **kwargs: Additional provider-specific arguments.
 
         Returns:
-            True if the notification was sent successfully, False otherwise.
+            A dictionary representing the payload to send to Discord.
         """
-        if not self.enabled:
-            logger.info("Discord notifications are disabled")
-            return False
-
-        # Validate configuration
-        errors = self.validate_config()
-        if errors:
-            logger.error("Invalid Discord configuration: %s", ", ".join(errors))
-            return False
-
-        # Format the message if raw_values are provided
-        raw_values: RawValues = {}
+        # Format the message if raw_values are provided and we have a template
         formatted_message = message
+        if raw_values and self.message_template:
+            formatted_message = format_discord_message(self.message_template, raw_values)
+        elif self.message_template and not raw_values:
+            # Use the template as-is if no raw values provided
+            formatted_message = self.message_template
 
-        if "raw_values" in kwargs and isinstance(kwargs["raw_values"], dict):
-            # Get the raw values dictionary from kwargs and cast it to a known type
-            raw_dict = cast(dict[str, object], kwargs["raw_values"])
-
-            # Use a sentinel value to distinguish between missing keys and None values
-            sentinel = object()
-
-            try:
-                # Extract and validate percent value
-                percent_val = raw_dict.get("percent", sentinel)
-
-                if percent_val is not sentinel:
-                    # Runtime type checking for percent
-                    if isinstance(percent_val, (int, float)):
-                        # After runtime type checking, we know this is safe to assign
-                        raw_values["percent"] = percent_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting percent value from raw_values")
-
-            try:
-                # Extract and validate remaining_bytes value
-                bytes_val = raw_dict.get("remaining_bytes", sentinel)
-
-                if bytes_val is not sentinel:
-                    # Runtime type checking for remaining_bytes
-                    if isinstance(bytes_val, int):
-                        raw_values["remaining_bytes"] = bytes_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting remaining_bytes value from raw_values")
-
-            try:
-                # Extract and validate eta value
-                eta_val = raw_dict.get("eta", sentinel)
-
-                if eta_val is not sentinel:
-                    # Runtime type checking for eta
-                    if eta_val is None or isinstance(eta_val, float):
-                        # After runtime type checking, we know this is safe to assign
-                        raw_values["eta"] = eta_val
-            except (KeyError, TypeError, AttributeError):
-                # Handle any unexpected errors when accessing the dictionary
-                logger.debug("Error extracting eta value from raw_values")
-
-            # Use the message template if the message is empty
-            template = message if message else self.message_template
-            formatted_message = format_discord_message(template, raw_values)
-
-        # Prepare the payload
+        # Prepare the base payload
         payload: dict[str, object] = {
             "username": self.username,
             "content": None,
@@ -235,24 +184,23 @@ class DiscordProvider(NotificationProvider):
             # Use the formatted message as content
             payload["content"] = formatted_message
 
-        try:
-            # Send the request to the Discord webhook
-            logger.debug("Sending notification to Discord: %s", self.webhook_url)
-            response = requests.post(
-                url=self.webhook_url,
-                json=payload,
-                timeout=10,
-            )
-            response.raise_for_status()
+        return payload
 
-            # Discord returns 204 No Content on success
-            if response.status_code == 204:
-                logger.info("Notification sent to Discord successfully")
-                return True
-            else:
-                logger.error("Discord API returned unexpected status code: %d", response.status_code)
-                return False
+    def _get_color_for_progress(self, percent: int) -> int:
+        """
+        Get the color for the given progress percentage.
 
-        except requests.exceptions.RequestException as e:
-            logger.error("Error sending notification to Discord: %s", e)
-            return False
+        Args:
+            percent: The progress percentage.
+
+        Returns:
+            The color code for the progress.
+        """
+        if percent >= 100:
+            return self.embed_colors["complete"]
+        elif percent >= 66:
+            return self.embed_colors["high_progress"]
+        elif percent >= 35:
+            return self.embed_colors["mid_progress"]
+        else:
+            return self.embed_colors["low_progress"]

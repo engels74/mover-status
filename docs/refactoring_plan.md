@@ -290,17 +290,17 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/discord/` (Update)**
-  - [ ] **Analyze Requirements:** Define Discord provider refactoring needs
-  - [ ] **Feature: Refactored Discord Provider**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Discord provider using new base classes
-      - [ ] Test case: Self-registration with provider registry
-      - [ ] Test case: Configuration schema validation
-    - [ ] **TDD: Write Failing Tests:** Update `tests/test_notification/providers/test_discord.py`
-    - [ ] **Implementation:** Refactor Discord provider to use new architecture
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/discord/` (Update)**
+  - [x] **Analyze Requirements:** Define Discord provider refactoring needs
+  - [x] **Feature: Refactored Discord Provider**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Discord provider using new base classes
+      - [x] Test case: Self-registration with provider registry
+      - [x] Test case: Configuration schema validation
+    - [x] **TDD: Write Failing Tests:** Update `tests/test_notification/providers/test_discord.py`
+    - [x] **Implementation:** Refactor Discord provider to use new architecture
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/template/`**
   - [ ] **Analyze Requirements:** Define provider template needs
