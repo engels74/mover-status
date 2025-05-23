@@ -266,17 +266,17 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/notification/providers/api_provider.py`**
-  - [ ] **Analyze Requirements:** Define API provider needs
-  - [ ] **Feature: API Provider Base Class**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: API provider with common functionality
-      - [ ] Test case: API configuration handling
-      - [ ] Test case: API request methods
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_api_provider.py`
-    - [ ] **Implementation:** Create `ApiProvider` class
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/notification/providers/api_provider.py`**
+  - [x] **Analyze Requirements:** Define API provider needs
+  - [x] **Feature: API Provider Base Class**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: API provider with common functionality
+      - [x] Test case: API configuration handling
+      - [x] Test case: API request methods
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_notification/providers/test_api_provider.py`
+    - [x] **Implementation:** Create `ApiProvider` class
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/notification/providers/telegram/` (Update)**
   - [ ] **Analyze Requirements:** Define Telegram provider refactoring needs
