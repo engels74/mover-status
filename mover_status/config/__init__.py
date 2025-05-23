@@ -9,6 +9,8 @@ from mover_status.config.config_manager import ConfigManager
 from mover_status.config.default_config import DEFAULT_CONFIG
 from mover_status.config.validation_error import ValidationError
 from mover_status.config.loader import ConfigLoader, LoaderError
+from mover_status.config.validator import ConfigValidator
+from mover_status.config.registry import ConfigRegistry, RegistryError
 from mover_status.config.schema import (
     ConfigSchema,
     SchemaField,
@@ -22,6 +24,9 @@ __all__ = [
     "ValidationError",
     "ConfigLoader",
     "LoaderError",
+    "ConfigValidator",
+    "ConfigRegistry",
+    "RegistryError",
     "ConfigSchema",
     "SchemaField",
     "SchemaValidationError",
