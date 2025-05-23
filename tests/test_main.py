@@ -9,6 +9,7 @@ initialization functionality in the main module.
 
 import sys
 import argparse
+import pytest
 from unittest.mock import patch, MagicMock
 
 # Import the module directly to allow for better patching
@@ -20,7 +21,6 @@ from mover_status.__main__ import (
     initialize_app,
 )
 from mover_status import __version__
-from mover_status.utils.logger import LogLevel, LogFormat
 # We're using the mock_types module for type checking in comments
 # but not directly in the code, so we don't need to import it
 
@@ -52,20 +52,18 @@ class TestCommandLineInterface:
     def test_parse_args_version(self) -> None:
         """Test parsing command line arguments with version flag."""
         with patch.object(sys, 'argv', ['mover-status', '--version']):
-            args = parse_args()
-            assert args.version
-            assert not args.help
-            assert not args.dry_run
-            assert not args.debug
+            # The new CLIParser exits directly when version is requested
+            with pytest.raises(SystemExit) as exc_info:
+                _ = parse_args()
+            assert exc_info.value.code == 0
 
     def test_parse_args_help(self) -> None:
         """Test parsing command line arguments with help flag."""
         with patch.object(sys, 'argv', ['mover-status', '--help']):
-            args = parse_args()
-            assert args.help
-            assert not args.version
-            assert not args.dry_run
-            assert not args.debug
+            # The new CLIParser exits directly when help is requested
+            with pytest.raises(SystemExit) as exc_info:
+                _ = parse_args()
+            assert exc_info.value.code == 0
 
     def test_parse_args_dry_run(self) -> None:
         """Test parsing command line arguments with dry run flag."""
@@ -118,159 +116,63 @@ class TestApplicationInitialization:
 
     def test_initialize_app_default(self) -> None:
         """Test initializing the application with default settings."""
-        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
-             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
-             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
-             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+        with patch('mover_status.__main__.Application') as mock_application:
 
             # Setup mocks
-            mock_config_instance = MagicMock()
-            mock_config_manager.return_value = mock_config_instance
-            mock_config_instance.load.return_value = mock_config_instance
-            mock_config_instance.config.get_nested_value.return_value = []
-
-            # Mock check_for_updates to avoid network calls
-            mock_check_updates.return_value = False
-
-            # Create a mock for the notification manager
-            mock_notification_instance = MagicMock()
-            mock_notification_manager.return_value = mock_notification_instance
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
 
             # Call the function
-            _, notification_manager = initialize_app(None, False)
+            app = initialize_app(None, False)
 
-            # Verify ConfigManager was initialized correctly
-            mock_config_manager.assert_called_once_with(None)
-            mock_config_instance.load.assert_called_once()
+            # Verify Application was initialized correctly
+            mock_application.assert_called_once_with(config_path=None, debug=False)
 
-            # Verify logger was set up correctly
-            mock_setup_logger.assert_called_once()
-            logger_config = mock_setup_logger.call_args[0][1]
-            assert logger_config.console_enabled is True
-            assert logger_config.level == LogLevel.INFO
-            assert logger_config.format == LogFormat.SIMPLE
+            # Verify load_and_register_providers was called
+            mock_app_instance.load_and_register_providers.assert_called_once()
 
-            # Verify NotificationManager was initialized
-            mock_notification_manager.assert_called_once()
-            assert notification_manager == mock_notification_instance
-
-            # Verify no providers were registered (default behavior)
-            assert mock_notification_instance.register_provider.call_count == 0
+            # Verify we got the application instance back
+            assert app == mock_app_instance
 
     def test_initialize_app_with_config(self) -> None:
         """Test initializing the application with a config file path."""
-        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
-             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
-             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
-             patch('mover_status.__main__.TelegramProvider') as mock_telegram_provider, \
-             patch('mover_status.__main__.DiscordProvider') as mock_discord_provider, \
-             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+        with patch('mover_status.__main__.Application') as mock_application:
 
             # Setup mocks
-            mock_config_instance = MagicMock()
-            mock_config_manager.return_value = mock_config_instance
-            mock_config_instance.load.return_value = mock_config_instance
-
-            # Mock check_for_updates to avoid network calls
-            mock_check_updates.return_value = False
-
-            # Create a mock for the notification manager
-            mock_notification_instance = MagicMock()
-            mock_notification_manager.return_value = mock_notification_instance
-
-            # Mock the validate_config method to return empty list (no errors)
-            mock_telegram_provider_instance = MagicMock()
-            mock_telegram_provider_instance.validate_config.return_value = []
-            mock_telegram_provider_instance.enabled = True
-            mock_telegram_provider.return_value = mock_telegram_provider_instance
-
-            mock_discord_provider_instance = MagicMock()
-            mock_discord_provider_instance.validate_config.return_value = []
-            mock_discord_provider_instance.enabled = True
-            mock_discord_provider.return_value = mock_discord_provider_instance
-
-            # Mock enabled providers list with valid configurations
-            def get_config_value(key_str: str) -> list[str] | dict[str, object] | list[object]:
-                config_values: dict[str, list[str] | dict[str, object]] = {
-                    "notification.enabled_providers": ["telegram", "discord"],
-                    "notification.providers.telegram": {
-                        "enabled": True,
-                        "bot_token": "test_token",
-                        "chat_id": "test_id",
-                        "message_template": "test message",
-                        "parse_mode": "HTML",
-                        "disable_notification": False
-                    },
-                    "notification.providers.discord": {
-                        "enabled": True,
-                        "webhook_url": "https://discord.com/api/webhooks/test",
-                        "username": "Test Bot",
-                        "message_template": "test message",
-                        "use_embeds": True,
-                        "embed_title": "Test Title",
-                        "embed_colors": {
-                            "low_progress": 123,
-                            "mid_progress": 456,
-                            "high_progress": 789,
-                            "complete": 101112
-                        }
-                    }
-                }
-                return config_values.get(key_str, [])
-
-            mock_config_instance.config.get_nested_value.side_effect = get_config_value
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
 
             # Call the function
-            _, notification_manager = initialize_app("test_config.yaml", False)
+            app = initialize_app("test_config.yaml", False)
 
-            # Verify ConfigManager was initialized correctly
-            mock_config_manager.assert_called_once_with("test_config.yaml")
-            mock_config_instance.load.assert_called_once()
+            # Verify Application was initialized correctly
+            mock_application.assert_called_once_with(config_path="test_config.yaml", debug=False)
 
-            # Verify logger was set up correctly
-            mock_setup_logger.assert_called_once()
+            # Verify load_and_register_providers was called
+            mock_app_instance.load_and_register_providers.assert_called_once()
 
-            # Verify NotificationManager was initialized
-            mock_notification_manager.assert_called_once()
-            assert notification_manager == mock_notification_instance
-
-            # Verify providers were registered
-            assert mock_notification_instance.register_provider.call_count == 2
-            mock_telegram_provider.assert_called_once()
-            mock_discord_provider.assert_called_once()
+            # Verify we got the application instance back
+            assert app == mock_app_instance
 
     def test_initialize_app_with_debug(self) -> None:
         """Test initializing the application with debug mode enabled."""
-        with patch('mover_status.__main__.ConfigManager') as mock_config_manager, \
-             patch('mover_status.__main__.setup_logger') as mock_setup_logger, \
-             patch('mover_status.__main__.NotificationManager') as mock_notification_manager, \
-             patch('mover_status.__main__.check_for_updates') as mock_check_updates:
+        with patch('mover_status.__main__.Application') as mock_application:
 
             # Setup mocks
-            mock_config_instance = MagicMock()
-            mock_config_manager.return_value = mock_config_instance
-            mock_config_instance.load.return_value = mock_config_instance
-            mock_config_instance.config.get_nested_value.return_value = []
-
-            # Mock check_for_updates to avoid network calls
-            mock_check_updates.return_value = False
-
-            # Create a mock for the notification manager
-            mock_notification_instance = MagicMock()
-            mock_notification_manager.return_value = mock_notification_instance
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
 
             # Call the function with debug=True
-            _, notification_manager = initialize_app(None, True)
+            app = initialize_app(None, True)
 
-            # Verify logger was set up with debug settings
-            mock_setup_logger.assert_called_once()
-            logger_config = mock_setup_logger.call_args[0][1]
-            assert logger_config.level == LogLevel.DEBUG
-            assert logger_config.format == LogFormat.DETAILED
+            # Verify Application was initialized correctly with debug=True
+            mock_application.assert_called_once_with(config_path=None, debug=True)
 
-            # Verify NotificationManager was initialized
-            mock_notification_manager.assert_called_once()
-            assert notification_manager == mock_notification_instance
+            # Verify load_and_register_providers was called
+            mock_app_instance.load_and_register_providers.assert_called_once()
+
+            # Verify we got the application instance back
+            assert app == mock_app_instance
 
 
 class TestMainFunction:
@@ -278,17 +180,19 @@ class TestMainFunction:
 
     def test_main_version(self) -> None:
         """Test main function with version flag."""
-        with patch.object(sys, 'argv', ['mover-status', '--version']), \
-             patch('mover_status.__main__.handle_version_command') as mock_version:
-            main()
-            mock_version.assert_called_once()
+        with patch.object(sys, 'argv', ['mover-status', '--version']):
+            # The new CLIParser exits directly when version is requested
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
 
     def test_main_help(self) -> None:
         """Test main function with help flag."""
-        with patch.object(sys, 'argv', ['mover-status', '--help']), \
-             patch('mover_status.__main__.handle_help_command') as mock_help:
-            main()
-            mock_help.assert_called_once()
+        with patch.object(sys, 'argv', ['mover-status', '--help']):
+            # The new CLIParser exits directly when help is requested
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
 
     def test_main_dry_run(self) -> None:
         """Test main function with dry run flag."""
@@ -297,78 +201,44 @@ class TestMainFunction:
              patch('mover_status.__main__.run_dry_mode') as mock_dry_run:
 
             # Setup mocks
-            mock_config = MagicMock()
-            mock_notification = MagicMock()
-            mock_init.return_value = (mock_config, mock_notification)
+            mock_app = MagicMock()
+            mock_app.notification_manager = MagicMock()
+            mock_init.return_value = mock_app
 
             # Call the function
             main()
 
             # Verify mocks were called correctly
             mock_init.assert_called_once()
-            mock_dry_run.assert_called_once_with(mock_notification)
+            mock_dry_run.assert_called_once_with(mock_app.notification_manager)
 
     def test_main_normal_run(self) -> None:
         """Test main function with normal run."""
         with patch.object(sys, 'argv', ['mover-status']), \
-             patch('mover_status.__main__.initialize_app') as mock_init, \
-             patch('mover_status.__main__.MonitorSession') as mock_monitor_session:
+             patch('mover_status.__main__.initialize_app') as mock_init:
 
             # Setup mocks
-            mock_config = MagicMock()
-            mock_notification = MagicMock()
-            mock_init.return_value = (mock_config, mock_notification)
-
-            # Mock config values
-            def get_monitor_config(key_str: str) -> str | list[str] | int | float | None:
-                config_values = {
-                    "monitoring.mover_executable": "/test/mover",
-                    "monitoring.cache_directory": "/test/cache",
-                    "paths.exclude": ["/test/exclude"],
-                    "notification.notification_increment": 20,
-                    "monitoring.poll_interval": 2.5
-                }
-                return config_values.get(key_str, None)
-
-            mock_config.config.get_nested_value.side_effect = get_monitor_config
-
-            # Mock monitor session
-            mock_session = MagicMock()
-            mock_monitor_session.return_value = mock_session
+            mock_app = MagicMock()
+            mock_init.return_value = mock_app
 
             # Call the function
             main()
 
             # Verify mocks were called correctly
             mock_init.assert_called_once()
-            mock_monitor_session.assert_called_once_with(
-                mover_path="/test/mover",
-                cache_path="/test/cache",
-                exclusions=["/test/exclude"],
-                notification_increment=20,
-                poll_interval=2.5
-            )
-            mock_session.run_monitoring_loop.assert_called_once_with(mock_notification)
+            mock_app.start.assert_called_once()
+            mock_app.run.assert_called_once()
 
     def test_main_keyboard_interrupt(self) -> None:
         """Test main function handling keyboard interrupt."""
         with patch.object(sys, 'argv', ['mover-status']), \
              patch('mover_status.__main__.initialize_app') as mock_init, \
-             patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
              patch('mover_status.__main__.logger') as mock_logger:
 
             # Setup mocks
-            mock_config = MagicMock()
-            mock_notification = MagicMock()
-            mock_init.return_value = (mock_config, mock_notification)
-
-            # Mock config values
-            mock_config.config.get_nested_value.return_value = "/test/path"
-
-            # Mock monitor session to raise KeyboardInterrupt
-            mock_session = MagicMock()
-            mock_session.run_monitoring_loop.side_effect = KeyboardInterrupt()
-            mock_monitor_session.return_value = mock_session
+            mock_app = MagicMock()
+            mock_app.run.side_effect = KeyboardInterrupt()
+            mock_init.return_value = mock_app
 
             # Call the function
             main()
@@ -380,24 +250,112 @@ class TestMainFunction:
         """Test main function handling exceptions."""
         with patch.object(sys, 'argv', ['mover-status']), \
              patch('mover_status.__main__.initialize_app') as mock_init, \
-             patch('mover_status.__main__.MonitorSession') as mock_monitor_session, \
              patch('mover_status.__main__.logger') as mock_logger:
 
             # Setup mocks
-            mock_config = MagicMock()
-            mock_notification = MagicMock()
-            mock_init.return_value = (mock_config, mock_notification)
-
-            # Mock config values
-            mock_config.config.get_nested_value.return_value = "/test/path"
-
-            # Mock monitor session to raise an exception
-            mock_session = MagicMock()
-            mock_session.run_monitoring_loop.side_effect = RuntimeError("Test error")
-            mock_monitor_session.return_value = mock_session
+            mock_app = MagicMock()
+            mock_app.run.side_effect = RuntimeError("Test error")
+            mock_init.return_value = mock_app
 
             # Call the function
             main()
 
             # Verify logger was called with the expected message
             mock_logger.error.assert_called_once()
+
+
+class TestMainEntryPointRefactored:
+    """Tests for the refactored main entry point using new architecture."""
+
+    def test_initialize_application_with_new_architecture(self) -> None:
+        """Test initializing application using the new Application class."""
+        with patch('mover_status.__main__.Application') as mock_application, \
+             patch('mover_status.__main__.CLIParser') as mock_cli_parser:
+
+            # Setup mocks
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
+
+            mock_parser_instance = MagicMock()
+            mock_cli_parser.return_value = mock_parser_instance
+
+            # Mock parsed arguments
+            mock_args = MagicMock()
+            mock_args.config = None
+            mock_args.debug = False
+            mock_args.dry_run = False
+            mock_parser_instance.parse_args.return_value = mock_args
+
+            # Call main function
+            main()
+
+            # Verify Application was initialized correctly
+            mock_application.assert_called_once_with(config_path=None, debug=False)
+
+            # Verify application lifecycle methods were called
+            mock_app_instance.load_and_register_providers.assert_called_once()
+            mock_app_instance.start.assert_called_once()
+            mock_app_instance.run.assert_called_once()
+
+    def test_handle_command_line_arguments_with_new_cli(self) -> None:
+        """Test handling command line arguments using the new CLIParser."""
+        with patch('mover_status.__main__.Application') as mock_application, \
+             patch('mover_status.__main__.CLIParser') as mock_cli_parser:
+
+            # Setup mocks
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
+
+            mock_parser_instance = MagicMock()
+            mock_cli_parser.return_value = mock_parser_instance
+
+            # Mock parsed arguments with config and debug
+            mock_args = MagicMock()
+            mock_args.config = "/test/config.yaml"
+            mock_args.debug = True
+            mock_args.dry_run = False
+            mock_parser_instance.parse_args.return_value = mock_args
+
+            # Call main function
+            main()
+
+            # Verify CLIParser was used
+            mock_cli_parser.assert_called_once()
+            mock_parser_instance.parse_args.assert_called_once()
+
+            # Verify Application was initialized with correct arguments
+            mock_application.assert_called_once_with(config_path="/test/config.yaml", debug=True)
+
+    def test_run_application_with_new_architecture(self) -> None:
+        """Test running application with the new architecture."""
+        with patch('mover_status.__main__.Application') as mock_application, \
+             patch('mover_status.__main__.CLIParser') as mock_cli_parser, \
+             patch('mover_status.__main__.run_dry_mode') as mock_dry_run:
+
+            # Setup mocks
+            mock_app_instance = MagicMock()
+            mock_application.return_value = mock_app_instance
+
+            mock_parser_instance = MagicMock()
+            mock_cli_parser.return_value = mock_parser_instance
+
+            # Mock parsed arguments for dry run mode
+            mock_args = MagicMock()
+            mock_args.config = None
+            mock_args.debug = False
+            mock_args.dry_run = True
+            mock_parser_instance.parse_args.return_value = mock_args
+
+            # Call main function
+            main()
+
+            # Verify Application was initialized
+            mock_application.assert_called_once_with(config_path=None, debug=False)
+
+            # Verify providers were loaded but application wasn't started for dry run
+            mock_app_instance.load_and_register_providers.assert_called_once()
+            mock_app_instance.start.assert_not_called()
+            mock_app_instance.run.assert_not_called()
+
+            # Verify dry run mode was executed
+            mock_dry_run.assert_called_once_with(mock_app_instance.notification_manager)
