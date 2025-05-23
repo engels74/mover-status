@@ -8,45 +8,14 @@ Provider-specific configuration defaults are defined in their respective modules
 and will be aggregated by the ConfigManager.
 """
 
-from typing import TypedDict, NotRequired
+from typing import TypedDict
 
 
-# Define type structures for the configuration
-class ProviderConfig(TypedDict, total=False):
-    """Base configuration for notification providers."""
-    enabled: bool
-
-
-class TelegramConfig(ProviderConfig):
-    """Telegram notification provider configuration."""
-    bot_token: str
-    chat_id: str
-    message_template: str
-    parse_mode: str
-    disable_notification: bool
-
-
-class DiscordConfig(ProviderConfig):
-    """Discord notification provider configuration."""
-    webhook_url: str
-    username: str
-    message_template: str
-    use_embeds: bool
-    embed_title: str
-    embed_colors: dict[str, int]
-
-
-class ProvidersConfig(TypedDict, total=False):
-    """Container for all notification provider configurations."""
-    telegram: TelegramConfig
-    discord: DiscordConfig
-
-
+# Define type structures for the core configuration (non-provider specific)
 class NotificationConfig(TypedDict):
     """Notification settings configuration."""
     notification_increment: int
     enabled_providers: list[str]
-    providers: NotRequired[ProvidersConfig]
 
 
 class MonitoringConfig(TypedDict):

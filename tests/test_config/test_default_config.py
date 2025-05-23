@@ -116,6 +116,61 @@ class TestCoreDefaultConfig:
         assert isinstance(debug["dry_run"], bool)
         assert isinstance(debug["enable_debug"], bool)
 
+    def test_core_config_without_provider_specific_types(self) -> None:
+        """Test that the core configuration does not contain provider-specific types."""
+        notification = DEFAULT_CONFIG.get("notification", {})
+
+        # The notification section should not contain a 'providers' field
+        # Provider-specific configurations should be handled by their respective modules
+        assert "providers" not in notification, "Core configuration should not contain provider-specific configurations"
+
+        # Verify that only core notification settings are present
+        expected_core_keys = {"notification_increment", "enabled_providers"}
+        actual_keys = set(notification.keys())
+        assert actual_keys == expected_core_keys, f"Expected core keys {expected_core_keys}, got {actual_keys}"
+
+    def test_default_values_for_core_settings(self) -> None:
+        """Test that default values are appropriate for core settings."""
+        # Test notification defaults
+        notification = DEFAULT_CONFIG["notification"]
+        assert notification["notification_increment"] == 25, "Default notification increment should be 25%"
+        assert notification["enabled_providers"] == [], "Default enabled providers should be empty list"
+
+        # Test monitoring defaults
+        monitoring = DEFAULT_CONFIG["monitoring"]
+        assert monitoring["mover_executable"] == "/usr/local/sbin/mover", "Default mover executable path"
+        assert monitoring["cache_directory"] == "/mnt/cache", "Default cache directory path"
+        assert monitoring["poll_interval"] == 1, "Default poll interval should be 1 second"
+
+        # Test messages defaults
+        messages = DEFAULT_CONFIG["messages"]
+        assert messages["completion"] == "Moving has been completed!", "Default completion message"
+
+        # Test paths defaults
+        paths = DEFAULT_CONFIG["paths"]
+        assert paths["exclude"] == [], "Default exclude paths should be empty list"
+
+        # Test debug defaults
+        debug = DEFAULT_CONFIG["debug"]
+        assert debug["dry_run"] is False, "Default dry run should be disabled"
+        assert debug["enable_debug"] is False, "Default debug should be disabled"
+
+    def test_no_provider_specific_types_defined(self) -> None:
+        """Test that provider-specific types are not defined in the default_config module."""
+        import mover_status.config.default_config as default_config_module
+
+        # These provider-specific types should not be defined in the core default config module
+        provider_specific_types = [
+            "ProviderConfig",
+            "TelegramConfig",
+            "DiscordConfig",
+            "ProvidersConfig"
+        ]
+
+        for type_name in provider_specific_types:
+            assert not hasattr(default_config_module, type_name), \
+                f"Provider-specific type '{type_name}' should not be defined in core default_config module"
+
 
 class TestTelegramDefaultConfig:
     """Test cases for the Telegram provider default configuration."""

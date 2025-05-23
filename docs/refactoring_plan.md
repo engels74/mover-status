@@ -159,16 +159,16 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/config/default_config.py` (Update)**
-  - [ ] **Analyze Requirements:** Define core default configuration needs
-  - [ ] **Feature: Core Default Configuration**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Core default configuration without provider-specific types
-      - [ ] Test case: Default values for core settings
-    - [ ] **TDD: Write Failing Tests:** Update `tests/test_config/test_default_config.py`
-    - [ ] **Implementation:** Update `default_config.py` to remove provider-specific types
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/config/default_config.py` (Update)**
+  - [x] **Analyze Requirements:** Define core default configuration needs
+  - [x] **Feature: Core Default Configuration**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Core default configuration without provider-specific types
+      - [x] Test case: Default values for core settings
+    - [x] **TDD: Write Failing Tests:** Update `tests/test_config/test_default_config.py`
+    - [x] **Implementation:** Update `default_config.py` to remove provider-specific types
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 ## Phase 3: Main Application Refactoring
 
