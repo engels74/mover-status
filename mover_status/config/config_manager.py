@@ -357,16 +357,19 @@ class ConfigManager:
         Returns:
             The default configuration dictionary.
         """
-        # Start with a deep copy of the core default config
-        default_config = DEFAULT_CONFIG.copy()
+        # Start with a mutable copy of the core default config
+        default_config: dict[str, object] = {}
 
-        # Create providers section if it doesn't exist
-        if "providers" not in default_config["notification"]:
-            default_config["notification"]["providers"] = {}
+        # Copy core configuration sections
+        for section_name, section_data in DEFAULT_CONFIG.items():
+            # Convert TypedDict to regular dict
+            default_config[section_name] = dict(cast(dict[str, object], section_data))
+
+        # Ensure notification section has providers
+        notification_section = cast(dict[str, object], default_config["notification"])
+        notification_section["providers"] = {}
 
         # Add Telegram provider defaults
-        from mover_status.config.default_config import TelegramConfig
-
         # Create a properly typed dictionary for Telegram defaults
         telegram_defaults: TelegramConfig = {
             "bot_token": TELEGRAM_DEFAULTS["bot_token"],
@@ -378,13 +381,10 @@ class ConfigManager:
         }
 
         # Add to the config
-        if "providers" not in default_config["notification"]:
-            default_config["notification"]["providers"] = {}
-        default_config["notification"]["providers"]["telegram"] = telegram_defaults
+        providers_section = cast(dict[str, object], notification_section["providers"])
+        providers_section["telegram"] = telegram_defaults
 
         # Add Discord provider defaults
-        from mover_status.config.default_config import DiscordConfig
-
         # Create a properly typed dictionary for Discord defaults
         # Convert the embed_colors dictionary to the expected format
         embed_colors: dict[str, int] = {}
@@ -403,7 +403,7 @@ class ConfigManager:
         }
 
         # Add to the config
-        default_config["notification"]["providers"]["discord"] = discord_defaults
+        providers_section["discord"] = discord_defaults
 
         # Convert the dictionary to a MoverStatusConfig object
         return MoverStatusConfig.from_dict(default_config)

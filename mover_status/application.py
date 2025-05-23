@@ -64,7 +64,8 @@ class Application:
         _ = self.config_manager.load()
 
         # Set up logging (use default configuration)
-        setup_logger()  # pyright: ignore[reportCallIssue]
+        from mover_status.utils.logger import LoggerConfig
+        _ = setup_logger("mover_status", LoggerConfig())
 
         logger.info("Application initialized")
 

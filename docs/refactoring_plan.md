@@ -194,17 +194,17 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/__init__.py` (Update)**
-  - [ ] **Analyze Requirements:** Define clean public API
-  - [ ] **Feature: Public API**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Import and use public API
-      - [ ] Test case: No hardcoded provider imports
-      - [ ] Test case: Backward compatibility
-    - [ ] **TDD: Write Failing Tests:** Implement in `tests/test_init.py`
-    - [ ] **Implementation:** Update `__init__.py` to provide a clean public API
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/__init__.py` (Update)**
+  - [x] **Analyze Requirements:** Define clean public API
+  - [x] **Feature: Public API**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Import and use public API
+      - [x] Test case: No hardcoded provider imports
+      - [x] Test case: Backward compatibility
+    - [x] **TDD: Write Failing Tests:** Implement in `tests/test_init.py`
+    - [x] **Implementation:** Update `__init__.py` to provide a clean public API
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 - [ ] **Module: `mover_status/cli.py`**
   - [ ] **Analyze Requirements:** Define CLI needs
