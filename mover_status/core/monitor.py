@@ -135,10 +135,20 @@ class MonitorSession:
         """Timestamp of the last progress check."""
         return self._core_session.last_check_time
 
+    @last_check_time.setter
+    def last_check_time(self, value: float | None) -> None:
+        """Set the last check time (for testing)."""
+        self._core_session.last_check_time = value
+
     @property
     def last_size(self) -> int | None:
         """Size of the cache directory at the last check."""
         return self._core_session.last_size
+
+    @last_size.setter
+    def last_size(self, value: int | None) -> None:
+        """Set the last size (for testing)."""
+        self._core_session.last_size = value
 
     @property
     def last_progress(self) -> int | None:
@@ -165,10 +175,20 @@ class MonitorSession:
         """List of (timestamp, progress) tuples tracking progress over time."""
         return self._core_session.progress_history
 
+    @progress_history.setter
+    def progress_history(self, value: list[tuple[float, int]]) -> None:
+        """Set the progress history (for testing)."""
+        self._core_session.progress_history = value
+
     @property
     def total_data_moved(self) -> int:
         """Total bytes moved from cache to array."""
         return self._core_session.total_data_moved
+
+    @total_data_moved.setter
+    def total_data_moved(self, value: int) -> None:
+        """Set the total data moved (for testing)."""
+        self._core_session.total_data_moved = value
 
     # Delegate methods to the core session
     def start_monitoring(self) -> None:
