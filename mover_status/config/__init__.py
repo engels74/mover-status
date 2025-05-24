@@ -27,20 +27,8 @@ from mover_status.config.schema import (
     FieldType,
 )
 
-# Backward compatibility imports from the original config_manager module
-from mover_status.config.config_manager import (
-    ConfigManager as _LegacyConfigManager,
-    MoverStatusConfig as _LegacyMoverStatusConfig,
-    TelegramConfig as _LegacyTelegramConfig,
-    DiscordConfig as _LegacyDiscordConfig,
-    ProvidersConfig as _LegacyProvidersConfig,
-    NotificationConfig as _LegacyNotificationConfig,
-    MonitoringConfig as _LegacyMonitoringConfig,
-    MessagesConfig as _LegacyMessagesConfig,
-    PathsConfig as _LegacyPathsConfig,
-    DebugConfig as _LegacyDebugConfig,
-    ConfigSections as _LegacyConfigSections,
-)
+# Note: Backward compatibility is handled by the config_manager module itself,
+# which re-exports all reorganized components. No additional imports needed here.
 
 __all__ = [
     # Reorganized modules

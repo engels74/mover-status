@@ -5,6 +5,11 @@ This module contains tests to verify that all notification providers
 follow the standardized package structure and can be imported correctly.
 """
 
+# pyright: reportAny=false
+# This directive is necessary because this test module uses dynamic imports
+# with __import__ to test provider structure, which returns Any types.
+# This is intentional test behavior to verify module availability.
+
 from pathlib import Path
 
 import pytest

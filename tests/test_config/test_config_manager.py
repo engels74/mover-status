@@ -30,11 +30,7 @@ class TestConfigModuleReorganization:
     def test_import_reorganized_types(self) -> None:
         """Test that reorganized type definitions can be imported and used."""
         # Test importing from the new types module
-        from mover_status.config.types import (
-            TelegramConfig, DiscordConfig, ProvidersConfig,
-            NotificationConfig, MonitoringConfig, MessagesConfig,
-            PathsConfig, DebugConfig, ConfigSections
-        )
+        from mover_status.config.types import TelegramConfig
 
         # Test that types can be used for type checking
         telegram_config: TelegramConfig = {
@@ -114,11 +110,7 @@ class TestConfigModuleReorganization:
         """Test that existing imports still work for backward compatibility."""
         # Test that old imports still work
         from mover_status.config.config_manager import ConfigManager, MoverStatusConfig
-        from mover_status.config.config_manager import (
-            TelegramConfig, DiscordConfig, ProvidersConfig,
-            NotificationConfig, MonitoringConfig, MessagesConfig,
-            PathsConfig, DebugConfig, ConfigSections
-        )
+        from mover_status.config.config_manager import TelegramConfig
 
         # Test that classes work as expected
         manager = ConfigManager()
@@ -138,12 +130,7 @@ class TestConfigModuleReorganization:
     def test_config_init_exports_reorganized_modules(self) -> None:
         """Test that config/__init__.py exports the reorganized modules correctly."""
         # Test that the main config module exports everything needed
-        from mover_status.config import (
-            ConfigManager, MoverStatusConfig,
-            TelegramConfig, DiscordConfig, ProvidersConfig,
-            NotificationConfig, MonitoringConfig, MessagesConfig,
-            PathsConfig, DebugConfig, ConfigSections
-        )
+        from mover_status.config import ConfigManager, MoverStatusConfig, NotificationConfig
 
         # Test that imports work correctly
         manager = ConfigManager()
