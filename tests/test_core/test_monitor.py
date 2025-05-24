@@ -1,8 +1,8 @@
 """
-Tests for the monitor module.
+Tests for the core module reorganization.
 
-This module contains tests for the MonitorSession class, which is responsible
-for tracking the state of the mover process monitoring.
+This module contains tests for the reorganized core module structure,
+ensuring that imports work correctly and backward compatibility is maintained.
 """
 
 # pyright: reportUnusedParameter=false
@@ -14,6 +14,48 @@ from unittest.mock import patch, MagicMock, call
 
 from mover_status.core.monitor import MonitorSession
 from mover_status.notification.manager import NotificationManager
+
+
+class TestCoreModuleStructure:
+    """Tests for the reorganized core module structure."""
+
+    def test_import_reorganized_modules(self) -> None:
+        """Test case: Import and use reorganized modules."""
+        # Test importing from the new structure
+        from mover_status.core.monitoring import MonitorSession as NewMonitorSession
+        from mover_status.core.simulation import simulate_monitoring_session
+        from mover_status.core.version import get_current_version
+        from mover_status.core.calculation import format_bytes
+
+        # Verify that the imports work
+        assert NewMonitorSession is not None
+        assert simulate_monitoring_session is not None
+        assert get_current_version is not None
+        assert format_bytes is not None
+
+        # Test that we can create instances
+        session = NewMonitorSession()
+        assert session is not None
+        assert hasattr(session, 'is_monitoring')
+
+    def test_backward_compatibility(self) -> None:
+        """Test case: Backward compatibility."""
+        # Test that old imports still work
+        from mover_status.core.monitor import MonitorSession
+        from mover_status.core.dry_run import simulate_monitoring_session as old_simulate
+        from mover_status.core.version import get_current_version
+        from mover_status.core.calculation import format_bytes
+
+        # Verify that the old imports still work
+        assert MonitorSession is not None
+        assert old_simulate is not None
+        assert get_current_version is not None
+        assert format_bytes is not None
+
+        # Test that we can create instances with the old interface
+        session = MonitorSession()
+        assert session is not None
+        assert hasattr(session, 'is_monitoring')
 
 
 class TestMonitorSession:

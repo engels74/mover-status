@@ -1,18 +1,23 @@
 """
 Monitor module for the Mover Status Monitor.
 
-This module provides the core monitoring functionality for tracking the
-progress of the mover process in Unraid systems.
+This module provides backward compatibility for the core monitoring functionality.
+The actual implementation has been moved to mover_status.core.monitoring for
+better separation of concerns.
 """
 
-import time
 import logging
+import time  # pyright: ignore[reportUnusedImport]
 
-from mover_status.utils.process import is_mover_running
-from mover_status.utils.data import get_directory_size
-from mover_status.core.calculation.progress import calculate_progress
-from mover_status.core.calculation.time import calculate_eta
+from mover_status.core.monitoring.session import MonitorSession as CoreMonitorSession
+from mover_status.core.monitoring.tracker import ProgressTracker
 from mover_status.notification.manager import NotificationManager
+
+# Import functions that tests expect to be available for mocking
+from mover_status.utils.process import is_mover_running  # pyright: ignore[reportUnusedImport]
+from mover_status.utils.data import get_directory_size  # pyright: ignore[reportUnusedImport]
+from mover_status.core.calculation.progress import calculate_progress  # pyright: ignore[reportUnusedImport]
+from mover_status.core.calculation.time import calculate_eta  # pyright: ignore[reportUnusedImport]
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -20,28 +25,10 @@ logger = logging.getLogger(__name__)
 
 class MonitorSession:
     """
-    Class for tracking the state of a mover process monitoring session.
+    Monitor session class (backward compatibility wrapper).
 
-    This class maintains the state of a monitoring session, including the
-    initial size of the cache directory, the current progress, and the
-    timing information needed for ETA calculations.
-
-    Attributes:
-        is_monitoring: Whether monitoring is currently active.
-        mover_path: Path to the mover executable.
-        cache_path: Path to the cache directory being monitored.
-        exclusions: List of paths to exclude from size calculations.
-        notification_increment: Percentage increment for notifications.
-        poll_interval: Time in seconds between checks for mover process.
-        max_wait_time: Maximum time in seconds to wait for mover process to start.
-        initial_size: Initial size of the cache directory in bytes.
-        start_time: Timestamp when monitoring started.
-        last_check_time: Timestamp of the last progress check.
-        last_size: Size of the cache directory at the last check.
-        last_progress: Progress percentage at the last check.
-        last_notification_progress: Progress percentage at the last notification.
-        progress_history: List of (timestamp, progress) tuples tracking progress over time.
-        total_data_moved: Total bytes moved from cache to array.
+    This class provides backward compatibility for the original MonitorSession
+    interface while delegating to the new core monitoring implementation.
     """
 
     def __init__(
@@ -64,369 +51,186 @@ class MonitorSession:
             poll_interval: Time in seconds between checks for mover process. Defaults to 1.0.
             max_wait_time: Maximum time in seconds to wait for mover process to start. Defaults to 300.
         """
-        # Configuration parameters
-        self.mover_path: str = mover_path
-        self.cache_path: str = cache_path
-        self.exclusions: list[str] = exclusions or []
-        self.notification_increment: int = notification_increment
-        self.poll_interval: float = poll_interval
-        self.max_wait_time: int = max_wait_time
+        # Create the core monitoring session
+        self._core_session: CoreMonitorSession = CoreMonitorSession(
+            mover_path=mover_path,
+            cache_path=cache_path,
+            exclusions=exclusions,
+            notification_increment=notification_increment,
+            poll_interval=poll_interval,
+            max_wait_time=max_wait_time
+        )
 
-        # Monitoring state
-        self.is_monitoring: bool = False
-        self.initial_size: int | None = None
-        self.start_time: float | None = None
-        self.last_check_time: float | None = None
-        self.last_size: int | None = None
-        self.last_progress: int | None = None
-        self.last_notification_progress: int = -1  # Initialize to -1 to ensure 0% notification
-        self.progress_history: list[tuple[float, int]] = []
-        self.total_data_moved: int = 0
+        # Create the progress tracker
+        self._tracker: ProgressTracker = ProgressTracker(self._core_session)
 
+    # Delegate properties to the core session
+    @property
+    def is_monitoring(self) -> bool:
+        """Whether monitoring is currently active."""
+        return self._core_session.is_monitoring
+
+    @is_monitoring.setter
+    def is_monitoring(self, value: bool) -> None:
+        """Set monitoring state."""
+        self._core_session.is_monitoring = value
+
+    @property
+    def mover_path(self) -> str:
+        """Path to the mover executable."""
+        return self._core_session.mover_path
+
+    @property
+    def cache_path(self) -> str:
+        """Path to the cache directory being monitored."""
+        return self._core_session.cache_path
+
+    @property
+    def exclusions(self) -> list[str]:
+        """List of paths to exclude from size calculations."""
+        return self._core_session.exclusions
+
+    @property
+    def notification_increment(self) -> int:
+        """Percentage increment for notifications."""
+        return self._core_session.notification_increment
+
+    @notification_increment.setter
+    def notification_increment(self, value: int) -> None:
+        """Set the notification increment (for testing)."""
+        self._core_session.notification_increment = value
+
+    @property
+    def poll_interval(self) -> float:
+        """Time in seconds between checks for mover process."""
+        return self._core_session.poll_interval
+
+    @property
+    def max_wait_time(self) -> int:
+        """Maximum time in seconds to wait for mover process to start."""
+        return self._core_session.max_wait_time
+
+    @property
+    def initial_size(self) -> int | None:
+        """Initial size of the cache directory in bytes."""
+        return self._core_session.initial_size
+
+    @initial_size.setter
+    def initial_size(self, value: int | None) -> None:
+        """Set the initial size (for testing)."""
+        self._core_session.initial_size = value
+
+    @property
+    def start_time(self) -> float | None:
+        """Timestamp when monitoring started."""
+        return self._core_session.start_time
+
+    @start_time.setter
+    def start_time(self, value: float | None) -> None:
+        """Set the start time (for testing)."""
+        self._core_session.start_time = value
+
+    @property
+    def last_check_time(self) -> float | None:
+        """Timestamp of the last progress check."""
+        return self._core_session.last_check_time
+
+    @property
+    def last_size(self) -> int | None:
+        """Size of the cache directory at the last check."""
+        return self._core_session.last_size
+
+    @property
+    def last_progress(self) -> int | None:
+        """Progress percentage at the last check."""
+        return self._core_session.last_progress
+
+    @last_progress.setter
+    def last_progress(self, value: int | None) -> None:
+        """Set the last progress (for testing)."""
+        self._core_session.last_progress = value
+
+    @property
+    def last_notification_progress(self) -> int:
+        """Progress percentage at the last notification."""
+        return self._core_session.last_notification_progress
+
+    @last_notification_progress.setter
+    def last_notification_progress(self, value: int) -> None:
+        """Set the last notification progress."""
+        self._core_session.last_notification_progress = value
+
+    @property
+    def progress_history(self) -> list[tuple[float, int]]:
+        """List of (timestamp, progress) tuples tracking progress over time."""
+        return self._core_session.progress_history
+
+    @property
+    def total_data_moved(self) -> int:
+        """Total bytes moved from cache to array."""
+        return self._core_session.total_data_moved
+
+    # Delegate methods to the core session
     def start_monitoring(self) -> None:
-        """
-        Start monitoring the mover process.
-
-        This method initializes the monitoring session by checking if the mover
-        process is running and calculating the initial size of the cache directory.
-
-        Raises:
-            RuntimeError: If the mover process is not running.
-            FileNotFoundError: If the cache directory does not exist.
-            RuntimeError: If the directory size calculation fails.
-        """
-        # Check if mover is running
-        if not is_mover_running(self.mover_path):
-            logger.error(f"Mover process not found at {self.mover_path}")
-            raise RuntimeError("Mover process is not running")
-
-        # Calculate initial size
-        initial_size = get_directory_size(self.cache_path, self.exclusions)
-        current_time = time.time()
-
-        # Initialize monitoring state
-        self.is_monitoring = True
-        self.initial_size = initial_size
-        self.start_time = current_time
-        self.last_check_time = current_time
-        self.last_size = initial_size
-        self.last_progress = 0
-        self.progress_history = [(current_time, 0)]
-        self.total_data_moved = 0
-
-        logger.info(f"Started monitoring mover process. Initial cache size: {initial_size} bytes")
+        """Start the monitoring session."""
+        return self._core_session.start_monitoring()
 
     def stop_monitoring(self) -> None:
-        """
-        Stop monitoring the mover process.
-
-        This method stops the monitoring session but preserves the current state
-        for final calculations and notifications.
-        """
-        self.is_monitoring = False
-        logger.info("Stopped monitoring mover process")
+        """Stop the monitoring session."""
+        return self._core_session.stop_monitoring()
 
     def reset_monitoring(self) -> None:
-        """
-        Reset the monitoring session to its initial state.
-
-        This method clears all monitoring state variables, allowing the session
-        to be reused for a new monitoring cycle.
-        """
-        self.is_monitoring = False
-        self.initial_size = None
-        self.start_time = None
-        self.last_check_time = None
-        self.last_size = None
-        self.last_progress = None
-        self.last_notification_progress = -1
-        self.progress_history = []
-        self.total_data_moved = 0
-
-        logger.info("Reset monitoring session")
+        """Reset the monitoring session."""
+        return self._core_session.reset_monitoring()
 
     def update_progress(self) -> None:
-        """
-        Update the progress of the monitoring session.
-
-        This method calculates the current size of the cache directory and
-        updates the progress percentage. It also updates the progress history
-        and total data moved for tracking progress over time.
-
-        Raises:
-            RuntimeError: If the monitoring session is not active.
-            FileNotFoundError: If the cache directory does not exist.
-            RuntimeError: If the directory size calculation fails.
-        """
-        if not self.is_monitoring:
-            raise RuntimeError("Monitoring session is not active")
-
-        if self.initial_size is None:
-            raise RuntimeError("Initial size not set")
-
-        # Get current size and time
-        current_size = get_directory_size(self.cache_path, self.exclusions)
-        current_time = time.time()
-
-        # Calculate progress
-        progress = calculate_progress(self.initial_size, current_size)
-
-        # Update state
-        self.last_size = current_size
-        self.last_progress = progress
-        self.last_check_time = current_time
-
-        # Update progress history
-        self.progress_history.append((current_time, progress))
-
-        # Update total data moved
-        self.total_data_moved = self.initial_size - current_size
-
-        logger.debug(f"Updated progress: {progress}%, current size: {current_size} bytes, total moved: {self.total_data_moved} bytes")
+        """Update the progress of the monitoring session."""
+        return self._core_session.update_progress()
 
     def should_send_notification(self) -> bool:
-        """
-        Determine if a notification should be sent based on the current progress.
-
-        This method checks if the current progress has reached a notification
-        threshold based on the notification increment.
-
-        Returns:
-            bool: True if a notification should be sent, False otherwise.
-
-        Raises:
-            RuntimeError: If the monitoring session is not active.
-        """
-        if not self.is_monitoring:
-            raise RuntimeError("Monitoring session is not active")
-
-        if self.last_progress is None:
-            raise RuntimeError("Progress not calculated")
-
-        # Always notify at 0% (initial) and 100% (completion)
-        if self.last_progress == 0 and self.last_notification_progress == -1:
-            return True
-
-        if self.last_progress == 100 and self.last_notification_progress < 100:
-            return True
-
-        # Calculate the progress rounded down to the nearest increment
-        progress_increment = (self.last_progress // self.notification_increment) * self.notification_increment
-
-        # Notify if we've reached a new increment threshold
-        if progress_increment > self.last_notification_progress:
-            return True
-
-        return False
+        """Determine if a notification should be sent."""
+        return self._core_session.should_send_notification()
 
     def wait_for_mover_start(self) -> bool:
-        """
-        Wait for the mover process to start.
-
-        This method polls for the mover process at regular intervals until
-        it is detected or the maximum wait time is reached.
-
-        Returns:
-            bool: True if the mover process was detected, False if the wait timed out.
-        """
-        logger.info(f"Waiting for mover process to start (max wait: {self.max_wait_time}s)")
-
-        start_wait_time = time.time()
-
-        while True:
-            # Check if mover is running
-            if is_mover_running(self.mover_path):
-                logger.info("Mover process detected")
-                return True
-
-            # Check if we've exceeded the maximum wait time
-            current_time = time.time()
-            if current_time - start_wait_time > self.max_wait_time:
-                logger.warning(f"Timed out waiting for mover process after {self.max_wait_time}s")
-                return False
-
-            # Wait before checking again
-            time.sleep(self.poll_interval)
+        """Wait for the mover process to start."""
+        return self._core_session.wait_for_mover_start()
 
     def is_mover_process_ended(self) -> bool:
-        """
-        Check if the mover process has ended.
-
-        Returns:
-            bool: True if the mover process is no longer running, False otherwise.
-        """
-        # Check if mover is still running
-        is_running = is_mover_running(self.mover_path)
-
-        # Return the opposite (True if not running)
-        return not is_running
+        """Check if the mover process has ended."""
+        return self._core_session.is_mover_process_ended()
 
     def calculate_initial_size(self) -> int:
-        """
-        Calculate the initial size of the cache directory.
-
-        This method is used to determine the starting point for progress tracking
-        when the mover process begins.
-
-        Returns:
-            int: The size of the cache directory in bytes.
-
-        Raises:
-            FileNotFoundError: If the cache directory does not exist.
-            RuntimeError: If the directory size calculation fails.
-        """
-        logger.info(f"Calculating initial size of {self.cache_path}")
-
-        # Get the directory size
-        initial_size = get_directory_size(self.cache_path, self.exclusions)
-
-        logger.info(f"Initial cache size: {initial_size} bytes")
-        return initial_size
+        """Calculate the initial size of the cache directory."""
+        return self._core_session.calculate_initial_size()
 
     def get_estimated_completion_time(self) -> float | None:
-        """
-        Calculate the estimated completion time based on current progress.
-
-        This method uses the progress history and current progress to estimate
-        when the mover process will complete.
-
-        Returns:
-            float | None: The estimated completion time as a Unix timestamp,
-                         or None if progress is 0% (still calculating).
-
-        Raises:
-            RuntimeError: If the monitoring session is not active.
-        """
-        if not self.is_monitoring:
-            raise RuntimeError("Monitoring session is not active")
-
-        if self.start_time is None or self.last_progress is None:
-            raise RuntimeError("Monitoring session not properly initialized")
-
-        # Use the calculate_eta function from the time module
-        current_time = time.time()
-        return calculate_eta(self.start_time, current_time, self.last_progress)
+        """Get the estimated completion time."""
+        return self._core_session.get_estimated_completion_time()
 
     def get_progress_rate(self) -> float:
-        """
-        Calculate the rate of progress in percentage points per second.
-
-        This method analyzes the progress history to determine how quickly
-        the mover process is progressing.
-
-        Returns:
-            float: The progress rate in percentage points per second.
-                  Returns 0.0 if there's not enough history to calculate.
-
-        Raises:
-            RuntimeError: If the monitoring session is not active.
-        """
-        if not self.is_monitoring:
-            raise RuntimeError("Monitoring session is not active")
-
-        # Need at least two data points to calculate rate
-        if len(self.progress_history) < 2:
-            return 0.0
-
-        # Get the first and last entries in the progress history
-        first_time, first_progress = self.progress_history[0]
-        last_time, last_progress = self.progress_history[-1]
-
-        # Calculate time elapsed and progress made
-        time_elapsed = last_time - first_time
-        progress_made = last_progress - first_progress
-
-        # Avoid division by zero
-        if time_elapsed <= 0:
-            return 0.0
-
-        # Calculate rate (percentage points per second)
-        rate = progress_made / time_elapsed
-
-        return rate
+        """Calculate the progress rate."""
+        return self._core_session.get_progress_rate()
 
     def get_notification_thresholds(self) -> list[int]:
-        """
-        Get a list of progress percentage thresholds for notifications.
+        """Get the notification thresholds."""
+        return self._core_session.get_notification_thresholds()
 
-        This method calculates the notification thresholds based on the
-        notification increment. It always includes 0% and 100%.
-
-        Returns:
-            List[int]: A list of progress percentage thresholds.
-        """
-        # Use a default of 25% if the increment is invalid
-        increment = self.notification_increment
-        if increment <= 0:
-            increment = 25
-
-        # Generate thresholds from 0% to 100% in steps of increment
-        thresholds = list(range(0, 101, increment))
-
-        # Make sure 100% is included
-        if 100 not in thresholds:
-            thresholds.append(100)
-
-        return thresholds
-
+    # Methods that use NotificationManager (backward compatibility)
     def handle_process_completion(self, notification_manager: NotificationManager) -> None:
-        """
-        Handle the completion of the mover process.
+        """Handle the completion of the mover process."""
+        def notification_callback(message: str, **kwargs: object) -> bool:
+            return notification_manager.send_notification(message, **kwargs)
 
-        This method sends a completion notification and stops the monitoring session.
-
-        Args:
-            notification_manager: The notification manager to use for sending notifications.
-        """
-        logger.info("Mover process has completed")
-
-        # Send completion notification
-        _ = notification_manager.send_notification(
-            "Mover process completed",
-            raw_values={
-                "progress": 100,
-                "remaining_size": self.last_size,
-                "initial_size": self.initial_size,
-                "eta": None,
-                "total_moved": self.total_data_moved
-            }
-        )
-
-        # Stop monitoring
-        self.stop_monitoring()
+        self._tracker.handle_process_completion(notification_callback)
 
     def send_progress_notification(self, notification_manager: NotificationManager) -> None:
-        """
-        Send a progress notification if needed.
+        """Send a progress notification if needed."""
+        if self.should_send_notification():
+            def notification_callback(message: str, **kwargs: object) -> bool:
+                return notification_manager.send_notification(message, **kwargs)
 
-        This method checks if a notification should be sent based on the current progress
-        and sends it if necessary. It also updates the last notification progress.
-
-        Args:
-            notification_manager: The notification manager to use for sending notifications.
-        """
-        if not self.should_send_notification():
-            return
-
-        # Get estimated completion time
-        eta = self.get_estimated_completion_time()
-
-        # Send notification
-        logger.info(f"Sending progress notification: {self.last_progress}%")
-        _ = notification_manager.send_notification(
-            "Mover progress update",
-            raw_values={
-                "progress": self.last_progress,
-                "remaining_size": self.last_size,
-                "initial_size": self.initial_size,
-                "eta": eta,
-                "total_moved": self.total_data_moved
-            }
-        )
-
-        # Update last notification progress
-        if self.last_progress is not None:
-            self.last_notification_progress = (self.last_progress // self.notification_increment) * self.notification_increment
+            self._tracker.send_progress_notification(notification_callback)
+            self.last_notification_progress = self.last_progress or 0
 
     def run_monitoring_loop(
         self,
@@ -434,72 +238,12 @@ class MonitorSession:
         max_cycles: int | None = None,
         restart_delay: float = 10.0
     ) -> None:
-        """
-        Run the main monitoring loop.
+        """Run the main monitoring loop."""
+        def notification_callback(message: str, **kwargs: object) -> bool:
+            return notification_manager.send_notification(message, **kwargs)
 
-        This method continuously monitors the mover process, updating progress
-        and sending notifications as needed. It can run indefinitely or for a
-        specified number of cycles.
-
-        Args:
-            notification_manager: The notification manager to use for sending notifications.
-            max_cycles: Maximum number of monitoring cycles to run. None for unlimited.
-            restart_delay: Time in seconds to wait before restarting monitoring after completion.
-        """
-        cycle_count = 0
-
-        logger.info("Starting main monitoring loop")
-
-        while max_cycles is None or cycle_count < max_cycles:
-            logger.info(f"Starting monitoring cycle {cycle_count + 1}")
-
-            # Wait for mover process to start
-            logger.info("Waiting for mover process to start")
-            if not self.wait_for_mover_start():
-                logger.warning("Timed out waiting for mover process to start")
-                break
-
-            # Calculate initial size and start monitoring
-            try:
-                # Calculate initial size and start monitoring
-                _ = self.calculate_initial_size()
-                self.start_monitoring()
-
-                # Send initial notification
-                self.send_progress_notification(notification_manager)
-
-                # Main monitoring loop
-                while self.is_monitoring:
-                    # Check if mover process has ended
-                    if self.is_mover_process_ended():
-                        logger.info("Mover process has ended")
-                        self.handle_process_completion(notification_manager)
-                        break
-
-                    # Update progress
-                    self.update_progress()
-
-                    # Send notification if needed
-                    self.send_progress_notification(notification_manager)
-
-                    # Sleep to prevent excessive CPU usage
-                    time.sleep(self.poll_interval)
-
-            except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                self.stop_monitoring()
-
-            # Reset for next cycle
-            self.reset_monitoring()
-
-            # Increment cycle count
-            cycle_count += 1
-
-            # If we've reached max cycles, exit
-            if max_cycles is not None and cycle_count >= max_cycles:
-                logger.info(f"Reached maximum cycle count ({max_cycles}), exiting")
-                break
-
-            # Wait before restarting monitoring
-            logger.info(f"Waiting {restart_delay} seconds before restarting monitoring")
-            time.sleep(restart_delay)
+        self._tracker.run_monitoring_loop(
+            notification_callback=notification_callback,
+            max_cycles=max_cycles,
+            restart_delay=restart_delay
+        )

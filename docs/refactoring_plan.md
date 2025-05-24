@@ -352,16 +352,16 @@ The refactoring will follow these key principles:
     - [x] **TDD: Verify Tests Pass**
     - [x] **Refactor:** Review and optimize the implementation
 
-- [ ] **Module: `mover_status/core/` (Reorganize)**
-  - [ ] **Analyze Requirements:** Define core module structure
-  - [ ] **Feature: Core Module Structure**
-    - [ ] **TDD: Define Test Cases:**
-      - [ ] Test case: Import and use reorganized modules
-      - [ ] Test case: Backward compatibility
-    - [ ] **TDD: Write Failing Tests:** Update `tests/test_core/`
-    - [ ] **Implementation:** Create a clear separation between core and provider-specific code
-    - [ ] **TDD: Verify Tests Pass**
-    - [ ] **Refactor:** Review and optimize the implementation
+- [x] **Module: `mover_status/core/` (Reorganize)**
+  - [x] **Analyze Requirements:** Define core module structure
+  - [x] **Feature: Core Module Structure**
+    - [x] **TDD: Define Test Cases:**
+      - [x] Test case: Import and use reorganized modules
+      - [x] Test case: Backward compatibility
+    - [x] **TDD: Write Failing Tests:** Update `tests/test_core/`
+    - [x] **Implementation:** Create a clear separation between core and provider-specific code
+    - [x] **TDD: Verify Tests Pass**
+    - [x] **Refactor:** Review and optimize the implementation
 
 ## Phase 6: Plugin Architecture Implementation
 
