@@ -259,9 +259,9 @@ class TestContextualLogRecord:
         contextual_record = ContextualLogRecord(original_record)
         
         # Should preserve original record attributes
-        assert contextual_record.name == original_record.name  # pyright: ignore[reportAny]
-        assert contextual_record.levelno == original_record.levelno  # pyright: ignore[reportAny]
-        assert contextual_record.msg == original_record.msg  # pyright: ignore[reportAny]
+        assert contextual_record.name == original_record.name
+        assert contextual_record.levelno == original_record.levelno
+        assert contextual_record.msg == original_record.msg
     
     def test_context_fields_integration(self) -> None:
         """Test context fields integration with record."""
@@ -462,8 +462,8 @@ class TestErrorCases:
         contextual_record = ContextualLogRecord(record)
         
         # Test that we can access attributes that aren't copied directly
-        assert contextual_record.lineno == 42  # pyright: ignore[reportAny]
-        assert contextual_record.pathname == "test.py"  # pyright: ignore[reportAny]
+        assert contextual_record.lineno == 42
+        assert contextual_record.pathname == "test.py"
     
     def test_automatic_contextual_logging(self) -> None:
         """Test automatic contextual logging with structured formatters."""

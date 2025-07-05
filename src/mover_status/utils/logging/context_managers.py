@@ -151,9 +151,9 @@ class ContextualLogRecord:
         """
         return dict(thread_local_context.fields)
     
-    def __getattr__(self, name: str) -> Any:  # pyright: ignore[reportExplicitAny]
+    def __getattr__(self, name: str) -> object:
         """Delegate attribute access to original record."""
-        return getattr(self.record, name)  # pyright: ignore[reportAny]
+        return getattr(self.record, name)  # pyright: ignore[reportAny] # LogRecord attributes are dynamically typed
 
 
 @contextmanager
