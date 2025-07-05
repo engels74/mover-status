@@ -6,7 +6,7 @@ import logging
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 
 from .log_level_manager import LogLevel
 
@@ -19,14 +19,14 @@ class ThreadLocalContext:
         self._local: threading.local = threading.local()
     
     @property
-    def fields(self) -> dict[str, Any]:
+    def fields(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
         """Get context fields for current thread."""
         if not hasattr(self._local, 'fields'):
             self._local.fields = {}
-        return self._local.fields  # pyright: ignore[reportAny]
+        return cast(dict[str, Any], self._local.fields)  # pyright: ignore[reportExplicitAny]
     
     @fields.setter
-    def fields(self, value: dict[str, Any]) -> None:
+    def fields(self, value: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
         """Set context fields for current thread."""
         self._local.fields = value
 
@@ -57,17 +57,18 @@ class LogLevelContext:
             self.loggers: list[logging.Logger] = [logging.getLogger(logger)]
         elif isinstance(logger, logging.Logger):
             self.loggers = [logger]
-        elif isinstance(logger, list):
+        else:
+            # Check if it's a list, otherwise it's an invalid type  
+            if not isinstance(logger, list):  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise TypeError(f"Invalid logger type: {type(logger)}")  # pyright: ignore[reportUnreachable]
             self.loggers = []
             for log in logger:
                 if isinstance(log, str):
                     self.loggers.append(logging.getLogger(log))
-                elif isinstance(log, logging.Logger):
+                elif isinstance(log, logging.Logger):  # pyright: ignore[reportUnnecessaryIsInstance]
                     self.loggers.append(log)
                 else:
                     raise TypeError(f"Invalid logger type: {type(log)}")
-        else:
-            raise TypeError(f"Invalid logger type: {type(logger)}")
     
     def __enter__(self) -> LogLevelContext:
         """Enter context and set temporary log levels."""
@@ -88,14 +89,14 @@ class LogLevelContext:
 class LogFieldContext:
     """Context manager for adding contextual fields to log messages."""
     
-    def __init__(self, fields: dict[str, Any]) -> None:
+    def __init__(self, fields: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
         """Initialize log field context manager.
         
         Args:
             fields: Dictionary of fields to add to log context
         """
-        self.fields: dict[str, Any] = fields
-        self.previous_fields: dict[str, Any] = {}
+        self.fields: dict[str, Any] = fields  # pyright: ignore[reportExplicitAny]
+        self.previous_fields: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
     
     def __enter__(self) -> LogFieldContext:
         """Enter context and add fields to thread-local storage."""
@@ -137,10 +138,12 @@ class ContextualLogRecord:
         
         # Copy all attributes from original record
         for attr in dir(record):
-            if not attr.startswith('_') and not callable(getattr(record, attr)):
-                setattr(self, attr, getattr(record, attr))
+            if not attr.startswith('_'):
+                value = getattr(record, attr)  # pyright: ignore[reportAny]
+                if not callable(value):  # pyright: ignore[reportAny]
+                    setattr(self, attr, value)
     
-    def get_context_fields(self) -> dict[str, Any]:
+    def get_context_fields(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
         """Get context fields from thread-local storage.
         
         Returns:
@@ -148,9 +151,9 @@ class ContextualLogRecord:
         """
         return dict(thread_local_context.fields)
     
-    def __getattr__(self, name: str) -> Any:  # pyright: ignore[reportAny]
+    def __getattr__(self, name: str) -> Any:  # pyright: ignore[reportExplicitAny]
         """Delegate attribute access to original record."""
-        return getattr(self.record, name)
+        return getattr(self.record, name)  # pyright: ignore[reportAny]
 
 
 @contextmanager
@@ -172,7 +175,7 @@ def log_level_context(
 
 
 @contextmanager
-def log_field_context(fields: dict[str, Any]) -> Generator[None, None, None]:
+def log_field_context(fields: dict[str, Any]) -> Generator[None, None, None]:  # pyright: ignore[reportExplicitAny]
     """Context manager for adding contextual fields to log messages.
     
     Args:
@@ -189,7 +192,7 @@ def log_field_context(fields: dict[str, Any]) -> Generator[None, None, None]:
 def combined_log_context(
     logger: logging.Logger | str | list[logging.Logger | str],
     level: LogLevel,
-    fields: dict[str, Any]
+    fields: dict[str, Any]  # pyright: ignore[reportExplicitAny]
 ) -> Generator[None, None, None]:
     """Combined context manager for both level and field changes.
     

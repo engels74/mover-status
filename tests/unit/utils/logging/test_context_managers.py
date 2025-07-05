@@ -100,7 +100,7 @@ class TestLogLevelContext:
                 results.append(logger.level)
         
         # Start multiple threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(3):
             thread = threading.Thread(target=worker, args=(i,))
             threads.append(thread)
@@ -225,7 +225,7 @@ class TestLogFieldContext:
                 results[worker_id] = fields
         
         # Start multiple threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(3):
             thread = threading.Thread(target=worker, args=(i,))
             threads.append(thread)
@@ -259,9 +259,9 @@ class TestContextualLogRecord:
         contextual_record = ContextualLogRecord(original_record)
         
         # Should preserve original record attributes
-        assert contextual_record.name == original_record.name
-        assert contextual_record.levelno == original_record.levelno
-        assert contextual_record.msg == original_record.msg
+        assert contextual_record.name == original_record.name  # pyright: ignore[reportAny]
+        assert contextual_record.levelno == original_record.levelno  # pyright: ignore[reportAny]
+        assert contextual_record.msg == original_record.msg  # pyright: ignore[reportAny]
     
     def test_context_fields_integration(self) -> None:
         """Test context fields integration with record."""
@@ -319,7 +319,7 @@ class TestThreadLocalContext:
             results[worker_id] = thread_local_context.fields["worker"]
         
         # Start multiple threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(3):
             thread = threading.Thread(target=worker, args=(i,))
             threads.append(thread)
@@ -434,7 +434,7 @@ class TestErrorCases:
     def test_invalid_logger_type(self) -> None:
         """Test error handling for invalid logger type."""
         try:
-            _ = LogLevelContext(123, LogLevel.INFO)  # type: ignore[arg-type]
+            _ = LogLevelContext(123, LogLevel.INFO)  # pyright: ignore[reportArgumentType]
             assert False, "Should have raised TypeError"
         except TypeError as e:
             assert "Invalid logger type" in str(e)
@@ -442,7 +442,7 @@ class TestErrorCases:
     def test_invalid_logger_in_list(self) -> None:
         """Test error handling for invalid logger type in list."""
         try:
-            _ = LogLevelContext([logging.getLogger("test"), 123], LogLevel.INFO)  # type: ignore[list-item]
+            _ = LogLevelContext([logging.getLogger("test"), 123], LogLevel.INFO)  # pyright: ignore[reportArgumentType]
             assert False, "Should have raised TypeError"
         except TypeError as e:
             assert "Invalid logger type" in str(e)
@@ -462,8 +462,8 @@ class TestErrorCases:
         contextual_record = ContextualLogRecord(record)
         
         # Test that we can access attributes that aren't copied directly
-        assert contextual_record.lineno == 42
-        assert contextual_record.pathname == "test.py"
+        assert contextual_record.lineno == 42  # pyright: ignore[reportAny]
+        assert contextual_record.pathname == "test.py"  # pyright: ignore[reportAny]
     
     def test_automatic_contextual_logging(self) -> None:
         """Test automatic contextual logging with structured formatters."""
