@@ -1,0 +1,109 @@
+{
+	"meta": {
+		"generatedAt": "2025-07-05T16:15:57.848Z",
+		"tasksAnalyzed": 12,
+		"totalTasks": 12,
+		"analysisCount": 12,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": false
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Initialize Project Structure with uv",
+			"complexityScore": 4,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the project initialization into discrete setup phases: uv initialization, pyproject.toml configuration, directory structure creation, initialization files setup, and documentation files creation. Each subtask should be independently testable and verifiable.",
+			"reasoning": "Moderate complexity due to multiple configuration files and directory structure setup. Well-defined requirements make it straightforward but requires attention to detail for proper Python packaging standards."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Implement Configuration System Foundation",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Decompose the configuration system into: Pydantic base models creation, YAML loader implementation, environment variable override system, configuration merger with precedence rules, error handling and validation, and comprehensive test coverage for each component.",
+			"reasoning": "High complexity due to multiple integration points (YAML, environment variables, Pydantic validation) and the need for robust error handling. The precedence rules and merging logic add significant complexity."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "Build Logging Infrastructure",
+			"complexityScore": 6,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Split logging infrastructure into: structured formatter implementation, configurable handler setup (console, file, syslog), log level configuration system, context managers for temporary changes, and correlation ID tracking system.",
+			"reasoning": "Moderately high complexity due to multiple handler types, structured logging requirements, and thread-safety considerations. JSON formatting and correlation tracking add additional complexity layers."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "Create Process Detection Framework",
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break down process detection into: abstract interface definition, process information models, Unraid-specific detector implementation, psutil integration and error handling, process lifecycle management, and cross-platform compatibility considerations.",
+			"reasoning": "High complexity due to system-level process interaction, error handling for various edge cases (permissions, process lifecycle), and the need for reliable process detection across different system states."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "Implement Filesystem Operations",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Decompose filesystem operations into: directory scanner with exclusion patterns, size calculation engine with caching, permission error handling, symlink and special file handling, and performance optimization for large directories.",
+			"reasoning": "High complexity due to filesystem edge cases, permission handling, performance considerations for large datasets, and the need for reliable exclusion pattern matching."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "Build Progress Calculation Engine",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Split progress calculation into: core progress metrics calculation, transfer rate calculation with moving averages, ETC estimation algorithms, and edge case handling (zero sizes, stalled transfers).",
+			"reasoning": "Moderate-high complexity due to mathematical calculations, time-series data handling, and the need for accurate rate calculations and predictions. Algorithm correctness is critical."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Develop CLI Interface",
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Break down CLI development into: Click command structure and options, configuration file discovery and validation, error handling and user feedback, and shell completion support implementation.",
+			"reasoning": "Moderate complexity with well-established patterns using Click. Main complexity comes from proper error handling, configuration integration, and user experience considerations."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Create Notification Provider Architecture",
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Decompose notification architecture into: abstract provider interface design, retry mechanism with exponential backoff, provider registry system, message dispatch coordination, timeout handling, and error propagation strategies.",
+			"reasoning": "High complexity due to abstract design patterns, async coordination, retry logic, and the need for robust error handling across multiple providers. Architecture decisions impact all notification providers."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "Implement Discord Provider",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Split Discord provider into: webhook integration and HTTP handling, rich embed generation and formatting, Discord-specific error handling and rate limiting, and configuration validation for Discord webhooks.",
+			"reasoning": "Moderate-high complexity due to HTTP integration, Discord API specifics, embed formatting requirements, and rate limiting considerations. Well-documented Discord API reduces some complexity."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "Build Monitoring Orchestrator",
+			"complexityScore": 9,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down orchestration into: state machine implementation, event bus design and integration, component coordination logic, error recovery mechanisms, graceful shutdown handling, lifecycle management, and async task coordination.",
+			"reasoning": "Very high complexity as this is the core coordination component that integrates all other systems. State management, async coordination, error recovery, and component lifecycle management create significant complexity."
+		},
+		{
+			"taskId": 11,
+			"taskTitle": "Implement Integration Tests",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Organize integration testing into: end-to-end workflow testing, component interaction verification, failure scenario testing, performance benchmarking, and dry-run mode validation.",
+			"reasoning": "High complexity due to the need to test complex interactions between multiple components, create realistic test scenarios, and ensure comprehensive coverage of failure modes and edge cases."
+		},
+		{
+			"taskId": 12,
+			"taskTitle": "Add Telegram Provider",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Split Telegram provider into: Bot API integration and authentication, message formatting (HTML/Markdown), multi-chat delivery coordination, and Telegram-specific error handling and rate limiting.",
+			"reasoning": "Moderate-high complexity due to Bot API integration, multiple formatting options, multi-chat coordination, and Telegram-specific rate limiting. Similar to Discord but with different API patterns."
+		}
+	]
+}
