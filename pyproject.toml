@@ -60,3 +60,13 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.29.5",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.12.2",
+]
