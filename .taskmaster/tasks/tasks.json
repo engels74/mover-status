@@ -38,7 +38,7 @@
             "dependencies": [
               1
             ],
-            "details": "Create src/ directory for source code, tests/ for test files, docs/ for documentation, and any additional directories like scripts/ or examples/ as needed.",
+            "details": "Create src/ directory for source code, tests/ for test files, docs/ for documentation, and any additional directories like scripts/ or examples/ as needed.\n<info added on 2025-07-05T17:21:34.670Z>\nCreate the directory structure according to the specifications in `docs/project_overview.md`. Follow the exact directory layout and organization defined in the project overview document to ensure consistency with the project architecture.\n</info added on 2025-07-05T17:21:34.670Z>",
             "status": "pending",
             "testStrategy": ""
           },
