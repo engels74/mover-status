@@ -22,7 +22,7 @@ class TestYamlLoaderErrorIntegration:
         missing_file = Path("/nonexistent/config.yaml")
         
         with pytest.raises(ConfigLoadError) as exc_info:
-            loader.load(missing_file)
+            _ = loader.load(missing_file)
             
         error = exc_info.value
         assert "Failed to load /nonexistent/config.yaml" in str(error)
@@ -34,13 +34,13 @@ class TestYamlLoaderErrorIntegration:
         loader = YamlLoader()
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("invalid: yaml: content: [")
+            _ = f.write("invalid: yaml: content: [")
             f.flush()
             invalid_file = Path(f.name)
             
         try:
             with pytest.raises(ConfigLoadError) as exc_info:
-                loader.load(invalid_file)
+                _ = loader.load(invalid_file)
                 
             error = exc_info.value
             assert "Failed to load" in str(error)
@@ -63,7 +63,7 @@ class TestEnvLoaderErrorIntegration:
         try:
             loader = EnvLoader(convert_types=True)
             with pytest.raises(EnvLoadError) as exc_info:
-                loader.load()
+                _ = loader.load()
                 
             error = exc_info.value
             assert "Failed to parse JSON" in str(error)
@@ -82,7 +82,7 @@ class TestConfigMergerErrorIntegration:
         merger = ConfigMerger()
         
         with pytest.raises(ConfigMergeError) as exc_info:
-            merger.merge("not a dict", {})
+            _ = merger.merge("not a dict", {})
             
         error = exc_info.value
         assert "Base configuration must be a dictionary" in str(error)
@@ -92,7 +92,7 @@ class TestConfigMergerErrorIntegration:
         merger = ConfigMerger()
         
         with pytest.raises(ConfigMergeError) as exc_info:
-            merger.merge({}, "not a dict")
+            _ = merger.merge({}, "not a dict")
             
         error = exc_info.value
         assert "Override configuration must be a dictionary" in str(error)
@@ -102,7 +102,7 @@ class TestConfigMergerErrorIntegration:
         merger = ConfigMerger()
         
         with pytest.raises(ConfigMergeError) as exc_info:
-            merger.merge_multiple([{}, "not a dict"])
+            _ = merger.merge_multiple([{}, "not a dict"])
             
         error = exc_info.value
         assert "Source 1 must be a dictionary" in str(error)
@@ -118,7 +118,7 @@ class TestErrorHandlingWorkflow:
         missing_file = Path("/test/config.yaml")
         
         try:
-            loader.load(missing_file)
+            _ = loader.load(missing_file)
         except ConfigLoadError as error:
             # Error should have file path context
             assert error.file_path == str(missing_file)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from pydantic import ValidationError
 
 from mover_status.config.exceptions import (
@@ -107,8 +106,8 @@ class TestConfigValidationError:
             class TestModel(BaseModel):
                 required_field: str = Field(...)
                 
-            # This will raise a ValidationError
-            TestModel()
+            # This will raise a ValidationError due to missing required field
+            _ = TestModel.model_validate({})
         except ValidationError as pydantic_error:
             error = ConfigValidationError("Validation failed", pydantic_error=pydantic_error)
             assert "Validation failed" in str(error)
@@ -185,8 +184,8 @@ class TestErrorUtilities:
             class TestModel(BaseModel):
                 required_field: str = Field(...)
                 
-            # This will raise a ValidationError
-            TestModel()
+            # This will raise a ValidationError due to missing required field
+            _ = TestModel.model_validate({})
         except ValidationError as pydantic_error:
             handled = handle_config_error(pydantic_error, "Validating configuration")
             

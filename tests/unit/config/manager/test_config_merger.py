@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from mover_status.config.manager.config_merger import ConfigMerger, ConfigMergeError
+from mover_status.config.manager.config_merger import ConfigMerger
+from mover_status.config.exceptions import ConfigMergeError
 
 
 class TestConfigMerger:

@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from mover_status.config.loader.yaml_loader import YamlLoader, ConfigLoadError
+from mover_status.config.loader.yaml_loader import YamlLoader
+from mover_status.config.exceptions import ConfigLoadError
 
 
 class TestYamlLoader:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
 
 from pydantic import ValidationError
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ConfigError(Exception):
     """Base exception for all configuration-related errors."""
     
-    def __init__(self, message: str, context: dict[str, Any] | None = None) -> None:  # pyright: ignore[reportAny] # Flexible config error context
+    def __init__(self, message: str, context: dict[str, object] | None = None) -> None:
         """Initialize ConfigError.
         
         Args:
@@ -21,7 +20,7 @@ class ConfigError(Exception):
             context: Additional context information for debugging
         """
         super().__init__(message)
-        self.context: dict[str, Any] = context or {}  # pyright: ignore[reportAny] # Flexible config error context
+        self.context: dict[str, object] = context or {}
 
 
 class ConfigLoadError(ConfigError):
@@ -31,7 +30,7 @@ class ConfigLoadError(ConfigError):
         self,
         message: str,
         file_path: str | None = None,
-        context: dict[str, Any] | None = None,  # pyright: ignore[reportAny] # Flexible config error context
+        context: dict[str, object] | None = None,
     ) -> None:
         """Initialize ConfigLoadError.
         
@@ -56,7 +55,7 @@ class EnvLoadError(ConfigError):
         self,
         message: str,
         env_var: str | None = None,
-        context: dict[str, Any] | None = None,  # pyright: ignore[reportAny] # Flexible config error context
+        context: dict[str, object] | None = None,
     ) -> None:
         """Initialize EnvLoadError.
         
@@ -81,7 +80,7 @@ class ConfigMergeError(ConfigError):
         self,
         message: str,
         config_path: str = "",
-        context: dict[str, Any] | None = None,  # pyright: ignore[reportAny] # Flexible config error context
+        context: dict[str, object] | None = None,
     ) -> None:
         """Initialize ConfigMergeError.
         
@@ -106,7 +105,7 @@ class ConfigValidationError(ConfigError):
         self,
         message: str,
         pydantic_error: ValidationError | None = None,
-        context: dict[str, Any] | None = None,  # pyright: ignore[reportAny] # Flexible config error context
+        context: dict[str, object] | None = None,
     ) -> None:
         """Initialize ConfigValidationError.
         
@@ -123,7 +122,7 @@ class ConfigValidationError(ConfigError):
         super().__init__(message, full_context)
         self.pydantic_error: ValidationError | None = pydantic_error
     
-    def _format_validation_errors(self, error: ValidationError) -> list[dict[str, Any]]:  # pyright: ignore[reportAny] # Flexible error formatting
+    def _format_validation_errors(self, error: ValidationError) -> list[dict[str, object]]:
         """Format Pydantic validation errors for better readability.
         
         Args:
@@ -132,7 +131,7 @@ class ConfigValidationError(ConfigError):
         Returns:
             List of formatted error dictionaries
         """
-        formatted_errors: list[dict[str, Any]] = []  # pyright: ignore[reportAny] # Flexible error formatting
+        formatted_errors: list[dict[str, object]] = []
         for err in error.errors():
             formatted_errors.append({
                 "field": ".".join(str(loc) for loc in err["loc"]),
@@ -147,8 +146,8 @@ def get_error_context(
     file_path: str | None = None,
     env_var: str | None = None,
     config_path: str | None = None,
-    **additional_info: Any,  # pyright: ignore[reportAny] # Flexible additional context
-) -> dict[str, Any]:  # pyright: ignore[reportAny] # Flexible error context
+    **additional_info: object,
+) -> dict[str, object]:
     """Build error context dictionary from provided information.
     
     Args:
@@ -160,7 +159,7 @@ def get_error_context(
     Returns:
         Dictionary containing error context
     """
-    context: dict[str, Any] = {}  # pyright: ignore[reportAny] # Flexible error context
+    context: dict[str, object] = {}
     
     if file_path is not None:
         context["file_path"] = file_path
@@ -218,7 +217,7 @@ def log_config_error(error: ConfigError, level: int = logging.WARNING) -> None:
     # Build log message with context
     message = str(error)
     if error.context:
-        context_str = ", ".join(f"{k}={v}" for k, v in error.context.items())  # pyright: ignore[reportAny] # Flexible context values
+        context_str = ", ".join(f"{k}={v}" for k, v in error.context.items())
         message = f"{message} (context: {context_str})"
     
     logger.log(level, message, exc_info=True)

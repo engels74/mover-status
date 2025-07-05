@@ -6,7 +6,8 @@ import os
 from unittest.mock import patch
 import pytest
 
-from mover_status.config.loader.env_loader import EnvLoader, EnvLoadError
+from mover_status.config.loader.env_loader import EnvLoader
+from mover_status.config.exceptions import EnvLoadError
 
 
 class TestEnvLoader:
