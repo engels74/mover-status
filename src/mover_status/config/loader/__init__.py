@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from .yaml_loader import YamlLoader, ConfigLoadError
-from .env_loader import EnvLoader, EnvLoadError
+from .yaml_loader import YamlLoader
+from .env_loader import EnvLoader
+from ..exceptions import ConfigLoadError, EnvLoadError
 
 __all__ = [
     "YamlLoader",

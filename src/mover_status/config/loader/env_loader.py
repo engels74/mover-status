@@ -6,19 +6,7 @@ import json
 import os
 from typing import cast
 
-
-class EnvLoadError(Exception):
-    """Exception raised when environment variable loading fails."""
-    
-    def __init__(self, message: str, env_var: str | None = None) -> None:
-        """Initialize EnvLoadError.
-        
-        Args:
-            message: Error message
-            env_var: Environment variable name that caused the error
-        """
-        super().__init__(message)
-        self.env_var: str | None = env_var
+from ..exceptions import EnvLoadError
 
 
 class EnvLoader:

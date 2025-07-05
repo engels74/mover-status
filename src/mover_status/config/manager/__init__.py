@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from .config_merger import ConfigMerger, ConfigMergeError
+from .config_merger import ConfigMerger
+from ..exceptions import ConfigMergeError
 
 __all__ = [
     "ConfigMerger",

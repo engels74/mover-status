@@ -5,23 +5,11 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from ..exceptions import ConfigMergeError
+
 # Type aliases for better clarity
 ConfigDict = dict[str, Any]  # pyright: ignore[reportExplicitAny] # Config systems need flexible types
 ConfigValue = str | int | float | bool | list[Any] | dict[str, Any] | None  # pyright: ignore[reportExplicitAny] # Config systems need flexible types
-
-
-class ConfigMergeError(Exception):
-    """Exception raised during configuration merging operations."""
-    
-    def __init__(self, message: str, config_path: str = "") -> None:
-        """Initialize ConfigMergeError.
-        
-        Args:
-            message: Error message
-            config_path: Path to the configuration field that caused the error
-        """
-        super().__init__(message)
-        self.config_path: str = config_path
 
 
 class ConfigMerger:

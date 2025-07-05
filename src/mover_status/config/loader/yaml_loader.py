@@ -6,14 +6,7 @@ from pathlib import Path
 
 import yaml
 
-
-class ConfigLoadError(Exception):
-    """Exception raised when configuration loading fails."""
-    
-    def __init__(self, message: str) -> None:
-        """Initialize ConfigLoadError with a descriptive message."""
-        super().__init__(message)
-        self.message: str = message
+from ..exceptions import ConfigLoadError
 
 
 class YamlLoader:
@@ -43,4 +36,4 @@ class YamlLoader:
                     return content  # pyright: ignore[reportUnknownVariableType] # content is dict after isinstance check
                 return {}
         except Exception as e:
-            raise ConfigLoadError(f"Failed to load {path}: {e}") from e
+            raise ConfigLoadError(f"Failed to load {path}: {e}", file_path=str(path)) from e
