@@ -1,7 +1,7 @@
 # Mover Status 
 
 <p align="center">
-  <img src="https://i.imgur.com/51gQKps.png" alt="MoverStatus Script"/>
+  <img src="mover-status.svg" alt="base-image" style="width: 40%;"/>
 </p>
 
 <p align="center">
