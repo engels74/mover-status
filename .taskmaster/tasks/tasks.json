@@ -1,0 +1,182 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Project Structure with uv",
+        "description": "Set up the Python 3.13 project using uv package manager, create the directory structure, and configure pyproject.toml with all required dependencies and development tools",
+        "details": "1. Initialize project with `uv init mover-status-monitor`\n2. Configure pyproject.toml:\n```toml\n[project]\nname = \"mover-status-monitor\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\n    \"pydantic>=2.5\",\n    \"pyyaml>=6.0\",\n    \"psutil>=5.9\",\n    \"httpx>=0.25\",\n    \"rich>=13.7\",\n    \"click>=8.1\",\n    \"python-telegram-bot>=20.7\",\n]\n\n[project.optional-dependencies]\ndev = [\n    \"pytest>=7.4\",\n    \"pytest-cov>=4.1\",\n    \"pytest-asyncio>=0.21\",\n    \"pytest-mock>=3.12\",\n    \"basedpyright>=1.8\",\n    \"ruff>=0.1.9\",\n]\n\n[tool.basedpyright]\ntypeCheckingMode = \"strict\"\nreportMissingImports = true\nreportMissingTypeStubs = false\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\naddopts = \"--cov=src/mover_status --cov-report=term-missing --cov-fail-under=100\"\n```\n3. Create full directory structure as specified in PRD\n4. Add __init__.py files with proper exports\n5. Create LICENSE and README.md files",
+        "testStrategy": "Write tests/test_project_structure.py to verify:\n- All directories exist as specified\n- pyproject.toml contains required dependencies\n- Python version is 3.13+\n- basedpyright configuration is strict\n- pytest coverage requirement is 100%",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Implement Configuration System Foundation",
+        "description": "Create the configuration loading system with YAML support, environment variable overrides, and Pydantic models for validation following TDD principles",
+        "details": "Following TDD:\n1. Write tests/unit/config/models/test_base.py:\n```python\ndef test_base_config_model_validation():\n    # Test Pydantic model validation\n    pass\n\ndef test_config_merge_behavior():\n    # Test configuration merging logic\n    pass\n```\n\n2. Implement src/mover_status/config/models/base.py:\n```python\nfrom pydantic import BaseModel, Field\nfrom typing import Dict, Any\n\nclass BaseConfig(BaseModel):\n    class Config:\n        extra = \"forbid\"\n        validate_assignment = True\n```\n\n3. Write tests/unit/config/loader/test_yaml_loader.py\n4. Implement YAML loader with error handling:\n```python\nimport yaml\nfrom pathlib import Path\nfrom typing import Dict, Any\n\nclass YamlLoader:\n    def load(self, path: Path) -> Dict[str, Any]:\n        try:\n            with open(path, 'r') as f:\n                return yaml.safe_load(f) or {}\n        except Exception as e:\n            raise ConfigLoadError(f\"Failed to load {path}: {e}\")\n```\n\n5. Create environment variable override system\n6. Implement configuration merger with precedence rules",
+        "testStrategy": "TDD approach:\n- Write failing tests for each configuration component\n- Test YAML parsing with valid/invalid files\n- Test environment variable override precedence\n- Test configuration validation with Pydantic\n- Test error handling for missing/malformed configs\n- Achieve 100% coverage on all configuration modules",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Build Logging Infrastructure",
+        "description": "Implement structured logging system with configurable handlers, formatters, and verbosity levels to support debugging and production monitoring",
+        "details": "TDD Implementation:\n1. Write tests/unit/utils/logging/test_logger.py:\n```python\ndef test_logger_initialization():\n    logger = Logger(\"test\")\n    assert logger.name == \"test\"\n\ndef test_structured_logging():\n    # Test JSON output format\n    pass\n```\n\n2. Implement src/mover_status/utils/logging/logger.py:\n```python\nimport logging\nimport json\nfrom typing import Any, Dict\n\nclass StructuredFormatter(logging.Formatter):\n    def format(self, record: logging.LogRecord) -> str:\n        log_obj = {\n            \"timestamp\": self.formatTime(record),\n            \"level\": record.levelname,\n            \"logger\": record.name,\n            \"message\": record.getMessage(),\n            \"extra\": getattr(record, \"extra\", {})\n        }\n        return json.dumps(log_obj)\n```\n\n3. Create configurable handlers (console, file, syslog)\n4. Implement log level configuration from config/CLI\n5. Add context managers for temporary log level changes\n6. Create correlation ID tracking for request tracing",
+        "testStrategy": "Test coverage requirements:\n- Test all log levels and formatting options\n- Test handler configuration and rotation\n- Test structured logging with extra fields\n- Test thread-safe logging operations\n- Mock file I/O for handler tests\n- Verify JSON output structure",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Create Process Detection Framework",
+        "description": "Build the abstract process detection interface and Unraid-specific implementation using psutil and proc filesystem for reliable mover process monitoring",
+        "details": "TDD Development:\n1. Write tests/unit/core/process/test_detector.py:\n```python\nfrom abc import ABC, abstractmethod\n\ndef test_detector_interface():\n    # Test abstract interface contract\n    pass\n```\n\n2. Create abstract detector interface:\n```python\nfrom abc import ABC, abstractmethod\nfrom typing import Optional, List\nfrom .models import ProcessInfo\n\nclass ProcessDetector(ABC):\n    @abstractmethod\n    def detect_mover(self) -> Optional[ProcessInfo]:\n        \"\"\"Detect running mover process\"\"\"\n        pass\n    \n    @abstractmethod\n    def is_process_running(self, pid: int) -> bool:\n        \"\"\"Check if process is still running\"\"\"\n        pass\n```\n\n3. Write tests/unit/core/process/test_unraid_detector.py\n4. Implement Unraid detector:\n```python\nimport psutil\nfrom typing import Optional\n\nclass UnraidMoverDetector(ProcessDetector):\n    MOVER_PATTERNS = [\"mover\", \"/usr/local/sbin/mover\"]\n    \n    def detect_mover(self) -> Optional[ProcessInfo]:\n        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):\n            try:\n                cmdline = ' '.join(proc.info['cmdline'] or [])\n                if any(pattern in cmdline for pattern in self.MOVER_PATTERNS):\n                    return ProcessInfo(\n                        pid=proc.info['pid'],\n                        command=cmdline,\n                        start_time=proc.create_time()\n                    )\n            except (psutil.NoSuchProcess, psutil.AccessDenied):\n                continue\n        return None\n```",
+        "testStrategy": "Comprehensive testing:\n- Mock psutil process iteration\n- Test pattern matching for various mover commands\n- Test error handling for permission denied\n- Test process lifecycle (start, running, stopped)\n- Test cross-platform compatibility\n- Use fixtures for consistent test data",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Implement Filesystem Operations",
+        "description": "Create efficient directory scanning and size calculation modules with configurable exclusion patterns for accurate progress tracking",
+        "details": "TDD Implementation:\n1. Write tests/unit/core/data/filesystem/test_scanner.py:\n```python\ndef test_directory_scanning():\n    # Test recursive directory traversal\n    pass\n\ndef test_exclusion_patterns():\n    # Test pattern matching for exclusions\n    pass\n```\n\n2. Implement filesystem scanner:\n```python\nfrom pathlib import Path\nfrom typing import Iterator, Set\nimport fnmatch\n\nclass FilesystemScanner:\n    def __init__(self, exclusions: Set[str] = None):\n        self.exclusions = exclusions or {\".snapshots\", \".Recycle.Bin\", \"@eaDir\"}\n    \n    def scan_directory(self, path: Path) -> Iterator[Path]:\n        \"\"\"Yield all files in directory tree, respecting exclusions\"\"\"\n        try:\n            for item in path.iterdir():\n                if self._should_exclude(item):\n                    continue\n                \n                if item.is_file():\n                    yield item\n                elif item.is_dir():\n                    yield from self.scan_directory(item)\n        except PermissionError:\n            # Log and continue\n            pass\n    \n    def _should_exclude(self, path: Path) -> bool:\n        return any(fnmatch.fnmatch(path.name, pattern) \n                  for pattern in self.exclusions)\n```\n\n3. Create size calculator with caching:\n```python\nclass SizeCalculator:\n    def __init__(self, scanner: FilesystemScanner):\n        self.scanner = scanner\n        self._cache: Dict[Path, int] = {}\n    \n    def calculate_size(self, path: Path) -> int:\n        if path in self._cache:\n            return self._cache[path]\n        \n        total = sum(f.stat().st_size for f in self.scanner.scan_directory(path))\n        self._cache[path] = total\n        return total\n```",
+        "testStrategy": "Test requirements:\n- Use temp directories with known file structures\n- Test exclusion pattern matching\n- Test permission error handling\n- Test symlink handling\n- Test large directory performance\n- Mock filesystem for edge cases\n- Verify cache behavior",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Build Progress Calculation Engine",
+        "description": "Develop the core progress calculation algorithms including percentage completion, transfer rate calculation, and intelligent ETC estimation",
+        "details": "TDD Development:\n1. Write tests/unit/core/progress/test_calculator.py:\n```python\ndef test_progress_percentage_calculation():\n    calc = ProgressCalculator()\n    result = calc.calculate_progress(transferred=50, total=100)\n    assert result.percentage == 50.0\n\ndef test_zero_size_handling():\n    # Test edge case of zero total size\n    pass\n```\n\n2. Implement progress calculator:\n```python\nfrom dataclasses import dataclass\nfrom typing import Optional\nimport time\n\n@dataclass\nclass ProgressMetrics:\n    percentage: float\n    bytes_remaining: int\n    transfer_rate: float\n    etc_seconds: Optional[int]\n\nclass ProgressCalculator:\n    def __init__(self):\n        self.history: List[Tuple[float, int]] = []  # (timestamp, bytes)\n    \n    def calculate_progress(self, transferred: int, total: int) -> ProgressMetrics:\n        if total == 0:\n            return ProgressMetrics(100.0, 0, 0.0, 0)\n        \n        percentage = (transferred / total) * 100\n        remaining = total - transferred\n        \n        # Calculate transfer rate using moving average\n        now = time.time()\n        self.history.append((now, transferred))\n        \n        # Keep last 10 samples for rate calculation\n        self.history = self.history[-10:]\n        \n        rate = self._calculate_transfer_rate()\n        etc = self._estimate_completion_time(remaining, rate)\n        \n        return ProgressMetrics(percentage, remaining, rate, etc)\n    \n    def _calculate_transfer_rate(self) -> float:\n        if len(self.history) < 2:\n            return 0.0\n        \n        time_delta = self.history[-1][0] - self.history[0][0]\n        bytes_delta = self.history[-1][1] - self.history[0][1]\n        \n        if time_delta > 0:\n            return bytes_delta / time_delta\n        return 0.0\n```",
+        "testStrategy": "Test scenarios:\n- Various progress percentages\n- Zero and negative values\n- Transfer rate with different histories\n- ETC calculation accuracy\n- Moving average behavior\n- Edge cases (stalled transfers, bursts)\n- Performance with large datasets",
+        "priority": "high",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Develop CLI Interface",
+        "description": "Create the command-line interface using Click with argument parsing, dry-run mode, help system, and configuration file support",
+        "details": "TDD Implementation:\n1. Write tests/unit/app/test_cli.py:\n```python\nfrom click.testing import CliRunner\n\ndef test_cli_basic_invocation():\n    runner = CliRunner()\n    result = runner.invoke(cli, ['--help'])\n    assert result.exit_code == 0\n    assert 'Mover Status Monitor' in result.output\n```\n\n2. Implement CLI with Click:\n```python\nimport click\nfrom pathlib import Path\nfrom typing import Optional\n\n@click.command()\n@click.option('--config', '-c', \n              type=click.Path(exists=True, path_type=Path),\n              default='config.yaml',\n              help='Configuration file path')\n@click.option('--dry-run', '-d',\n              is_flag=True,\n              help='Run without sending notifications')\n@click.option('--log-level', '-l',\n              type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),\n              default='INFO',\n              help='Logging verbosity')\n@click.option('--once', '-o',\n              is_flag=True,\n              help='Run once and exit')\n@click.version_option()\ndef cli(config: Path, dry_run: bool, log_level: str, once: bool) -> None:\n    \"\"\"Mover Status Monitor - Track Unraid mover progress\"\"\"\n    from .runner import ApplicationRunner\n    \n    runner = ApplicationRunner(\n        config_path=config,\n        dry_run=dry_run,\n        log_level=log_level,\n        run_once=once\n    )\n    \n    try:\n        runner.run()\n    except KeyboardInterrupt:\n        click.echo(\"\\nShutting down gracefully...\")\n    except Exception as e:\n        click.echo(f\"Error: {e}\", err=True)\n        raise click.ClickException(str(e))\n```\n\n3. Add validation for mutually exclusive options\n4. Implement configuration file discovery\n5. Add shell completion support",
+        "testStrategy": "CLI testing strategy:\n- Test all command-line options\n- Test option combinations\n- Test error handling and messages\n- Test configuration file loading\n- Test dry-run mode behavior\n- Use CliRunner for isolated testing\n- Verify exit codes",
+        "priority": "medium",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Create Notification Provider Architecture",
+        "description": "Build the abstract notification provider base classes, registry system, and message dispatch infrastructure with retry logic and timeout handling",
+        "details": "TDD Development:\n1. Write tests/unit/notifications/base/test_provider.py:\n```python\ndef test_provider_interface():\n    # Test abstract provider contract\n    pass\n\ndef test_retry_decorator():\n    # Test exponential backoff retry logic\n    pass\n```\n\n2. Implement base provider:\n```python\nfrom abc import ABC, abstractmethod\nfrom typing import Dict, Any, Optional\nimport asyncio\nfrom functools import wraps\n\nclass NotificationProvider(ABC):\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.enabled = config.get('enabled', True)\n    \n    @abstractmethod\n    async def send_notification(self, message: Message) -> bool:\n        \"\"\"Send notification, return success status\"\"\"\n        pass\n    \n    @abstractmethod\n    def validate_config(self) -> None:\n        \"\"\"Validate provider configuration\"\"\"\n        pass\n\ndef with_retry(max_attempts: int = 3, backoff_factor: float = 2.0):\n    def decorator(func):\n        @wraps(func)\n        async def wrapper(*args, **kwargs):\n            for attempt in range(max_attempts):\n                try:\n                    return await func(*args, **kwargs)\n                except Exception as e:\n                    if attempt == max_attempts - 1:\n                        raise\n                    wait_time = backoff_factor ** attempt\n                    await asyncio.sleep(wait_time)\n            return None\n        return wrapper\n    return decorator\n```\n\n3. Create provider registry:\n```python\nclass ProviderRegistry:\n    def __init__(self):\n        self._providers: Dict[str, Type[NotificationProvider]] = {}\n    \n    def register(self, name: str, provider_class: Type[NotificationProvider]):\n        self._providers[name] = provider_class\n    \n    def create_provider(self, name: str, config: Dict[str, Any]) -> NotificationProvider:\n        if name not in self._providers:\n            raise ValueError(f\"Unknown provider: {name}\")\n        return self._providers[name](config)\n```",
+        "testStrategy": "Testing approach:\n- Mock async operations\n- Test retry logic with failures\n- Test timeout handling\n- Test provider registration\n- Test configuration validation\n- Test parallel dispatch\n- Verify error propagation",
+        "priority": "high",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Implement Discord Provider",
+        "description": "Create the Discord notification provider with webhook integration, rich embed generation, progress visualization, and error handling",
+        "details": "TDD Implementation:\n1. Write tests/unit/plugins/discord/test_provider.py:\n```python\nimport pytest\nfrom unittest.mock import AsyncMock, patch\n\n@pytest.mark.asyncio\nasync def test_discord_webhook_send():\n    provider = DiscordProvider({\"webhook_url\": \"https://discord.com/api/webhooks/...\"}) \n    with patch('httpx.AsyncClient.post') as mock_post:\n        mock_post.return_value.status_code = 204\n        result = await provider.send_notification(test_message)\n        assert result is True\n```\n\n2. Implement Discord provider:\n```python\nimport httpx\nfrom typing import Dict, Any\nimport asyncio\n\nclass DiscordProvider(NotificationProvider):\n    def __init__(self, config: Dict[str, Any]):\n        super().__init__(config)\n        self.webhook_url = config['webhook_url']\n        self.username = config.get('username', 'Mover Status')\n        self.avatar_url = config.get('avatar_url')\n    \n    @with_retry(max_attempts=3)\n    async def send_notification(self, message: Message) -> bool:\n        embed = self._build_embed(message)\n        \n        payload = {\n            \"username\": self.username,\n            \"avatar_url\": self.avatar_url,\n            \"embeds\": [embed]\n        }\n        \n        async with httpx.AsyncClient(timeout=30.0) as client:\n            response = await client.post(self.webhook_url, json=payload)\n            response.raise_for_status()\n            return True\n    \n    def _build_embed(self, message: Message) -> Dict[str, Any]:\n        color = self._get_color_for_status(message.status)\n        \n        embed = {\n            \"title\": message.title,\n            \"description\": message.description,\n            \"color\": color,\n            \"fields\": [],\n            \"timestamp\": message.timestamp.isoformat()\n        }\n        \n        if message.progress:\n            embed[\"fields\"].append({\n                \"name\": \"Progress\",\n                \"value\": f\"{message.progress.percentage:.1f}%\",\n                \"inline\": True\n            })\n            \n            if message.progress.etc_seconds:\n                embed[\"fields\"].append({\n                    \"name\": \"ETC\",\n                    \"value\": self._format_time(message.progress.etc_seconds),\n                    \"inline\": True\n                })\n        \n        return embed\n```",
+        "testStrategy": "Discord provider tests:\n- Mock HTTP requests\n- Test embed generation\n- Test color mapping\n- Test rate limit handling\n- Test webhook validation\n- Test error responses\n- Verify payload structure",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Build Monitoring Orchestrator",
+        "description": "Create the main monitoring orchestration system with state machine, event bus, and coordination of all components for the complete monitoring lifecycle",
+        "details": "TDD Implementation:\n1. Write tests/unit/core/monitor/test_orchestrator.py:\n```python\ndef test_orchestrator_lifecycle():\n    orchestrator = MonitorOrchestrator()\n    # Test state transitions\n    pass\n\ndef test_event_handling():\n    # Test event bus integration\n    pass\n```\n\n2. Implement orchestrator:\n```python\nfrom enum import Enum, auto\nfrom typing import Optional\nimport asyncio\n\nclass MonitorState(Enum):\n    IDLE = auto()\n    DETECTING = auto()\n    MONITORING = auto()\n    COMPLETING = auto()\n    ERROR = auto()\n\nclass MonitorOrchestrator:\n    def __init__(self, \n                 detector: ProcessDetector,\n                 calculator: ProgressCalculator,\n                 notifier: NotificationManager,\n                 config: Config):\n        self.detector = detector\n        self.calculator = calculator\n        self.notifier = notifier\n        self.config = config\n        self.state = MonitorState.IDLE\n        self.current_process: Optional[ProcessInfo] = None\n        self._running = False\n    \n    async def run(self) -> None:\n        self._running = True\n        \n        while self._running:\n            try:\n                await self._run_cycle()\n                await asyncio.sleep(self.config.check_interval)\n            except Exception as e:\n                await self._handle_error(e)\n    \n    async def _run_cycle(self) -> None:\n        if self.state == MonitorState.IDLE:\n            await self._detect_process()\n        elif self.state == MonitorState.MONITORING:\n            await self._update_progress()\n        elif self.state == MonitorState.COMPLETING:\n            await self._handle_completion()\n    \n    async def _detect_process(self) -> None:\n        self.state = MonitorState.DETECTING\n        process = self.detector.detect_mover()\n        \n        if process:\n            self.current_process = process\n            self.state = MonitorState.MONITORING\n            await self.notifier.send_start_notification(process)\n    \n    async def _update_progress(self) -> None:\n        if not self.detector.is_process_running(self.current_process.pid):\n            self.state = MonitorState.COMPLETING\n            return\n        \n        metrics = await self._calculate_progress()\n        await self.notifier.send_progress_update(metrics)\n```",
+        "testStrategy": "Orchestrator testing:\n- Test state machine transitions\n- Test component coordination\n- Mock all dependencies\n- Test error recovery\n- Test graceful shutdown\n- Test event handling\n- Verify notification dispatch",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5,
+          6,
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Implement Integration Tests",
+        "description": "Create comprehensive integration tests covering component interactions, full system workflows, and end-to-end scenarios with dry-run validation",
+        "details": "Integration test implementation:\n1. Write tests/integration/scenarios/test_full_cycle.py:\n```python\nimport pytest\nfrom pathlib import Path\nimport tempfile\n\n@pytest.mark.integration\nasync def test_complete_monitoring_cycle():\n    \"\"\"Test full monitoring lifecycle from detection to completion\"\"\"\n    with tempfile.TemporaryDirectory() as tmpdir:\n        # Setup test environment\n        config = create_test_config(tmpdir)\n        \n        # Create mock mover process\n        mock_process = create_mock_mover_process()\n        \n        # Run monitoring cycle\n        app = Application(config)\n        await app.run_once()\n        \n        # Verify notifications sent\n        assert_notification_sent(\"start\")\n        assert_notification_sent(\"progress\")\n        assert_notification_sent(\"complete\")\n```\n\n2. Create end-to-end tests:\n```python\n@pytest.mark.e2e\ndef test_dry_run_mode():\n    \"\"\"Test dry-run doesn't send notifications\"\"\"\n    runner = CliRunner()\n    result = runner.invoke(cli, ['--dry-run', '--once'])\n    \n    assert result.exit_code == 0\n    assert \"DRY RUN\" in result.output\n    assert_no_notifications_sent()\n```\n\n3. Test failure scenarios:\n```python\ndef test_provider_failure_recovery():\n    \"\"\"Test system continues when provider fails\"\"\"\n    # Configure provider to fail\n    # Verify other providers still work\n    # Verify system doesn't crash\n    pass\n```\n\n4. Performance tests:\n```python\ndef test_large_filesystem_performance():\n    \"\"\"Test scanning performance with many files\"\"\"\n    # Create directory with 100k files\n    # Measure scan time\n    # Assert reasonable performance\n    pass\n```",
+        "testStrategy": "Integration test strategy:\n- Use pytest markers for test categories\n- Create realistic test fixtures\n- Test component boundaries\n- Verify data flow between components\n- Test configuration changes\n- Measure performance metrics\n- Ensure 100% scenario coverage",
+        "priority": "low",
+        "dependencies": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Add Telegram Provider",
+        "description": "Implement the Telegram notification provider with Bot API integration, HTML/Markdown formatting, and multi-chat support",
+        "details": "TDD Implementation:\n1. Write tests/unit/plugins/telegram/test_provider.py:\n```python\n@pytest.mark.asyncio\nasync def test_telegram_send_message():\n    provider = TelegramProvider({\n        \"bot_token\": \"test_token\",\n        \"chat_ids\": [\"123456\"]\n    })\n    \n    with patch('telegram.Bot.send_message') as mock_send:\n        mock_send.return_value = AsyncMock()\n        result = await provider.send_notification(test_message)\n        assert result is True\n```\n\n2. Implement Telegram provider:\n```python\nfrom telegram import Bot\nfrom telegram.constants import ParseMode\nfrom typing import List, Dict, Any\n\nclass TelegramProvider(NotificationProvider):\n    def __init__(self, config: Dict[str, Any]):\n        super().__init__(config)\n        self.bot_token = config['bot_token']\n        self.chat_ids = config['chat_ids']\n        self.parse_mode = config.get('parse_mode', 'HTML')\n        self.bot = Bot(token=self.bot_token)\n    \n    @with_retry(max_attempts=3)\n    async def send_notification(self, message: Message) -> bool:\n        text = self._format_message(message)\n        \n        tasks = [\n            self._send_to_chat(chat_id, text)\n            for chat_id in self.chat_ids\n        ]\n        \n        results = await asyncio.gather(*tasks, return_exceptions=True)\n        return all(r is True for r in results if not isinstance(r, Exception))\n    \n    async def _send_to_chat(self, chat_id: str, text: str) -> bool:\n        await self.bot.send_message(\n            chat_id=chat_id,\n            text=text,\n            parse_mode=self.parse_mode,\n            disable_web_page_preview=True\n        )\n        return True\n    \n    def _format_message(self, message: Message) -> str:\n        if self.parse_mode == 'HTML':\n            return self._format_html(message)\n        else:\n            return self._format_markdown(message)\n    \n    def _format_html(self, message: Message) -> str:\n        lines = [\n            f\"<b>{message.title}</b>\",\n            f\"{message.description}\"\n        ]\n        \n        if message.progress:\n            lines.append(f\"\\n<b>Progress:</b> {message.progress.percentage:.1f}%\")\n            if message.progress.etc_seconds:\n                lines.append(f\"<b>ETC:</b> {self._format_time(message.progress.etc_seconds)}\")\n        \n        return \"\\n\".join(lines)\n```",
+        "testStrategy": "Telegram provider tests:\n- Mock telegram-bot library\n- Test message formatting (HTML/Markdown)\n- Test multi-chat delivery\n- Test API error handling\n- Test rate limiting\n- Verify message structure\n- Test connection failures",
+        "priority": "low",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-05T16:05:55.689Z",
+      "updated": "2025-07-05T16:05:55.689Z",
+      "description": "Tasks for master context"
+    }
+  }
+}
