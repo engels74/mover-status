@@ -76,7 +76,7 @@ class TestAppConfig:
     def test_app_config_validation_missing_process(self) -> None:
         """Test AppConfig validation when process field is missing."""
         with pytest.raises(ValidationError) as exc_info:
-            AppConfig()  # pyright: ignore[reportCallIssue] # Testing validation error
+            _ = AppConfig()  # pyright: ignore[reportCallIssue] # Testing validation error
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -104,7 +104,7 @@ class TestAppConfig:
     def test_app_config_validation_enabled_providers_not_configured(self) -> None:
         """Test AppConfig validation when enabled providers are not configured."""
         with pytest.raises(ValidationError) as exc_info:
-            AppConfig(
+            _ = AppConfig(
                 process=ProcessConfig(name="mover", paths=["/usr/bin/mover"]),
                 notifications=NotificationConfig(enabled_providers=["telegram"]),
                 providers=ProviderConfig(),  # No telegram config
@@ -125,7 +125,7 @@ class TestAppConfig:
         )
         
         with pytest.raises(ValidationError) as exc_info:
-            AppConfig(
+            _ = AppConfig(
                 process=ProcessConfig(name="mover", paths=["/usr/bin/mover"]),
                 notifications=NotificationConfig(enabled_providers=["telegram", "discord"]),
                 providers=ProviderConfig(telegram=telegram_config),  # Missing discord config
@@ -194,7 +194,7 @@ class TestAppConfig:
     def test_app_config_forbids_extra_fields(self) -> None:
         """Test that AppConfig forbids extra fields."""
         with pytest.raises(ValidationError) as exc_info:
-            AppConfig(
+            _ = AppConfig(
                 process=ProcessConfig(name="mover", paths=["/usr/bin/mover"]),
                 extra_field="not_allowed",  # pyright: ignore[reportCallIssue] # Testing validation error
             )
@@ -208,7 +208,7 @@ class TestAppConfig:
     def test_app_config_nested_validation_errors(self) -> None:
         """Test AppConfig validation with nested validation errors."""
         with pytest.raises(ValidationError) as exc_info:
-            AppConfig(
+            _ = AppConfig(
                 process=ProcessConfig(name="", paths=["/usr/bin/mover"]),  # Invalid empty name
             )
         

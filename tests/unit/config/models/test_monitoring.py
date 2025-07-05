@@ -38,7 +38,7 @@ class TestMonitoringConfig:
     def test_monitoring_config_validation_interval(self) -> None:
         """Test MonitoringConfig validation for interval."""
         with pytest.raises(ValidationError) as exc_info:
-            MonitoringConfig(interval=0)
+            _ = MonitoringConfig(interval=0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -47,7 +47,7 @@ class TestMonitoringConfig:
     def test_monitoring_config_validation_detection_timeout(self) -> None:
         """Test MonitoringConfig validation for detection_timeout."""
         with pytest.raises(ValidationError) as exc_info:
-            MonitoringConfig(detection_timeout=0)
+            _ = MonitoringConfig(detection_timeout=0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -69,7 +69,7 @@ class TestProcessConfig:
     def test_process_config_validation_name_empty(self) -> None:
         """Test ProcessConfig validation for empty name."""
         with pytest.raises(ValidationError) as exc_info:
-            ProcessConfig(name="", paths=["/usr/local/sbin/mover"])
+            _ = ProcessConfig(name="", paths=["/usr/local/sbin/mover"])
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -78,7 +78,7 @@ class TestProcessConfig:
     def test_process_config_validation_path_empty(self) -> None:
         """Test ProcessConfig validation for empty paths list."""
         with pytest.raises(ValidationError) as exc_info:
-            ProcessConfig(name="mover", paths=[])
+            _ = ProcessConfig(name="mover", paths=[])
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -140,7 +140,7 @@ class TestProgressConfig:
     def test_progress_config_validation_estimation_window(self) -> None:
         """Test ProgressConfig validation for estimation_window."""
         with pytest.raises(ValidationError) as exc_info:
-            ProgressConfig(estimation_window=0)
+            _ = ProgressConfig(estimation_window=0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -190,7 +190,7 @@ class TestNotificationConfig:
         # Type checker prevents us from testing invalid literals directly
         # We can test this by bypassing type checking
         with pytest.raises(ValidationError) as exc_info:
-            NotificationConfig(enabled_providers=["invalid_provider"])  # pyright: ignore[reportArgumentType]
+            _ = NotificationConfig(enabled_providers=["invalid_provider"])  # pyright: ignore[reportArgumentType]
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -216,7 +216,7 @@ class TestNotificationConfig:
 
         # Invalid events - bypassing type checker for runtime validation test
         with pytest.raises(ValidationError) as exc_info:
-            NotificationConfig(events=["invalid_event"])  # pyright: ignore[reportArgumentType]
+            _ = NotificationConfig(events=["invalid_event"])  # pyright: ignore[reportArgumentType]
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -254,7 +254,7 @@ class TestLoggingConfig:
 
         # Invalid level - bypassing type checker for runtime validation test
         with pytest.raises(ValidationError) as exc_info:
-            LoggingConfig(level="INVALID")  # pyright: ignore[reportArgumentType]
+            _ = LoggingConfig(level="INVALID")  # pyright: ignore[reportArgumentType]
 
         errors = exc_info.value.errors()
         assert len(errors) == 1

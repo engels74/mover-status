@@ -54,14 +54,14 @@ class TestDiscordEmbedColors:
 
         # Invalid color values (negative or too large)
         with pytest.raises(ValidationError) as exc_info:
-            DiscordEmbedColors(started=-1)
+            _ = DiscordEmbedColors(started=-1)
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
         assert errors[0]["type"] == "greater_than_equal"
 
         with pytest.raises(ValidationError) as exc_info:
-            DiscordEmbedColors(started=0x1000000)  # Too large
+            _ = DiscordEmbedColors(started=0x1000000)  # Too large
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -189,7 +189,7 @@ class TestDiscordConfig:
         ]
         for url in invalid_urls:
             with pytest.raises(ValidationError) as exc_info:
-                DiscordConfig(webhook_url=url)
+                _ = DiscordConfig(webhook_url=url)
             
             errors = exc_info.value.errors()
             assert len(errors) >= 1
@@ -226,7 +226,7 @@ class TestTelegramFormatConfig:
 
         # Invalid parse mode - bypassing type checker for runtime validation test
         with pytest.raises(ValidationError) as exc_info:
-            TelegramFormatConfig(parse_mode="Invalid")  # pyright: ignore[reportArgumentType]
+            _ = TelegramFormatConfig(parse_mode="Invalid")  # pyright: ignore[reportArgumentType]
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -306,7 +306,7 @@ class TestTelegramConfig:
     def test_telegram_config_validation_chat_ids_empty(self) -> None:
         """Test TelegramConfig validation for empty chat_ids."""
         with pytest.raises(ValidationError) as exc_info:
-            TelegramConfig(
+            _ = TelegramConfig(
                 bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
                 chat_ids=[],
             )

@@ -26,7 +26,7 @@ class TestBaseConfig:
     def test_base_config_forbids_extra_fields(self) -> None:
         """Test that BaseConfig forbids extra fields."""
         with pytest.raises(ValidationError) as exc_info:
-            BaseConfig(extra_field="not_allowed")  # pyright: ignore[reportCallIssue] # Testing validation error
+            _ = BaseConfig(extra_field="not_allowed")  # pyright: ignore[reportCallIssue] # Testing validation error
         
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -64,7 +64,7 @@ class TestRetryConfig:
     def test_retry_config_validation_max_attempts(self) -> None:
         """Test RetryConfig validation for max_attempts."""
         with pytest.raises(ValidationError) as exc_info:
-            RetryConfig(max_attempts=0)
+            _ = RetryConfig(max_attempts=0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -73,7 +73,7 @@ class TestRetryConfig:
     def test_retry_config_validation_delays(self) -> None:
         """Test RetryConfig validation for backoff_factor."""
         with pytest.raises(ValidationError) as exc_info:
-            RetryConfig(backoff_factor=-1.0)
+            _ = RetryConfig(backoff_factor=-1.0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
@@ -88,7 +88,7 @@ class TestRetryConfig:
     def test_retry_config_validation_timeout(self) -> None:
         """Test RetryConfig validation for timeout."""
         with pytest.raises(ValidationError) as exc_info:
-            RetryConfig(timeout=0)
+            _ = RetryConfig(timeout=0)
 
         errors = exc_info.value.errors()
         assert len(errors) == 1
