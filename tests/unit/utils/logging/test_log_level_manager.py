@@ -157,7 +157,7 @@ class TestLogLevelManager:
     def test_configure_from_dict_no_loggers(self) -> None:
         """Test configuring from dictionary without loggers section."""
         manager = LogLevelManager()
-        config = {"default": "WARNING"}
+        config: dict[str, str | dict[str, str]] = {"default": "WARNING"}
         manager.configure_from_dict(config)
         assert manager.default_level == LogLevel.WARNING
         assert len(manager.logger_levels) == 0
@@ -165,7 +165,7 @@ class TestLogLevelManager:
     def test_configure_from_dict_invalid_default(self) -> None:
         """Test configuring from dictionary with invalid default level."""
         manager = LogLevelManager()
-        config = {"default": "INVALID"}
+        config: dict[str, str | dict[str, str]] = {"default": "INVALID"}
         with pytest.raises(ConfigurationError, match="Invalid default log level"):
             manager.configure_from_dict(config)
     
@@ -188,8 +188,10 @@ class TestLogLevelManager:
         
         config = manager.get_configuration()
         assert config["default"] == "WARNING"
-        assert config["loggers"]["test.logger1"] == "DEBUG"
-        assert config["loggers"]["test.logger2"] == "ERROR"
+        loggers = config["loggers"]
+        assert isinstance(loggers, dict)
+        assert loggers["test.logger1"] == "DEBUG"
+        assert loggers["test.logger2"] == "ERROR"
 
 
 class TestGlobalFunctions:
@@ -290,7 +292,7 @@ class TestIntegration:
     @patch('logging.getLogger')
     def test_auto_configuration_on_logger_creation(self, mock_get_logger: Mock) -> None:
         """Test automatic configuration when loggers are created."""
-        mock_logger = Mock()
+        mock_logger = Mock(spec=['setLevel', 'name'])
         mock_get_logger.return_value = mock_logger
         
         manager = LogLevelManager()
@@ -302,4 +304,4 @@ class TestIntegration:
         
         # Verify configuration was applied
         mock_get_logger.assert_called_once_with("auto.test")
-        mock_logger.setLevel.assert_called_once_with(logging.WARNING)
+        mock_logger.setLevel.assert_called_once_with(logging.WARNING)  # pyright: ignore[reportAny]
