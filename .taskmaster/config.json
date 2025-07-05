@@ -1,9 +1,9 @@
 {
   "models": {
     "main": {
-      "provider": "bedrock",
-      "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "maxTokens": 120000,
+      "provider": "anthropic",
+      "modelId": "claude-opus-4-20250514",
+      "maxTokens": 32000,
       "temperature": 0.2
     },
     "research": {
@@ -13,9 +13,9 @@
       "temperature": 0.1
     },
     "fallback": {
-      "provider": "bedrock",
-      "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "maxTokens": 120000,
+      "provider": "anthropic",
+      "modelId": "claude-sonnet-4-20250514",
+      "maxTokens": 64000,
       "temperature": 0.2
     }
   },
@@ -30,7 +30,8 @@
     "bedrockBaseURL": "https://bedrock.us-east-1.amazonaws.com",
     "responseLanguage": "English",
     "defaultTag": "master",
-    "azureOpenaiBaseURL": "https://your-endpoint.openai.azure.com/"
+    "azureOpenaiBaseURL": "https://your-endpoint.openai.azure.com/",
+    "userId": "1234567890"
   },
   "claudeCode": {}
 }
