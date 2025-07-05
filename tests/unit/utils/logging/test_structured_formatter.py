@@ -6,8 +6,10 @@ import json
 import logging
 import sys
 from datetime import datetime
-from typing import Any
+from typing import Any, cast, override
 from unittest.mock import Mock, patch
+
+type LogData = dict[str, str | int | float | bool | None | list[Any] | dict[str, Any]]  # pyright: ignore[reportExplicitAny]
 
 from mover_status.utils.logging.structured_formatter import (
     StructuredFormatter,
@@ -38,7 +40,7 @@ class TestStructuredFormatter:
         formatted = formatter.format(record)
         
         # Parse as JSON to verify structure
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify required fields
         assert parsed["timestamp"]
@@ -69,7 +71,7 @@ class TestStructuredFormatter:
         record.metadata = {"key": "value"}  # type: ignore[attr-defined]
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify extra fields are included
         assert parsed["correlation_id"] == "abc-123"
@@ -142,10 +144,10 @@ class TestStructuredFormatter:
         record.created = 1703509845.123456
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify ISO format (should convert from timestamp)
-        assert "T" in parsed["timestamp"]  # Should contain ISO format separator
+        assert "T" in cast(str, parsed["timestamp"])  # Should contain ISO format separator
         assert isinstance(parsed["timestamp"], str)
 
     def test_timestamp_format_epoch(self) -> None:
@@ -170,7 +172,7 @@ class TestStructuredFormatter:
         record.created = test_timestamp
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify epoch format
         assert parsed["timestamp"] == test_timestamp
@@ -197,7 +199,7 @@ class TestStructuredFormatter:
         
         # For JSON, we can't directly test order, but we can test that
         # the custom fields are present
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         for field in custom_fields:
             assert field in parsed
 
@@ -219,7 +221,7 @@ class TestStructuredFormatter:
         )
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify excluded fields are not present
         assert "module" not in parsed
@@ -257,13 +259,15 @@ class TestStructuredFormatter:
         }
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify nested structure is preserved
-        assert parsed["config"]["database"]["host"] == "localhost"
-        assert parsed["config"]["database"]["port"] == 5432
-        assert parsed["config"]["database"]["ssl"] is True
-        assert parsed["config"]["features"] == ["auth", "cache", "metrics"]
+        config = cast(dict[str, object], parsed["config"])
+        database = cast(dict[str, object], config["database"])
+        assert database["host"] == "localhost"
+        assert database["port"] == 5432
+        assert database["ssl"] is True
+        assert config["features"] == ["auth", "cache", "metrics"]
 
     def test_exception_handling(self) -> None:
         """Test formatting with exception information."""
@@ -284,12 +288,13 @@ class TestStructuredFormatter:
             )
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify exception information is included
         assert "exception" in parsed
-        assert "ValueError" in parsed["exception"]
-        assert "Test error" in parsed["exception"]
+        exception_str = cast(str, parsed["exception"])
+        assert "ValueError" in exception_str
+        assert "Test error" in exception_str
 
     def test_invalid_json_serialization(self) -> None:
         """Test handling of non-JSON serializable objects."""
@@ -309,12 +314,13 @@ class TestStructuredFormatter:
         record.non_serializable = Mock()  # type: ignore[attr-defined]
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Should convert to string representation
         assert "non_serializable" in parsed
-        assert isinstance(parsed["non_serializable"], str)
-        assert "Mock" in parsed["non_serializable"]
+        non_serializable_str = cast(str, parsed["non_serializable"])
+        assert isinstance(non_serializable_str, str)
+        assert "Mock" in non_serializable_str
 
     def test_keyvalue_special_characters(self) -> None:
         """Test key-value formatting with special characters."""
@@ -351,11 +357,11 @@ class TestStructuredFormatter:
         )
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify large message is handled correctly
         assert parsed["message"] == large_message
-        assert len(parsed["message"]) == 10000
+        assert len(cast(str, parsed["message"])) == 10000
 
     def test_unicode_handling(self) -> None:
         """Test Unicode character handling."""
@@ -373,14 +379,13 @@ class TestStructuredFormatter:
         )
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify Unicode is preserved
         assert parsed["message"] == unicode_message
 
     def test_unsupported_format_type(self) -> None:
         """Test error handling for unsupported format types."""
-        from unittest.mock import patch
         
         formatter = StructuredFormatter(format_type=LogFormat.JSON)
         
@@ -398,14 +403,13 @@ class TestStructuredFormatter:
         with patch.object(formatter, 'format_type', 'invalid'):
             # Should raise ValueError for unsupported format
             try:
-                formatter.format(record)
+                _ = formatter.format(record)
                 assert False, "Should have raised ValueError"
             except ValueError as e:
                 assert "Unsupported format type" in str(e)
 
     def test_unsupported_timestamp_format(self) -> None:
         """Test error handling for unsupported timestamp formats."""
-        from unittest.mock import patch
         
         formatter = StructuredFormatter(
             format_type=LogFormat.JSON,
@@ -426,7 +430,7 @@ class TestStructuredFormatter:
         with patch.object(formatter, 'timestamp_format', 'invalid'):
             # Should raise ValueError for unsupported timestamp format
             try:
-                formatter.format(record)
+                _ = formatter.format(record)
                 assert False, "Should have raised ValueError"
             except ValueError as e:
                 assert "Unsupported timestamp format" in str(e)
@@ -452,12 +456,13 @@ class TestStructuredFormatter:
         record.created = 1703509845.123456
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Verify human format
-        assert isinstance(parsed["timestamp"], str)
-        assert "-" in parsed["timestamp"]  # Should contain date separators
-        assert ":" in parsed["timestamp"]  # Should contain time separators
+        timestamp_str = cast(str, parsed["timestamp"])
+        assert isinstance(timestamp_str, str)
+        assert "-" in timestamp_str  # Should contain date separators
+        assert ":" in timestamp_str  # Should contain time separators
 
     def test_serialization_fallback(self) -> None:
         """Test JSON serialization fallback for complex errors."""
@@ -474,16 +479,17 @@ class TestStructuredFormatter:
         )
         
         # Create a circular reference
-        circular_dict: dict[str, Any] = {"key": "value"}
+        circular_dict: dict[str, object] = {"key": "value"}
         circular_dict["self"] = circular_dict  # Creates circular reference
         record.bad_field = circular_dict  # type: ignore[attr-defined]
         
         # Should handle the circular reference gracefully
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Should have circular reference marker
-        assert "circular-reference" in str(parsed["bad_field"]["self"])
+        bad_field = cast(dict[str, object], parsed["bad_field"])
+        assert "circular-reference" in str(bad_field["self"])
         assert parsed["level"] == "INFO"
         assert parsed["message"] == "Test message"
 
@@ -506,7 +512,7 @@ class TestStructuredFormatter:
         record.path_field = Path("/home/user/file.txt")  # type: ignore[attr-defined]
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Path should be converted to string
         assert parsed["path_field"] == "/home/user/file.txt"
@@ -529,7 +535,7 @@ class TestStructuredFormatter:
         record.datetime_field = test_datetime  # type: ignore[attr-defined]
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Datetime should be converted to ISO format
         assert parsed["datetime_field"] == "2023-12-25T12:30:45"
@@ -550,20 +556,20 @@ class TestStructuredFormatter:
         
         # Create an object that will fail both JSON and str conversion
         class BadObject:
+            @override
             def __str__(self) -> str:
                 raise Exception("Can't convert to string")
         
         record.bad_object = BadObject()  # type: ignore[attr-defined]
         
         formatted = formatter.format(record)
-        parsed = json.loads(formatted)
+        parsed = cast(LogData, json.loads(formatted))
         
         # Should fall back to type name
         assert parsed["bad_object"] == "<BadObject>"
 
     def test_json_fallback_error(self) -> None:
         """Test JSON fallback for unparseable data."""
-        from unittest.mock import patch
         
         formatter = StructuredFormatter(format_type=LogFormat.JSON)
         
@@ -586,7 +592,7 @@ class TestStructuredFormatter:
             ]
             
             formatted = formatter.format(record)
-            parsed = json.loads(formatted)
+            parsed = cast(LogData, json.loads(formatted))
             
             # Should have fallback data
             assert parsed["level"] == "INFO"
@@ -631,6 +637,7 @@ class TestStructuredFormatter:
         
         # Add a complex object that will be converted to string
         class CustomObject:
+            @override
             def __str__(self) -> str:
                 return "custom_value_with_quotes_and\\backslashes"
         

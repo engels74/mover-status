@@ -9,6 +9,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, override
 
+type LogValue = str | int | float | bool | None | list[Any] | dict[str, Any]  # pyright: ignore[reportExplicitAny]
+
 
 class LogFormat(Enum):
     """Supported log output formats."""
@@ -81,7 +83,7 @@ class StructuredFormatter(logging.Formatter):
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
     
-    def _build_log_data(self, record: logging.LogRecord) -> dict[str, Any]:
+    def _build_log_data(self, record: logging.LogRecord) -> dict[str, LogValue]:
         """Build structured log data from log record.
         
         Args:
@@ -91,7 +93,7 @@ class StructuredFormatter(logging.Formatter):
             Dictionary containing structured log data
         """
         # Start with basic fields
-        log_data: dict[str, Any] = {
+        log_data: dict[str, LogValue] = {
             "timestamp": self._format_timestamp(record.created),
             "level": record.levelname,
             "logger": record.name,
@@ -114,11 +116,12 @@ class StructuredFormatter(logging.Formatter):
                 "processName", "process", "getMessage", "exc_info",
                 "exc_text", "stack_info", "extra",
             }:
-                log_data[key] = self._serialize_value(value)
+                serialized_value = self._serialize_value(value)
+                log_data[key] = serialized_value
         
         # Remove excluded fields
         for field in self.exclude_fields:
-            log_data.pop(field, None)
+            _ = log_data.pop(field, None)
         
         return log_data
     
@@ -140,7 +143,7 @@ class StructuredFormatter(logging.Formatter):
         else:
             raise ValueError(f"Unsupported timestamp format: {self.timestamp_format}")
     
-    def _format_json(self, log_data: dict[str, Any]) -> str:
+    def _format_json(self, log_data: dict[str, LogValue]) -> str:
         """Format log data as JSON.
         
         Args:
@@ -157,12 +160,12 @@ class StructuredFormatter(logging.Formatter):
                 "timestamp": log_data.get("timestamp", "unknown"),
                 "level": log_data.get("level", "UNKNOWN"),
                 "logger": log_data.get("logger", "unknown"),
-                "message": str(log_data.get("message", "Failed to serialize log message")),
+                "message": str(log_data.get("message") or "Failed to serialize log message"),
                 "serialization_error": str(e),
             }
             return json.dumps(sanitized_data, ensure_ascii=False, separators=(',', ':'))
     
-    def _format_keyvalue(self, log_data: dict[str, Any]) -> str:
+    def _format_keyvalue(self, log_data: dict[str, LogValue]) -> str:
         """Format log data as key-value pairs.
         
         Args:
@@ -175,7 +178,7 @@ class StructuredFormatter(logging.Formatter):
         field_order = self.field_order if self.field_order else self.default_fields
         
         # Build key-value pairs
-        pairs = []
+        pairs: list[str] = []
         
         # Add ordered fields first
         for field in field_order:
@@ -189,7 +192,7 @@ class StructuredFormatter(logging.Formatter):
         
         return " ".join(pairs)
     
-    def _format_keyvalue_pair(self, key: str, value: Any) -> str:
+    def _format_keyvalue_pair(self, key: str, value: LogValue) -> str:
         """Format a single key-value pair.
         
         Args:
@@ -213,7 +216,7 @@ class StructuredFormatter(logging.Formatter):
             str_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
             return f'{key}="{str_value}"'
     
-    def _serialize_value(self, value: Any, _seen: set[int] | None = None) -> Any:
+    def _serialize_value(self, value: Any, _seen: set[int] | None = None) -> LogValue:  # pyright: ignore[reportExplicitAny]
         """Serialize a value for JSON output.
         
         Args:
@@ -231,7 +234,7 @@ class StructuredFormatter(logging.Formatter):
             return value
         
         # Check for circular references
-        value_id = id(value)
+        value_id = id(value)  # pyright: ignore[reportAny]
         if value_id in _seen:
             return f"<circular-reference-{type(value).__name__}>"
         
@@ -242,12 +245,12 @@ class StructuredFormatter(logging.Formatter):
         try:
             # Handle containers
             if isinstance(value, (list, tuple)):
-                result = [self._serialize_value(item, _seen) for item in value]
+                result = [self._serialize_value(item, _seen) for item in value]  # pyright: ignore[reportUnknownVariableType]
                 _seen.discard(value_id)
                 return result
             
             if isinstance(value, dict):
-                result = {k: self._serialize_value(v, _seen) for k, v in value.items()}
+                result = {str(k): self._serialize_value(v, _seen) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
                 _seen.discard(value_id)
                 return result
             
@@ -262,7 +265,7 @@ class StructuredFormatter(logging.Formatter):
             # For everything else, convert to string
             try:
                 # Try to convert to string
-                return str(value)
+                return str(value)  # pyright: ignore[reportAny]
             except Exception:
                 # Last resort - return type name
                 return f"<{type(value).__name__}>"
