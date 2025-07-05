@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from .config_merger import ConfigMerger, ConfigMergeError
+
 __all__ = [
-    # TODO: Add manager classes when implemented
-    # "ConfigManager",
+    "ConfigMerger",
+    "ConfigMergeError",
 ]
