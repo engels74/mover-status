@@ -45,7 +45,6 @@ target-version = "py313"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=src/mover_status --cov-report=term-missing --cov-fail-under=100"
-requires = ["pytest-cov"]
 
 [tool.coverage.run]
 source = ["src/mover_status"]
