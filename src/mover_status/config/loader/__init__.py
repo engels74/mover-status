@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from .yaml_loader import YamlLoader, ConfigLoadError
+
 __all__ = [
-    # TODO: Add loader classes when implemented
-    # "YamlLoader",
+    "YamlLoader",
+    "ConfigLoadError",
+    # TODO: Add when implemented
     # "EnvLoader",
 ]
