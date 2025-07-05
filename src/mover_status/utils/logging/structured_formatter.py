@@ -108,7 +108,7 @@ class StructuredFormatter(logging.Formatter):
             log_data["exception"] = self.formatException(record.exc_info)
         
         # Add extra fields from record
-        for key, value in record.__dict__.items():
+        for key, value in record.__dict__.items():  # pyright: ignore[reportAny] # log record fields are Any
             if key not in {
                 "name", "msg", "args", "levelname", "levelno", "pathname",
                 "filename", "module", "lineno", "funcName", "created",
@@ -216,7 +216,7 @@ class StructuredFormatter(logging.Formatter):
             str_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
             return f'{key}="{str_value}"'
     
-    def _serialize_value(self, value: Any, _seen: set[int] | None = None) -> LogValue:  # pyright: ignore[reportExplicitAny]
+    def _serialize_value(self, value: Any, _seen: set[int] | None = None) -> LogValue:  # pyright: ignore[reportExplicitAny,reportAny] # accepts any value from log record
         """Serialize a value for JSON output.
         
         Args:
@@ -234,9 +234,9 @@ class StructuredFormatter(logging.Formatter):
             return value
         
         # Check for circular references
-        value_id = id(value)  # pyright: ignore[reportAny]
+        value_id = id(value)  # pyright: ignore[reportAny] # need id for circular reference detection
         if value_id in _seen:
-            return f"<circular-reference-{type(value).__name__}>"
+            return f"<circular-reference-{type(value).__name__}>"  # pyright: ignore[reportAny] # type name for debugging
         
         # Add to seen set for container types
         if isinstance(value, (list, tuple, dict)):
@@ -265,10 +265,10 @@ class StructuredFormatter(logging.Formatter):
             # For everything else, convert to string
             try:
                 # Try to convert to string
-                return str(value)  # pyright: ignore[reportAny]
+                return str(value)  # pyright: ignore[reportAny] # fallback for unknown types
             except Exception:
                 # Last resort - return type name
-                return f"<{type(value).__name__}>"
+                return f"<{type(value).__name__}>"  # pyright: ignore[reportAny] # type name for debugging
         finally:
             # Ensure we clean up the seen set
             _seen.discard(value_id)
