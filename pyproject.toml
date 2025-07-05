@@ -1,7 +1,7 @@
 [project]
 name = "mover-status"
 version = "0.1.0"
-description = "Mover Status monitors the progress of the "Mover" process and sends updates to different providers. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array."
+description = "Mover Status"
 readme = "README.md"
 authors = [
     { name = "engels74", email = "141435164+engels74@users.noreply.github.com" }
