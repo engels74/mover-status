@@ -1,13 +1,31 @@
 [project]
 name = "mover-status"
 version = "0.1.0"
-description = "Mover Status"
+description = "A modern, modular Python 3.13 application that monitors the Unraid mover process, calculates progress metrics, and delivers status notifications through a plugin-based provider system."
 readme = "README.md"
 authors = [
     { name = "engels74", email = "141435164+engels74@users.noreply.github.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "psutil>=5.9",
+    "httpx>=0.25",
+    "rich>=13.7",
+    "click>=8.1",
+    "python-telegram-bot>=20.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-asyncio>=0.21",
+    "pytest-mock>=3.12",
+    "basedpyright>=1.8",
+    "ruff>=0.1.9",
+]
 
 [project.scripts]
 mover-status = "mover_status:main"
@@ -23,3 +41,22 @@ exclude = ["htmlcov", ".venv"]
 
 [tool.ruff]
 target-version = "py313"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src/mover_status --cov-report=term-missing --cov-fail-under=100"
+requires = ["pytest-cov"]
+
+[tool.coverage.run]
+source = ["src/mover_status"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
