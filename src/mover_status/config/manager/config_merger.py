@@ -54,15 +54,19 @@ class ConfigMerger:
         if not isinstance(override, dict):
             raise ConfigMergeError("Override configuration must be a dictionary")
         
+        # Type narrowing after isinstance checks
+        base_dict: ConfigDict = base  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+        override_dict: ConfigDict = override  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+        
         # Deep copy to avoid modifying original dictionaries
-        result = copy.deepcopy(base)
+        result = copy.deepcopy(base_dict)
         
         # Record base sources in audit trail
         if self._track_sources:
             self._record_sources(result, "base", "")
         
         # Merge override configuration
-        self._deep_merge(result, override, "override", "")
+        self._deep_merge(result, override_dict, "override", "")
         
         return result
     
@@ -82,14 +86,17 @@ class ConfigMerger:
         if not isinstance(sources[0], dict):
             raise ConfigMergeError("Source 0 must be a dictionary")
         
+        # Type narrowing after isinstance check
+        first_source: ConfigDict = sources[0]  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+        
         if len(sources) == 1:
-            result = copy.deepcopy(sources[0])
+            result = copy.deepcopy(first_source)
             if self._track_sources:
                 self._record_sources(result, "source_0", "")
             return result
         
         # Start with first source
-        result = copy.deepcopy(sources[0])
+        result = copy.deepcopy(first_source)
         if self._track_sources:
             self._record_sources(result, "source_0", "")
         
@@ -98,7 +105,9 @@ class ConfigMerger:
             if not isinstance(source, dict):
                 raise ConfigMergeError(f"Source {i} must be a dictionary")
             
-            self._deep_merge(result, source, f"source_{i}", "")
+            # Type narrowing after isinstance check
+            source_dict: ConfigDict = source  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+            self._deep_merge(result, source_dict, f"source_{i}", "")
         
         return result
     
@@ -111,20 +120,23 @@ class ConfigMerger:
             source_name: Name of the source for audit trail
             path: Current path in the configuration hierarchy
         """
-        for key, value in source.items():
+        for key, value in source.items():  # pyright: ignore[reportAny] # Config values can be any type
             current_path = f"{path}.{key}" if path else key
             
             if key not in target:
                 # New key, add it
-                target[key] = copy.deepcopy(value)
+                target[key] = copy.deepcopy(value)  # pyright: ignore[reportAny] # Config values can be any type
                 if self._track_sources:
                     self._audit_trail[current_path] = source_name
             elif isinstance(target[key], dict) and isinstance(value, dict):
                 # Both are dictionaries, merge recursively
-                self._deep_merge(target[key], value, source_name, current_path)
+                # Type narrowing after isinstance checks
+                target_dict: ConfigDict = target[key]  # pyright: ignore[reportAny] # Runtime type check ensures dict
+                source_dict: ConfigDict = value  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+                self._deep_merge(target_dict, source_dict, source_name, current_path)
             else:
                 # Override existing value (including lists and other types)
-                target[key] = copy.deepcopy(value)
+                target[key] = copy.deepcopy(value)  # pyright: ignore[reportAny] # Config values can be any type
                 if self._track_sources:
                     self._audit_trail[current_path] = source_name
     
@@ -136,12 +148,14 @@ class ConfigMerger:
             source_name: Name of the source
             path: Current path in the configuration hierarchy
         """
-        for key, value in config.items():
+        for key, value in config.items():  # pyright: ignore[reportAny] # Config values can be any type
             current_path = f"{path}.{key}" if path else key
             self._audit_trail[current_path] = source_name
             
             if isinstance(value, dict):
-                self._record_sources(value, source_name, current_path)
+                # Type narrowing after isinstance check
+                value_dict: ConfigDict = value  # pyright: ignore[reportUnknownVariableType] # Runtime type check ensures dict
+                self._record_sources(value_dict, source_name, current_path)
     
     def get_audit_trail(self) -> dict[str, str]:
         """Get audit trail information showing which source provided each configuration value.
