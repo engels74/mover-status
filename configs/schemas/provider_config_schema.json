@@ -1,0 +1,225 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Provider Configuration Schema",
+  "type": "object",
+  "definitions": {
+    "retry_config": {
+      "type": "object",
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of retry attempts"
+        },
+        "backoff_factor": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Backoff factor for exponential backoff"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in seconds"
+        }
+      },
+      "required": ["max_attempts", "backoff_factor", "timeout"]
+    },
+    "rate_limits": {
+      "type": "object",
+      "properties": {
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds between progress notifications"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds between status notifications"
+        }
+      },
+      "required": ["progress", "status"]
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Discord Provider Configuration",
+      "type": "object",
+      "properties": {
+        "discord": {
+          "type": "object",
+          "properties": {
+            "webhook_url": {
+              "type": "string",
+              "pattern": "^https://discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$",
+              "description": "Discord webhook URL"
+            },
+            "username": {
+              "type": "string",
+              "description": "Bot username override"
+            },
+            "avatar_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Bot avatar URL"
+            },
+            "embeds": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable rich embeds"
+                },
+                "colors": {
+                  "type": "object",
+                  "properties": {
+                    "started": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16777215
+                    },
+                    "progress": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16777215
+                    },
+                    "completed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16777215
+                    },
+                    "failed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16777215
+                    }
+                  }
+                },
+                "thumbnail": {
+                  "type": "boolean",
+                  "description": "Include thumbnail image"
+                },
+                "timestamp": {
+                  "type": "boolean",
+                  "description": "Include timestamp"
+                }
+              }
+            },
+            "notifications": {
+              "type": "object",
+              "properties": {
+                "mentions": {
+                  "type": "object",
+                  "properties": {
+                    "started": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "failed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "completed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "rate_limits": {
+                  "$ref": "#/definitions/rate_limits"
+                }
+              }
+            },
+            "retry": {
+              "$ref": "#/definitions/retry_config"
+            }
+          },
+          "required": ["webhook_url"]
+        }
+      },
+      "required": ["discord"]
+    },
+    {
+      "title": "Telegram Provider Configuration",
+      "type": "object",
+      "properties": {
+        "telegram": {
+          "type": "object",
+          "properties": {
+            "bot_token": {
+              "type": "string",
+              "pattern": "^[0-9]+:[A-Za-z0-9_-]+$",
+              "description": "Telegram bot token"
+            },
+            "chat_ids": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 1,
+              "description": "Chat IDs to send notifications to"
+            },
+            "format": {
+              "type": "object",
+              "properties": {
+                "parse_mode": {
+                  "type": "string",
+                  "enum": ["HTML", "Markdown", "MarkdownV2"]
+                },
+                "disable_web_page_preview": {
+                  "type": "boolean"
+                },
+                "disable_notification": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "templates": {
+              "type": "object",
+              "properties": {
+                "started": {
+                  "type": "string"
+                },
+                "progress": {
+                  "type": "string"
+                },
+                "completed": {
+                  "type": "string"
+                },
+                "failed": {
+                  "type": "string"
+                }
+              }
+            },
+            "notifications": {
+              "type": "object",
+              "properties": {
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["started", "progress", "completed", "failed"]
+                  }
+                },
+                "rate_limits": {
+                  "$ref": "#/definitions/rate_limits"
+                }
+              }
+            },
+            "retry": {
+              "$ref": "#/definitions/retry_config"
+            }
+          },
+          "required": ["bot_token", "chat_ids"]
+        }
+      },
+      "required": ["telegram"]
+    }
+  ]
+}

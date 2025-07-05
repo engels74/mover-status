@@ -1,0 +1,63 @@
+# Mover Status Monitor Configuration
+# This is the main configuration file for the mover status monitor
+
+# Core monitoring settings
+monitoring:
+  # Interval between checks in seconds
+  interval: 30
+  
+  # Maximum time to wait for process detection
+  detection_timeout: 60
+  
+  # Enable dry run mode (no actual notifications)
+  dry_run: false
+
+# Process detection settings
+process:
+  # Name of the process to monitor
+  name: "mover"
+  
+  # Path patterns to match for process detection
+  paths:
+    - "/usr/local/sbin/mover"
+    - "/usr/bin/mover"
+
+# Progress tracking settings
+progress:
+  # Minimum progress change to trigger notification (percentage)
+  min_change_threshold: 5.0
+  
+  # Window size for ETC calculation (number of samples)
+  estimation_window: 10
+  
+  # Paths to exclude from size calculations
+  exclusions:
+    - "/.Trash-*"
+    - "/lost+found"
+    - "/tmp"
+    - "/var/tmp"
+
+# Notification settings
+notifications:
+  # List of enabled providers
+  enabled_providers:
+    - "telegram"
+    - "discord"
+  
+  # Events that trigger notifications
+  events:
+    - "started"
+    - "progress"
+    - "completed"
+    - "failed"
+  
+  # Notification frequency limits
+  rate_limits:
+    progress: 300  # seconds between progress notifications
+    status: 60     # seconds between status notifications
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Set to a file path to enable file logging

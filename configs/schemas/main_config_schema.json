@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mover Status Monitor Main Configuration",
+  "type": "object",
+  "properties": {
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Interval between checks in seconds"
+        },
+        "detection_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum time to wait for process detection"
+        },
+        "dry_run": {
+          "type": "boolean",
+          "description": "Enable dry run mode (no actual notifications)"
+        }
+      },
+      "required": ["interval", "detection_timeout", "dry_run"]
+    },
+    "process": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the process to monitor"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Path patterns to match for process detection"
+        }
+      },
+      "required": ["name", "paths"]
+    },
+    "progress": {
+      "type": "object",
+      "properties": {
+        "min_change_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum progress change to trigger notification (percentage)"
+        },
+        "estimation_window": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Window size for ETC calculation (number of samples)"
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths to exclude from size calculations"
+        }
+      },
+      "required": ["min_change_threshold", "estimation_window", "exclusions"]
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "enabled_providers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["telegram", "discord"]
+          },
+          "description": "List of enabled providers"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["started", "progress", "completed", "failed"]
+          },
+          "description": "Events that trigger notifications"
+        },
+        "rate_limits": {
+          "type": "object",
+          "properties": {
+            "progress": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Seconds between progress notifications"
+            },
+            "status": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Seconds between status notifications"
+            }
+          },
+          "required": ["progress", "status"]
+        }
+      },
+      "required": ["enabled_providers", "events", "rate_limits"]
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "description": "Log level"
+        },
+        "format": {
+          "type": "string",
+          "description": "Log format string"
+        },
+        "file": {
+          "type": ["string", "null"],
+          "description": "Log file path (null for console only)"
+        }
+      },
+      "required": ["level", "format", "file"]
+    }
+  },
+  "required": ["monitoring", "process", "progress", "notifications", "logging"]
+}

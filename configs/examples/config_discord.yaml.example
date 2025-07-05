@@ -1,0 +1,50 @@
+# Discord Provider Configuration Example
+# Copy this file to config_discord.yaml and customize for your setup
+
+# Discord webhook settings
+discord:
+  # Discord webhook URL (required)
+  webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+  
+  # Bot username override (optional)
+  username: "Mover Status Bot"
+  
+  # Bot avatar URL (optional)
+  avatar_url: "https://example.com/bot-avatar.png"
+  
+  # Embed customization
+  embeds:
+    # Enable rich embeds (true) or simple messages (false)
+    enabled: true
+    
+    # Color scheme for different states
+    colors:
+      started: 0x00ff00    # Green
+      progress: 0x0099ff   # Blue
+      completed: 0x00cc00  # Dark green
+      failed: 0xff0000     # Red
+    
+    # Include thumbnail image
+    thumbnail: true
+    
+    # Include timestamp
+    timestamp: true
+  
+  # Notification settings
+  notifications:
+    # Mention roles or users for critical events
+    mentions:
+      started: []
+      failed: ["@everyone"]
+      completed: []
+    
+    # Rate limiting (seconds between notifications)
+    rate_limits:
+      progress: 300
+      status: 60
+  
+  # Retry settings
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+    timeout: 30
