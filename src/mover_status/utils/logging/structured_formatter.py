@@ -9,6 +9,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, override
 
+from .correlation_id import get_correlation_id
+
 type LogValue = str | int | float | bool | None | list[Any] | dict[str, Any]  # pyright: ignore[reportExplicitAny]
 
 
@@ -56,6 +58,7 @@ class StructuredFormatter(logging.Formatter):
             "timestamp",
             "level",
             "logger",
+            "correlation_id",
             "message",
             "module",
             "function",
@@ -102,6 +105,11 @@ class StructuredFormatter(logging.Formatter):
             "function": record.funcName or "<module>",
             "line": record.lineno,
         }
+        
+        # Add correlation ID if present
+        correlation_id = get_correlation_id()
+        if correlation_id is not None:
+            log_data["correlation_id"] = correlation_id
         
         # Add exception information if present
         if record.exc_info:
