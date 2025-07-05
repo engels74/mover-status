@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-# TODO: Install pytest when available
-# import pytest
 import tempfile
 import shutil
 from pathlib import Path
 from collections.abc import Generator
 
+import pytest
 
-# TODO: Enable when pytest is available
-# @pytest.fixture
+
+@pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for testing."""
     temp_path = Path(tempfile.mkdtemp())
@@ -21,8 +20,7 @@ def temp_dir() -> Generator[Path, None, None]:
         shutil.rmtree(temp_path, ignore_errors=True)
 
 
-# TODO: Enable when pytest is available
-# @pytest.fixture
+@pytest.fixture
 def sample_config() -> dict[str, object]:
     """Provide sample configuration for testing."""
     return {
