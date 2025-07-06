@@ -110,15 +110,14 @@ class User:
 class TestWebAPIScenarios:
     """Test logging in web API scenarios."""
     
-    def __init__(self) -> None:
-        """Initialize test instance variables."""
+    def setup_method(self) -> None:
+        """Set up test environment."""
+        # Initialize test instance variables
         self.app_logger: logging.Logger
         self.console_output: io.StringIO  
         self.temp_log: tempfile._TemporaryFileWrapper[str]  # pyright: ignore[reportPrivateUsage]
         self.file_handler: FileHandler
-    
-    def setup_method(self) -> None:
-        """Set up test environment."""
+        
         # Configure application logger
         self.app_logger = logging.getLogger("app")
         self.app_logger.setLevel(logging.DEBUG)
