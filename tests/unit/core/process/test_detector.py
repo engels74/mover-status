@@ -45,11 +45,11 @@ class TestProcessDetectorInterface:
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
             
             # Define incomplete detector (missing abstract methods)
-            class IncompleteDetector(ProcessDetector):  # type: ignore[misc]
+            class IncompleteDetector(ProcessDetector):  # pyright: ignore[reportImplicitAbstractClass]
                 pass
             
             # This should raise TypeError due to missing abstract methods
-            _ = IncompleteDetector()  # type: ignore[abstract]
+            _ = IncompleteDetector()  # pyright: ignore[reportAbstractUsage]
 
     def test_concrete_implementation_works_when_complete(self) -> None:
         """Test that concrete implementations work when all methods are implemented."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from typing import override
 
@@ -143,4 +143,4 @@ class ProcessInfo(BaseModel):
         return (f"ProcessInfo(pid={self.pid}, name='{self.name}', "
                 f"command='{self.command}', status={self.status})")
 
-    model_config = ConfigDict(frozen=True)  # Make immutable for hashing
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)  # Make immutable for hashing
