@@ -260,6 +260,130 @@ class TestDirectoryScanner:
                 assert len(files) == 2
                 assert {f.name for f in files} == {"file1.txt", "file2.txt"}
 
+    def test_scan_directory_with_broken_symlinks(self) -> None:
+        """Test directory scanning with broken symbolic links."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            _ = (temp_path / "file1.txt").write_text("test")
+            
+            # Create broken symlink if the system supports it
+            try:
+                os.symlink(temp_path / "nonexistent", temp_path / "broken_symlink")
+            except OSError:
+                # Symlinks not supported on this system
+                pass
+            
+            scanner = DirectoryScanner()
+            files = list(scanner.scan_directory(temp_path))
+            
+            # Should only find the regular file, broken symlink should be ignored
+            assert len(files) == 1
+            assert files[0].name == "file1.txt"
+
+    def test_scan_directory_symlink_loop_prevention(self) -> None:
+        """Test prevention of infinite symlink loops."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            _ = (temp_path / "file1.txt").write_text("test")
+            (temp_path / "dir1").mkdir()
+            _ = (temp_path / "dir1" / "file2.txt").write_text("test")
+            
+            # Create symlink loop if the system supports it
+            try:
+                os.symlink(temp_path / "dir1", temp_path / "dir1" / "loop_back")
+            except OSError:
+                # Symlinks not supported on this system
+                pass
+            
+            scanner = DirectoryScanner()
+            files = list(scanner.scan_directory(temp_path))
+            
+            # Should find files but not get stuck in loop
+            assert len(files) >= 2
+            assert {f.name for f in files} >= {"file1.txt", "file2.txt"}
+
+    def test_scan_directory_no_follow_symlinks(self) -> None:
+        """Test directory scanning with symlinks disabled."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            _ = (temp_path / "file1.txt").write_text("test")
+            (temp_path / "subdir").mkdir()
+            _ = (temp_path / "subdir" / "file2.txt").write_text("test")
+            
+            # Create symlink if the system supports it
+            try:
+                os.symlink(temp_path / "subdir", temp_path / "symlink_dir")
+            except OSError:
+                # Symlinks not supported on this system
+                pass
+            
+            scanner = DirectoryScanner(follow_symlinks=False)
+            files = list(scanner.scan_directory(temp_path))
+            
+            # Should not follow symlinks
+            assert len(files) == 2
+            assert {f.name for f in files} == {"file1.txt", "file2.txt"}
+
+    def test_scan_directory_file_symlinks(self) -> None:
+        """Test directory scanning with file symbolic links."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            _ = (temp_path / "file1.txt").write_text("test")
+            
+            # Create file symlink if the system supports it
+            symlink_created = False
+            try:
+                os.symlink(temp_path / "file1.txt", temp_path / "file_symlink.txt")
+                symlink_created = True
+            except OSError:
+                # Symlinks not supported on this system
+                pass
+            
+            scanner = DirectoryScanner()
+            files = list(scanner.scan_directory(temp_path))
+            
+            if symlink_created:
+                # Should find both the original file and the symlink
+                assert len(files) == 2
+                assert {f.name for f in files} == {"file1.txt", "file_symlink.txt"}
+            else:
+                # No symlinks, just regular files
+                assert len(files) == 1
+                assert files[0].name == "file1.txt"
+
+    def test_scan_directory_max_symlink_depth(self) -> None:
+        """Test maximum symlink depth prevention."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            _ = (temp_path / "file1.txt").write_text("test")
+            (temp_path / "subdir").mkdir()
+            _ = (temp_path / "subdir" / "file2.txt").write_text("test")
+            
+            # Create symlink if the system supports it
+            try:
+                os.symlink(temp_path / "subdir", temp_path / "symlink_dir")
+            except OSError:
+                # Symlinks not supported on this system
+                pass
+            
+            # Set a very low max symlink depth
+            scanner = DirectoryScanner(max_symlink_depth=1)
+            files = list(scanner.scan_directory(temp_path))
+            
+            # Should still work but respect the depth limit
+            assert len(files) >= 2
+            assert {f.name for f in files} >= {"file1.txt", "file2.txt"}
+
     def test_scan_directory_large_directory_performance(self) -> None:
         """Test performance with a moderately sized directory."""
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -438,6 +439,127 @@ class TestSizeCalculator:
             except OSError:
                 # Skip test if symlinks not supported on this platform
                 pytest.skip("Symlinks not supported on this platform")
+
+    def test_broken_symlink_handling(self) -> None:
+        """Test handling of broken symbolic links."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create a regular file
+            _ = (temp_path / "regular.txt").write_text("Hello")
+            
+            # Create a broken symbolic link
+            try:
+                broken_symlink = temp_path / "broken_symlink.txt"
+                os.symlink(temp_path / "nonexistent.txt", broken_symlink)
+                
+                calculator = SizeCalculator()
+                
+                # Test calculating size of broken symlink directly
+                symlink_size = calculator.calculate_size(broken_symlink)
+                assert symlink_size == 0  # Broken symlinks should return 0
+                
+                # Test calculating size of directory with broken symlink
+                dir_size = calculator.calculate_size(temp_path)
+                assert dir_size == 5  # Only the regular file should be counted
+                
+            except OSError:
+                # Skip test if symlinks not supported on this platform
+                pytest.skip("Symlinks not supported on this platform")
+
+    def test_symlink_to_directory(self) -> None:
+        """Test handling of symbolic links to directories."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create a subdirectory with files
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            _ = (sub_dir / "file1.txt").write_text("Hello")
+            _ = (sub_dir / "file2.txt").write_text("World")
+            
+            # Create a symbolic link to the directory
+            try:
+                symlink_dir = temp_path / "symlink_dir"
+                os.symlink(sub_dir, symlink_dir)
+                
+                calculator = SizeCalculator()
+                
+                # Test calculating size of symlink directory directly
+                symlink_size = calculator.calculate_size(symlink_dir)
+                assert symlink_size == 10  # "Hello" + "World" = 10 bytes
+                
+                # Test with scanner that follows symlinks (should be included in total)
+                scanner = DirectoryScanner(follow_symlinks=True)
+                calculator_with_symlinks = SizeCalculator(scanner=scanner)
+                total_size = calculator_with_symlinks.calculate_size(temp_path)
+                assert total_size >= 10  # At least the original files
+                
+            except OSError:
+                # Skip test if symlinks not supported on this platform
+                pytest.skip("Symlinks not supported on this platform")
+
+    def test_symlink_loop_handling(self) -> None:
+        """Test handling of symlink loops."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create a directory with a file
+            sub_dir = temp_path / "subdir"
+            sub_dir.mkdir()
+            _ = (sub_dir / "file.txt").write_text("Hello")
+            
+            # Create a symlink loop
+            try:
+                os.symlink(sub_dir, sub_dir / "loop_back")
+                
+                calculator = SizeCalculator()
+                size = calculator.calculate_size(temp_path)
+                
+                # Should handle loop gracefully and not hang
+                assert size >= 5  # At least the original file
+                
+            except OSError:
+                # Skip test if symlinks not supported on this platform
+                pytest.skip("Symlinks not supported on this platform")
+
+    def test_permission_error_on_symlink_target(self) -> None:
+        """Test handling of permission errors on symlink targets."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create a regular file
+            regular_file = temp_path / "regular.txt"
+            _ = regular_file.write_text("Hello")
+            
+            try:
+                symlink_file = temp_path / "symlink.txt"
+                symlink_file.symlink_to(regular_file)
+                
+                calculator = SizeCalculator()
+                
+                # Mock stat to raise PermissionError for the target
+                with patch('pathlib.Path.stat', side_effect=PermissionError("Permission denied")):
+                    size = calculator.calculate_size(symlink_file)
+                    assert size == 0  # Should handle gracefully
+                    
+            except OSError:
+                # Skip test if symlinks not supported on this platform
+                pytest.skip("Symlinks not supported on this platform")
+
+    def test_calculate_size_special_files(self) -> None:
+        """Test calculation for special files (pipes, sockets, etc.)."""
+        calculator = SizeCalculator()
+        
+        # Mock a path that represents a special file
+        mock_path = Mock(spec=Path)
+        mock_path.exists = Mock(return_value=True)
+        mock_path.is_file = Mock(return_value=False)
+        mock_path.is_dir = Mock(return_value=False)
+        mock_path.is_symlink = Mock(return_value=False)
+        
+        size = calculator.calculate_size(mock_path)
+        assert size == 0  # Special files should return 0
 
     def test_empty_directory(self) -> None:
         """Test size calculation for empty directory."""

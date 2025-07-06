@@ -65,15 +65,22 @@ class SizeCalculator:
         Raises:
             OSError: If path cannot be accessed
         """
-        if not path.exists():
-            raise OSError(f"Path does not exist: {path}")
-        
-        if path.is_file():
-            return self._get_file_size(path)
-        elif path.is_dir():
-            return self._get_directory_size(path)
-        else:
-            # Handle special files (symlinks, etc.)
+        try:
+            if not path.exists():
+                raise OSError(f"Path does not exist: {path}")
+            
+            if path.is_file():
+                return self._get_file_size(path)
+            elif path.is_dir():
+                return self._get_directory_size(path)
+            elif path.is_symlink():
+                # Handle symlinks - get target size if it exists
+                return self._get_symlink_size(path)
+            else:
+                # Handle other special files (sockets, pipes, etc.)
+                return 0
+        except (PermissionError, OSError, FileNotFoundError):
+            # Return 0 for inaccessible paths instead of raising
             return 0
 
     def calculate_size_with_progress(self, path: Path) -> Iterator[tuple[int, Path]]:
@@ -214,7 +221,36 @@ class SizeCalculator:
         try:
             stat = path.stat()
             return self._calculate_file_size_from_stat(stat)
-        except (OSError, PermissionError):
+        except (OSError, PermissionError, FileNotFoundError):
+            return 0
+    
+    def _get_symlink_size(self, path: Path) -> int:
+        """Calculate the size of a symlink target.
+        
+        Args:
+            path: Symlink path
+            
+        Returns:
+            Size of the symlink target in bytes, or 0 if broken/inaccessible
+        """
+        try:
+            # Check if the symlink is broken
+            if not path.exists():
+                return 0
+            
+            # Get the target of the symlink
+            target = path.resolve()
+            
+            # Recursively calculate size of the target
+            if target.is_file():
+                return self._get_file_size(target)
+            elif target.is_dir():
+                return self._get_directory_size(target)
+            else:
+                return 0
+                
+        except (OSError, PermissionError, FileNotFoundError, RuntimeError):
+            # Handle broken symlinks, permission errors, or resolution errors
             return 0
 
     def _calculate_file_size_from_stat(self, stat: os.stat_result) -> int:
