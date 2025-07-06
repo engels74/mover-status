@@ -684,7 +684,7 @@ class TestPerformanceMonitoring:
                 perf_logger.info("Request completed", extra={
                     "duration_ms": int(duration * 1000),
                     "db_queries": 3 if "products" in endpoint else 1,
-                    "cache_hit": method == "GET" and status == 200,
+                    "cache_hit": method == "GET" and status == 200 and duration < 0.1,
                     "response_size_bytes": 2048 if method == "GET" else 256
                 })
                 
@@ -773,7 +773,7 @@ class TestDebuggingScenarios:
         lines = output.readlines()
         
         # Count debug messages
-        debug_messages = [line for line in lines if "level=DEBUG" in line]
+        debug_messages = [line for line in lines if "level=\"DEBUG\"" in line]
         assert len(debug_messages) == 2  # Only during debug mode
         
         # Verify debug info was captured

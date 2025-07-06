@@ -7,7 +7,7 @@ import logging
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, cast, override
+from typing import Any, override
 
 from .log_level_manager import LogLevel
 

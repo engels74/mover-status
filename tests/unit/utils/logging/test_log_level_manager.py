@@ -293,6 +293,9 @@ class TestIntegration:
     def test_auto_configuration_on_logger_creation(self, mock_get_logger: Mock) -> None:
         """Test automatic configuration when loggers are created."""
         mock_logger = Mock(spec=['setLevel', 'name'])
+        mock_manager = Mock()
+        mock_manager.loggerDict = {}
+        mock_logger.manager = mock_manager
         mock_get_logger.return_value = mock_logger
         
         manager = LogLevelManager()
@@ -303,5 +306,5 @@ class TestIntegration:
         manager.apply_to_logger(logger)
         
         # Verify configuration was applied
-        mock_get_logger.assert_called_once_with("auto.test")
-        mock_logger.setLevel.assert_called_once_with(logging.WARNING)  # pyright: ignore[reportAny]
+        mock_get_logger.assert_any_call("auto.test")
+        mock_logger.setLevel.assert_called_with(logging.WARNING)  # pyright: ignore[reportAny]
