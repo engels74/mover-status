@@ -15,9 +15,39 @@ import json
 import logging
 import threading
 import uuid
-from typing import Any
+from typing import TypedDict, cast
 
 import pytest
+
+
+class LogEntry(TypedDict):
+    """Structure of log entries returned by StructuredFormatter."""
+    timestamp: str
+    level: str
+    message: str
+    # Optional fields
+    correlation_id: str | None
+    operation: str | None
+    user: str | None
+    priority: str | None
+    name: str | None
+    args: tuple[object, ...] | None
+    exc_info: tuple[object, ...] | None
+    exc_text: str | None
+    stack_info: str | None
+    lineno: int | None
+    funcName: str | None
+    filename: str | None
+    module: str | None
+    pathname: str | None
+    process: int | None
+    processName: str | None
+    relativeCreated: float | None
+    thread: int | None
+    threadName: str | None
+    msecs: float | None
+    created: float | None
+    taskName: str | None
 
 from mover_status.utils.logging import (
     LogFormat,
@@ -88,9 +118,9 @@ class TestAsyncLogging:
         lines = output.readlines()
         
         # Group logs by correlation ID
-        logs_by_correlation: dict[str, list[dict[str, Any]]] = {}  # pyright: ignore[reportExplicitAny]
+        logs_by_correlation: dict[str, list[LogEntry]] = {}
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             correlation_id: str | None = log_entry.get("correlation_id")
             if correlation_id:
                 if correlation_id not in logs_by_correlation:
@@ -105,7 +135,7 @@ class TestAsyncLogging:
             assert len(logs) == 3
             messages = [log["message"] for log in logs]
             # Extract task ID from first message
-            task_id: str = messages[0].split()[1]  # pyright: ignore[reportAny] # message parsing from log content
+            task_id: str = messages[0].split()[1]
             assert messages == [
                 f"Task {task_id} started",
                 f"Task {task_id} middle",
@@ -154,18 +184,18 @@ class TestAsyncLogging:
         
         # All should have correlation ID
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             assert log_entry["correlation_id"] == "async-op-123"
         
         # Check specific messages
-        log1: dict[str, Any] = json.loads(lines[0])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log1: LogEntry = cast(LogEntry, json.loads(lines[0]))
         assert "operation" not in log1
         
-        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
         assert log2["operation"] == "data_fetch"
         assert log2["user"] == "async_user"
         
-        log3: dict[str, Any] = json.loads(lines[2])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log3: LogEntry = cast(LogEntry, json.loads(lines[2]))
         assert log3["level"] == "DEBUG"
         assert log3["operation"] == "data_fetch"
     
@@ -221,9 +251,11 @@ class TestAsyncLogging:
         # Group by correlation ID
         logs_by_parent: dict[str, list[str]] = {}
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-            correlation_id: str = log_entry["correlation_id"]
-            message: str = log_entry["message"]
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
+            correlation_id = log_entry.get("correlation_id")
+            message = log_entry["message"]
+            if correlation_id is None:
+                continue
             
             if correlation_id not in logs_by_parent:
                 logs_by_parent[correlation_id] = []
@@ -273,11 +305,11 @@ class TestAsyncLogging:
         assert len(lines) == 2
         
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             assert log_entry["correlation_id"] == "failing-op"
         
         # Second log should be ERROR level
-        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
         assert log2["level"] == "ERROR"
     
     @pytest.mark.asyncio
@@ -315,7 +347,7 @@ class TestAsyncLogging:
             thread_ready.set()
             
             # Wait for async to complete
-            async_complete.wait()
+            _ = async_complete.wait()
             
             # Thread should still have its correlation ID
             assert get_correlation_id() == "thread-correlation"
@@ -345,7 +377,7 @@ class TestAsyncLogging:
         async_logs: list[str] = []
         
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             if log_entry.get("correlation_id") == "thread-correlation":
                 thread_logs.append(log_entry["message"])
             else:
@@ -404,11 +436,11 @@ class TestAsyncLogging:
         lines = output.readlines()
         
         # Group by operation
-        ops: dict[str, list[dict[str, Any]]] = {"A": [], "B": [], "C": []}  # pyright: ignore[reportExplicitAny]
+        ops: dict[str, list[LogEntry]] = {"A": [], "B": [], "C": []}
         
         for line in lines:
-            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-            op: str = log_entry.get("operation", "C")  # C doesn't have operation field
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
+            op = log_entry.get("operation") or "C"  # C doesn't have operation field
             ops[op].append(log_entry)
         
         # Verify each operation
@@ -459,8 +491,8 @@ class TestAsyncLogging:
         assert len(lines) == 2
         
         # Both logs should have same correlation ID
-        log1: dict[str, Any] = json.loads(lines[0])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log1: LogEntry = cast(LogEntry, json.loads(lines[0]))
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
         
         assert log1["correlation_id"] == "slow-op"
         assert log2["correlation_id"] == "slow-op"

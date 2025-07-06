@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypedDict, TYPE_CHECKING
+from typing import TypedDict, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import tempfile
@@ -40,12 +40,62 @@ from mover_status.utils.logging import (
 )
 
 
+class LogEntry(TypedDict):
+    """Structure of log entries returned by StructuredFormatter."""
+    timestamp: str
+    level: str
+    message: str
+    # Optional fields
+    correlation_id: str | None
+    operation: str | None
+    user: str | None
+    priority: str | None
+    version: str | None
+    name: str | None
+    logger: str | None
+    thread_id: int | None
+    data: str | None
+    user_id: str | None
+    request_id: str | None
+    method: str | None
+    path: str | None
+    duration: float | None
+    job_id: str | None
+    task_id: str | None
+    service: str | None
+    event: str | None
+    cached_hit: bool | None
+    response_status: int | None
+    sql_queries: int | None
+    processed: int | None
+    errors: int | None
+    ip_address: str | None
+    duration_ms: float | None
+    args: tuple[object, ...] | None
+    exc_info: tuple[object, ...] | None
+    exc_text: str | None
+    stack_info: str | None
+    lineno: int | None
+    funcName: str | None
+    filename: str | None
+    module: str | None
+    pathname: str | None
+    process: int | None
+    processName: str | None
+    relativeCreated: float | None
+    thread: int | None
+    threadName: str | None
+    msecs: float | None
+    created: float | None
+    taskName: str | None
+
+
 class RequestData(TypedDict):
     """Type for request data."""
     method: str
     path: str
     headers: dict[str, str]
-    body: dict[str, Any] | None  # pyright: ignore[reportExplicitAny]
+    body: dict[str, object] | None
 
 
 @dataclass
@@ -163,17 +213,16 @@ class TestWebAPIScenarios:
         # Verify structured logs
         self.file_handler.flush()
         with open(self.temp_log.name, 'r') as f:
-            logs: list[dict[str, Any]] = [json.loads(line) for line in f.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+            logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in f.readlines()]        
         # All logs should have correlation ID
         assert all(log["correlation_id"] == request_id for log in logs)
         
         # Check specific log entries
-        request_log: dict[str, Any] = next(log for log in logs if "Request received" in log["message"])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        request_log: LogEntry = next(log for log in logs if "Request received" in log["message"])
         assert request_log["method"] == "POST"
         assert request_log["path"] == "/api/users"
         
-        db_create_log: dict[str, Any] = next(log for log in logs if "User created" in log["message"])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        db_create_log: LogEntry = next(log for log in logs if "User created" in log["message"])
         assert db_create_log["user_id"] == user_id
         assert "duration_ms" in db_create_log
     
@@ -267,15 +316,13 @@ class TestWebAPIScenarios:
         # Verify audit trail
         audit_handler.close()
         with open(audit_file.name, 'r') as f:
-            audit_logs: list[dict[str, Any]] = [json.loads(line) for line in f.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+            audit_logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in f.readlines()]        
         # Check audit entries maintain user context
         assert all(log["user_id"] == user.id for log in audit_logs)
         assert all(log["ip_address"] == "10.0.0.50" for log in audit_logs)
         
         # Verify sensitive operation has correlation ID
-        sensitive_op: dict[str, Any] = next(log for log in audit_logs if log["event"] == "USER_DELETED")  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        assert sensitive_op["correlation_id"] == "audit-op-123"
+        sensitive_op: LogEntry = next(log for log in audit_logs if log["event"] == "USER_DELETED")        assert sensitive_op["correlation_id"] == "audit-op-123"
         
         # Clean up
         Path(audit_file.name).unlink()
@@ -360,14 +407,12 @@ class TestBackgroundJobScenarios:
         # Verify job execution
         job_handler.close()
         with open(job_log.name, 'r') as f:
-            job_logs: list[dict[str, Any]] = [json.loads(line) for line in f.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+            job_logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in f.readlines()]        
         # All logs should have job correlation ID
         assert all(log["correlation_id"] == job_id for log in job_logs)
         
         # Check completion summary
-        summary: dict[str, Any] = next(log for log in job_logs if "Batch job completed" in log["message"])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        assert summary["processed"] + summary["errors"] == total_items
+        summary: LogEntry = next(log for log in job_logs if "Batch job completed" in log["message"])        assert summary["processed"] + summary["errors"] == total_items
         
         # Clean up
         Path(job_log.name).unlink()
@@ -425,11 +470,9 @@ class TestBackgroundJobScenarios:
         
         # Verify task processing
         _ = output.seek(0)
-        logs: list[dict[str, Any]] = [json.loads(line) for line in output.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
         # Each task should have 3 logs (received, debug, completed)
-        task_logs: dict[str, list[dict[str, Any]]] = {}  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        for log in logs:
+        task_logs: dict[str, list[LogEntry]] = {}        for log in logs:
             task_id: str = log["correlation_id"]
             if task_id not in task_logs:
                 task_logs[task_id] = []
@@ -507,15 +550,12 @@ class TestMicroserviceScenarios:
         
         # Verify cross-service tracing
         _ = output.seek(0)
-        logs: list[dict[str, Any]] = [json.loads(line) for line in output.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
         # All logs should have same correlation ID
         assert all(log["correlation_id"] == request_id for log in logs)
         
         # Verify service identification
-        service_a_logs: list[dict[str, Any]] = [log for log in logs if log.get("service") == "service-a"]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        service_b_logs: list[dict[str, Any]] = [log for log in logs if log.get("service") == "service-b"]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+        service_a_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-a"]        service_b_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-b"]        
         assert len(service_a_logs) == 2  # Call and response
         assert len(service_b_logs) == 3  # Receive, process, send
     
@@ -590,8 +630,7 @@ class TestMicroserviceScenarios:
         
         # Verify distributed transaction
         _ = output.seek(0)
-        logs: list[dict[str, Any]] = [json.loads(line) for line in output.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
         # All logs part of same transaction
         assert all(log["correlation_id"] == transaction_id for log in logs)
         
@@ -656,11 +695,9 @@ class TestPerformanceMonitoring:
         
         # Analyze performance data
         _ = output.seek(0)
-        logs: list[dict[str, Any]] = [json.loads(line) for line in output.readlines()]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        
+        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
         # Calculate metrics
-        request_logs: list[dict[str, Any]] = [log for log in logs if log["message"] == "Request completed"]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        _ = sum(log["duration_ms"] for log in request_logs) / len(request_logs)  # avg_duration not used
+        request_logs: list[LogEntry] = [log for log in logs if log["message"] == "Request completed"]        _ = sum(log["duration_ms"] for log in request_logs) / len(request_logs)  # avg_duration not used
         
         # Verify performance tracking
         assert len(request_logs) == 5
@@ -668,8 +705,7 @@ class TestPerformanceMonitoring:
         assert any(log["level"] == "ERROR" for log in logs)
         
         # Check cache hit tracking
-        cached_requests: list[dict[str, Any]] = [log for log in request_logs if log.get("cache_hit", False)]  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
-        assert len(cached_requests) == 2  # Two successful GETs
+        cached_requests: list[LogEntry] = [log for log in request_logs if log.get("cache_hit", False)]        assert len(cached_requests) == 2  # Two successful GETs
 
 
 class TestDebuggingScenarios:

@@ -17,9 +17,45 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast, override
 
 import pytest
+
+
+class LogEntry(TypedDict):
+    """Structure of log entries returned by StructuredFormatter."""
+    timestamp: str
+    level: str
+    message: str
+    # Optional fields
+    correlation_id: str | None
+    operation: str | None
+    user: str | None
+    priority: str | None
+    version: str | None
+    name: str | None
+    logger: str | None
+    thread_id: int | None
+    data: str | None
+    user_id: str | None
+    request_id: str | None
+    args: tuple[object, ...] | None
+    exc_info: tuple[object, ...] | None
+    exc_text: str | None
+    stack_info: str | None
+    lineno: int | None
+    funcName: str | None
+    filename: str | None
+    module: str | None
+    pathname: str | None
+    process: int | None
+    processName: str | None
+    relativeCreated: float | None
+    thread: int | None
+    threadName: str | None
+    msecs: float | None
+    created: float | None
+    taskName: str | None
 
 from mover_status.utils.logging import (
     ColoredFormatter,
@@ -103,7 +139,7 @@ class TestCompleteLoggingFlow:
             
             # Verify JSON format in file
             for line in file_lines:
-                log_entry = json.loads(line.strip())
+                log_entry: LogEntry = cast(LogEntry, json.loads(line.strip()))
                 assert "timestamp" in log_entry
                 assert "level" in log_entry
                 assert "logger" in log_entry
@@ -141,23 +177,23 @@ class TestCompleteLoggingFlow:
                     logger.debug("Debug message with all contexts")
         
         # Parse output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 3
         
         # First message - only correlation ID
-        log1 = json.loads(lines[0])
+        log1: LogEntry = cast(LogEntry, json.loads(lines[0]))
         assert log1["correlation_id"] == "test-correlation-123"
         assert "user_id" not in log1
         
         # Second message - correlation ID and extra fields
-        log2 = json.loads(lines[1])
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
         assert log2["correlation_id"] == "test-correlation-123"
         assert log2["user_id"] == "user456"
         assert log2["request_id"] == "req789"
         
         # Third message - all contexts
-        log3 = json.loads(lines[2])
+        log3: LogEntry = cast(LogEntry, json.loads(lines[2]))
         assert log3["correlation_id"] == "test-correlation-123"
         assert log3["user_id"] == "user456"
         assert log3["request_id"] == "req789"
@@ -186,12 +222,12 @@ class TestCompleteLoggingFlow:
             logger.info("Info message with fields")
         
         # Verify output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 2
         
         for line in lines:
-            log_entry = json.loads(line)
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             assert log_entry["operation"] == "test_op"
             assert log_entry["version"] == "1.0"
     
@@ -218,7 +254,7 @@ class TestCompleteLoggingFlow:
         child_logger.info("Child info")
         grandchild_logger.info("Grandchild info")
         
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 3
         
@@ -227,14 +263,14 @@ class TestCompleteLoggingFlow:
         
         # Clear output
         output.truncate(0)
-        output.seek(0)
+        _ = output.seek(0)
         
         # Test with changed level
         parent_logger.debug("Parent debug - not visible")
         child_logger.debug("Child debug - visible")
         grandchild_logger.debug("Grandchild debug - visible")
         
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 2  # Only child and grandchild debug messages
         assert "Child debug" in lines[0]
@@ -253,6 +289,7 @@ class TestCompleteLoggingFlow:
         
         # Create failing handler
         class FailingHandler(logging.Handler):
+            @override
             def emit(self, record: logging.LogRecord) -> None:
                 raise RuntimeError("Handler failed!")
         
@@ -291,7 +328,7 @@ class TestCompleteLoggingFlow:
             logger.info(large_message)
         
         # Verify it was logged correctly
-        output.seek(0)
+        _ = output.seek(0)
         log_entry = json.loads(output.read())
         assert log_entry["message"] == large_message
         assert len(log_entry["data"]) == 100
@@ -322,12 +359,12 @@ class TestCompleteLoggingFlow:
             logger.info(msg)
         
         # Verify all messages were logged correctly
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == len(test_messages)
         
         for i, line in enumerate(lines):
-            log_entry = json.loads(line)
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             assert log_entry["message"] == test_messages[i]
 
 
@@ -345,7 +382,8 @@ class TestThreadSafety:
         output_lines: list[str] = []
         
         class ThreadSafeHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
+            @override
+    def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(msg)
@@ -361,7 +399,7 @@ class TestThreadSafety:
                 time.sleep(0.001)  # Small delay to increase chance of interleaving
         
         # Create and start threads
-        threads = []
+        threads: list[threading.Thread] = []
         num_threads = 10
         messages_per_thread = 20
         
@@ -380,7 +418,7 @@ class TestThreadSafety:
         # Verify message integrity (no corruption)
         thread_counts: dict[int, int] = {}
         for line in output_lines:
-            log_entry = json.loads(line)
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             msg = log_entry["message"]
             # Extract thread ID and message number
             parts = msg.split()
@@ -406,7 +444,8 @@ class TestThreadSafety:
         output_lines: list[str] = []
         
         class ThreadSafeHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
+            @override
+    def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(msg)
@@ -440,7 +479,7 @@ class TestThreadSafety:
                 logger.info(f"Second message from thread {thread_id}")
         
         # Create and start threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(3):
             thread = threading.Thread(target=thread_function, args=(i,))
             threads.append(thread)
@@ -454,9 +493,9 @@ class TestThreadSafety:
         assert len(output_lines) == 6  # 2 messages per thread
         
         # Group messages by thread
-        thread_messages: dict[int, list[dict[str, Any]]] = {}  # pyright: ignore[reportExplicitAny]
+        thread_messages: dict[int, list[LogEntry]] = {}
         for line in output_lines:
-            log_entry = json.loads(line)
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             thread_id = log_entry.get("thread_id")
             if thread_id is not None:
                 if thread_id not in thread_messages:
@@ -495,7 +534,8 @@ class TestThreadSafety:
         output_lines: list[str] = []
         
         class ThreadSafeHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
+            @override
+    def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(f"{record.name}:{record.levelname}:{msg}")
@@ -519,7 +559,7 @@ class TestThreadSafety:
                     time.sleep(0.001)
         
         # Create threads that change levels concurrently
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(len(loggers)):
             thread = threading.Thread(target=change_levels, args=(i,))
             threads.append(thread)
@@ -557,7 +597,8 @@ class TestPerformanceCharacteristics:
         
         # Use null handler for pure throughput testing
         class NullHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
+            @override
+    def emit(self, record: logging.LogRecord) -> None:
                 # Format the record to include formatting overhead
                 _ = self.format(record)
         
@@ -694,8 +735,8 @@ class TestEdgeCasesAndErrorConditions:
         logger.addHandler(handler)
         
         # Create circular reference
-        obj1: dict[str, Any] = {"name": "obj1"}  # pyright: ignore[reportExplicitAny]
-        obj2: dict[str, Any] = {"name": "obj2", "ref": obj1}  # pyright: ignore[reportExplicitAny]
+        obj1: dict[str, object] = {"name": "obj1"}
+        obj2: dict[str, object] = {"name": "obj2", "ref": obj1}
         obj1["ref"] = obj2  # Circular reference
         
         # Log with circular reference in context
@@ -703,7 +744,7 @@ class TestEdgeCasesAndErrorConditions:
             logger.info("Message with circular reference")
         
         # Should not crash and should produce valid JSON
-        output.seek(0)
+        _ = output.seek(0)
         log_entry = json.loads(output.read())
         assert log_entry["message"] == "Message with circular reference"
         # The circular reference should be handled gracefully
@@ -731,7 +772,7 @@ class TestEdgeCasesAndErrorConditions:
             logger.info("Message with empty values")
         
         # Verify all values are preserved
-        output.seek(0)
+        _ = output.seek(0)
         log_entry = json.loads(output.read())
         assert log_entry["none_value"] is None
         assert log_entry["empty_string"] == ""
@@ -752,7 +793,7 @@ class TestEdgeCasesAndErrorConditions:
         
         logger.info("Message from root logger")
         
-        output.seek(0)
+        _ = output.seek(0)
         log_entry = json.loads(output.read())
         assert log_entry["logger"] == "root"
     
@@ -779,7 +820,7 @@ class TestEdgeCasesAndErrorConditions:
             logger.exception("Exception occurred", extra={"request_id": "12345"})
         
         # Verify exception was logged
-        output.seek(0)
+        _ = output.seek(0)
         log_entry = json.loads(output.read())
         assert log_entry["message"] == "Exception occurred"
         assert log_entry["request_id"] == "12345"
@@ -796,10 +837,11 @@ class TestEdgeCasesAndErrorConditions:
         class IntermittentHandler(logging.Handler):
             def __init__(self) -> None:
                 super().__init__()
-                self.fail_count = 0
+                self.fail_count: int = 0
                 self.messages: list[str] = []
             
-            def emit(self, record: logging.LogRecord) -> None:
+            @override
+    def emit(self, record: logging.LogRecord) -> None:
                 if self.fail_count < 3:
                     self.fail_count += 1
                     raise RuntimeError("Temporary failure")
@@ -894,7 +936,7 @@ def test_full_integration_scenario() -> None:
         
         # All entries should have the correlation ID
         for line in lines:
-            log_entry = json.loads(line)
+            log_entry: LogEntry = cast(LogEntry, json.loads(line))
             if "correlation_id" in log_entry:  # Some early setup logs might not have it
                 assert log_entry["correlation_id"] == "req-12345-abcde"
         
@@ -904,8 +946,8 @@ def test_full_integration_scenario() -> None:
 
 if __name__ == "__main__":
     # Run performance tests separately as they print output
-    pytest.main([__file__, "-v", "-k", "not Performance"])
+    _ = pytest.main([__file__, "-v", "-k", "not Performance"])
     print("\n" + "="*50)
     print("Running performance tests:")
     print("="*50)
-    pytest.main([__file__, "-v", "-k", "Performance", "-s"]) 
+    _ = pytest.main([__file__, "-v", "-k", "Performance", "-s"]) 
