@@ -114,7 +114,7 @@ class TestSizeCalculator:
         nonexistent_path = Path("/nonexistent/path")
         
         with pytest.raises(OSError, match="Path does not exist"):
-            calculator.calculate_size(nonexistent_path)
+            _ = calculator.calculate_size(nonexistent_path)
 
     def test_calculate_size_with_progress(self) -> None:
         """Test size calculation with progress reporting."""
@@ -266,7 +266,7 @@ class TestSizeCalculator:
             # Create subdirectory
             sub_dir = temp_path / "subdir"
             sub_dir.mkdir()
-            (sub_dir / "file2.txt").write_text("World")
+            _ = (sub_dir / "file2.txt").write_text("World")
             
             calculator = SizeCalculator()
             
