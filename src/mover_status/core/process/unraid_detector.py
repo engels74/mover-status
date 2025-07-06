@@ -45,42 +45,43 @@ class UnraidMoverDetector(ProcessDetector):
     @override
     def detect_mover(self) -> ProcessInfo | None:
         """Detect running mover process on Unraid system.
-        
+
         Searches through all running processes to find the mover process
         using predefined patterns specific to Unraid systems.
-        
+
         Returns:
             ProcessInfo for the mover process if found, None otherwise
         """
         logger.debug("Detecting mover process")
-        
+
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            # psutil.process_iter returns Iterator[Process] but type checker sees it as partially unknown
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):  # pyright: ignore[reportUnknownMemberType]
                 try:
                     # Skip processes with no cmdline (kernel threads)
                     if not proc.info['cmdline']:
                         continue
-                    
+
                     # Join command line arguments into a single string
-                    cmdline_list = proc.info['cmdline']
+                    cmdline_list: list[str] = proc.info['cmdline']  # pyright: ignore[reportAny]
                     cmdline = ' '.join(cmdline_list) if cmdline_list else ''
                     process_name = proc.info['name'] or ''
-                    
+
                     # Check if this process matches any mover pattern
                     if self._is_mover_process(cmdline, process_name):
                         logger.debug(f"Found mover process: PID={proc.info['pid']}, cmdline='{cmdline}'")
                         return self._create_process_info(proc)
-                        
+
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
                     logger.debug(f"Error accessing process {proc.info.get('pid', 'unknown')}: {e}")
                     continue
                 except Exception as e:
                     logger.debug(f"Error accessing process {proc.info.get('pid', 'unknown')}: {e}")
                     continue
-                    
+
         except Exception as e:
             logger.error(f"Error during mover detection: {e}")
-            
+
         logger.debug("No mover process found")
         return None
     
@@ -120,14 +121,14 @@ class UnraidMoverDetector(ProcessDetector):
     @override
     def list_processes(self) -> list[ProcessInfo]:
         """List all processes accessible to the detector.
-        
+
         Returns:
             List of ProcessInfo objects for all accessible processes
         """
         processes: list[ProcessInfo] = []
-        
+
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):  # pyright: ignore[reportUnknownMemberType]
                 try:
                     process_info = self._create_process_info(proc)
                     processes.append(process_info)
@@ -135,51 +136,51 @@ class UnraidMoverDetector(ProcessDetector):
                     continue
                 except Exception:
                     continue
-                    
+
         except Exception as e:
             logger.error(f"Error listing processes: {e}")
-            
+
         return processes
     
     @override
     def find_processes(self, pattern: str) -> list[ProcessInfo]:
         """Find processes matching a pattern.
-        
+
         Args:
             pattern: Pattern to match against process names/commands
-            
+
         Returns:
             List of ProcessInfo objects matching the pattern
         """
         matching_processes: list[ProcessInfo] = []
         pattern_lower = pattern.lower()
-        
+
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):  # pyright: ignore[reportUnknownMemberType]
                 try:
                     # Skip processes with no cmdline (kernel threads)
                     if not proc.info['cmdline']:
                         continue
-                    
+
                     # Join command line arguments into a single string
-                    cmdline_list = proc.info['cmdline']
+                    cmdline_list: list[str] = proc.info['cmdline']  # pyright: ignore[reportAny]
                     cmdline = ' '.join(cmdline_list) if cmdline_list else ''
                     process_name = proc.info['name'] or ''
-                    
+
                     # Check if pattern matches command line or process name
-                    if (pattern_lower in cmdline.lower() or 
+                    if (pattern_lower in cmdline.lower() or
                         pattern_lower in process_name.lower()):
                         process_info = self._create_process_info(proc)
                         matching_processes.append(process_info)
-                        
+
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     continue
                 except Exception:
                     continue
-                    
+
         except Exception as e:
             logger.error(f"Error finding processes with pattern '{pattern}': {e}")
-            
+
         return matching_processes
     
     def _is_mover_process(self, cmdline: str, process_name: str) -> bool:
@@ -234,7 +235,7 @@ class UnraidMoverDetector(ProcessDetector):
         try:
             cpu_percent = proc.cpu_percent()
             memory_info = proc.memory_info()
-            memory_mb = float(memory_info.rss) / (1024 * 1024)  # Convert bytes to MB
+            memory_mb = float(memory_info.rss) / (1024 * 1024)  # Convert bytes to MB  # pyright: ignore[reportAny]
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
         

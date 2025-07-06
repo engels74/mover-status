@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from mover_status.core.process.detector import ProcessDetector
 from mover_status.core.process.models import ProcessStatus
 from mover_status.core.process.unraid_detector import UnraidMoverDetector
 
 if TYPE_CHECKING:
-    from unittest.mock import MagicMock
+    pass
+
+# pyright: reportAny=false
 
 
 # Create proper exception classes for mocking
@@ -70,7 +72,7 @@ class TestUnraidMoverDetector:
         self._setup_mock_psutil(mock_psutil)
 
         # Mock process data
-        mock_proc = Mock()
+        mock_proc: MagicMock = Mock()
         mock_proc.info = {
             'pid': 1234,
             'name': 'mover',
@@ -84,7 +86,9 @@ class TestUnraidMoverDetector:
         mock_proc.create_time.return_value = 1735728000.0
         mock_proc.status.return_value = 'running'
         mock_proc.cpu_percent.return_value = 15.5
-        mock_proc.memory_info.return_value = Mock(rss=1024 * 1024 * 50)  # 50MB
+        mock_memory_info: MagicMock = Mock()
+        mock_memory_info.rss = 1024 * 1024 * 50  # 50MB
+        mock_proc.memory_info.return_value = mock_memory_info
         mock_proc.cwd.return_value = '/tmp'
         mock_proc.username.return_value = 'root'
 
