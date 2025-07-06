@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import math
-from typing import Iterator, NamedTuple
+from typing import Iterator, NamedTuple, override, Callable
 from decimal import Decimal
 
 
@@ -126,7 +126,11 @@ class SinusoidalTransferPattern(TransferPattern):
                 progress_delta = instantaneous_rate * time_delta * self.total_size
                 total_progress += progress_delta
             
-            bytes_transferred = min(int(total_progress), self.total_size)
+            # Ensure the final sample reaches exactly 100%
+            if i == sample_count - 1:
+                bytes_transferred = self.total_size
+            else:
+                bytes_transferred = min(int(total_progress), self.total_size)
             
             yield ProgressDataPoint(
                 bytes_transferred=bytes_transferred,
@@ -169,7 +173,11 @@ class BurstyTransferPattern(TransferPattern):
                 progress_delta = base_rate * rate_multiplier * time_delta
                 total_progress += progress_delta
             
-            bytes_transferred = min(int(total_progress), self.total_size)
+            # Ensure the final sample reaches exactly 100%
+            if i == sample_count - 1:
+                bytes_transferred = self.total_size
+            else:
+                bytes_transferred = min(int(total_progress), self.total_size)
             
             yield ProgressDataPoint(
                 bytes_transferred=bytes_transferred,
@@ -181,11 +189,14 @@ class BurstyTransferPattern(TransferPattern):
 class StallAndResumePattern(TransferPattern):
     """Generates pattern with periodic stalls and resumes."""
     
+    stall_intervals: list[tuple[float, float]]
+    
     def __init__(self, total_size: int, duration: float, stall_intervals: list[tuple[float, float]]) -> None:
         """Initialize with list of (start_ratio, end_ratio) for stall periods."""
         super().__init__(total_size, duration)
         self.stall_intervals = stall_intervals
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate stall-and-resume progress data points."""
         total_progress = 0.0
@@ -208,7 +219,12 @@ class StallAndResumePattern(TransferPattern):
                 progress_delta = base_rate * time_delta
                 total_progress += progress_delta
             
-            bytes_transferred = min(int(total_progress), self.total_size)
+            # Ensure the final sample reaches exactly 100%
+            if i == sample_count - 1:
+                bytes_transferred = self.total_size
+            else:
+                bytes_transferred = min(int(total_progress), self.total_size)
+            
             last_timestamp = timestamp
             
             yield ProgressDataPoint(
@@ -221,6 +237,8 @@ class StallAndResumePattern(TransferPattern):
 class NoisyTransferPattern(TransferPattern):
     """Generates noisy transfer pattern with random variations."""
     
+    noise_level: float
+    
     def __init__(self, total_size: int, duration: float, noise_level: float = 0.2, seed: int | None = None) -> None:
         """Initialize with noise level (0.0 = no noise, 1.0 = high noise)."""
         super().__init__(total_size, duration)
@@ -228,6 +246,7 @@ class NoisyTransferPattern(TransferPattern):
         if seed is not None:
             random.seed(seed)
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate noisy progress data points."""
         total_progress = 0.0
@@ -246,7 +265,11 @@ class NoisyTransferPattern(TransferPattern):
                 progress_delta = noisy_rate * time_delta
                 total_progress += progress_delta
             
-            bytes_transferred = min(int(total_progress), self.total_size)
+            # Ensure the final sample reaches exactly 100%
+            if i == sample_count - 1:
+                bytes_transferred = self.total_size
+            else:
+                bytes_transferred = min(int(total_progress), self.total_size)
             
             yield ProgressDataPoint(
                 bytes_transferred=bytes_transferred,
@@ -434,7 +457,7 @@ def quick_linear_pattern(size_mb: int = 100, duration_seconds: int = 60) -> list
 
 def quick_realistic_pattern(scenario: str = 'normal') -> list[ProgressDataPoint]:
     """Quick realistic patterns for common test scenarios."""
-    scenarios = {
+    scenarios: dict[str, Callable[[], list[ProgressDataPoint]]] = {
         'normal': lambda: ProgressDataGenerator.linear_transfer(50 * 1024 * 1024, 30.0, 30),
         'slow': lambda: ProgressDataGenerator.exponential_transfer(100 * 1024 * 1024, 300.0, 60),
         'fast': lambda: ProgressDataGenerator.linear_transfer(10 * 1024 * 1024, 5.0, 10),
