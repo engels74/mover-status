@@ -8,12 +8,18 @@ from .transfer_rate_calculator import (
     RateUnit,
     SmoothingMethod,
 )
+from .etc_estimator import (
+    ETCEstimator,
+    EstimationMethod,
+    ETCResult,
+)
 
 __all__ = [
     "ProgressPercentageCalculator",
     "TransferRateCalculator",
     "RateUnit",
     "SmoothingMethod",
-    # TODO: Add more progress classes when implemented
-    # "ETCEstimator",
+    "ETCEstimator",
+    "EstimationMethod",
+    "ETCResult",
 ]
