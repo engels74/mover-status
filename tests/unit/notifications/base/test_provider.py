@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, override
-from collections.abc import Mapping
+from typing import TYPE_CHECKING, override, TypeVar, ParamSpec, Callable
+from collections.abc import Mapping, Awaitable
+from functools import wraps
 
 import pytest
 
@@ -15,12 +16,14 @@ from mover_status.notifications.base.provider import (
 from mover_status.notifications.models.message import Message
 
 
-def generic_retry(max_attempts: int = 3, backoff_factor: float = 0.1):
+P = ParamSpec("P")
+T = TypeVar("T")
+
+def generic_retry(max_attempts: int = 3, backoff_factor: float = 0.1) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]:
     """Generic retry decorator for testing."""
-    def decorator(func):
-        from functools import wraps
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T | None]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
             for attempt in range(max_attempts):
                 try:
                     return await func(*args, **kwargs)
