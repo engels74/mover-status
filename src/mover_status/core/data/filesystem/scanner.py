@@ -201,10 +201,14 @@ class DirectoryScanner:
             True if path is a file or valid symlink to a file, False otherwise
         """
         try:
+            # If not following symlinks, skip all symlinks entirely
+            if not self.follow_symlinks and path.is_symlink():
+                return False
+            
             if path.is_file():
                 return True
             
-            # Check if it's a symlink to a file
+            # Check if it's a symlink to a file (only if following symlinks)
             if self.follow_symlinks and path.is_symlink():
                 try:
                     # Use stat() to follow symlinks and check if target is a file
@@ -229,10 +233,14 @@ class DirectoryScanner:
             True if path is a directory or valid symlink to a directory, False otherwise
         """
         try:
+            # If not following symlinks, don't traverse symlinked directories
+            if not self.follow_symlinks and path.is_symlink():
+                return False
+            
             if path.is_dir():
                 return True
             
-            # Check if it's a symlink to a directory
+            # Check if it's a symlink to a directory (only if following symlinks)
             if self.follow_symlinks and path.is_symlink():
                 try:
                     # Use stat() to follow symlinks and check if target is a directory

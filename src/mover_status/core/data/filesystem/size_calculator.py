@@ -63,12 +63,12 @@ class SizeCalculator:
             Total size in bytes
             
         Raises:
-            OSError: If path cannot be accessed
+            OSError: If path does not exist or cannot be accessed
         """
+        if not path.exists():
+            raise OSError(f"Path does not exist: {path}")
+        
         try:
-            if not path.exists():
-                raise OSError(f"Path does not exist: {path}")
-            
             if path.is_file():
                 return self._get_file_size(path)
             elif path.is_dir():
@@ -79,8 +79,8 @@ class SizeCalculator:
             else:
                 # Handle other special files (sockets, pipes, etc.)
                 return 0
-        except (PermissionError, OSError, FileNotFoundError):
-            # Return 0 for inaccessible paths instead of raising
+        except (PermissionError, FileNotFoundError):
+            # Return 0 for permission errors, but let other OSErrors bubble up
             return 0
 
     def calculate_size_with_progress(self, path: Path) -> Iterator[tuple[int, Path]]:

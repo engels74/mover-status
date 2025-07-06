@@ -388,11 +388,12 @@ class TestSizeCalculator:
         """Test handling of special files (not regular files or directories)."""
         calculator = SizeCalculator()
         
-        # Mock a path that is neither file nor directory
+        # Mock a path that is neither file nor directory nor symlink
         mock_path = Mock(spec=Path)
         mock_path.exists = Mock(return_value=True)
         mock_path.is_file = Mock(return_value=False)
         mock_path.is_dir = Mock(return_value=False)
+        mock_path.is_symlink = Mock(return_value=False)
         
         size = calculator.calculate_size(mock_path)
         assert size == 0
