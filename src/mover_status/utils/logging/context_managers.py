@@ -2,33 +2,39 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, cast
+from typing import Any, cast, override
 
 from .log_level_manager import LogLevel
 
 
 class ThreadLocalContext:
-    """Thread-local storage for logging context."""
+    """Context storage for logging context using contextvars for async support."""
     
     def __init__(self) -> None:
-        """Initialize thread-local storage."""
+        """Initialize context storage."""
         self._local: threading.local = threading.local()
+        self._contextvar: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar('log_fields', default={})  # pyright: ignore[reportExplicitAny]
     
     @property
     def fields(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-        """Get context fields for current thread."""
-        if not hasattr(self._local, 'fields'):
-            self._local.fields = {}
-        return cast(dict[str, Any], self._local.fields)  # pyright: ignore[reportExplicitAny]
+        """Get context fields for current thread/context."""
+        # Always use context variable first (for async support)
+        context_fields = self._contextvar.get()
+        # Always return a copy to avoid shared state
+        return dict(context_fields)
     
     @fields.setter
     def fields(self, value: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
-        """Set context fields for current thread."""
-        self._local.fields = value
+        """Set context fields for current thread/context."""
+        # Use only context variable for async support
+        # Always create a copy to avoid shared state
+        value_copy = dict(value)
+        _ = self._contextvar.set(value_copy)
 
 
 # Global thread-local context instance
@@ -99,15 +105,17 @@ class LogFieldContext:
         self.previous_fields: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
     
     def __enter__(self) -> LogFieldContext:
-        """Enter context and add fields to thread-local storage."""
+        """Enter context and add fields to context storage."""
         # Store previous values for fields we're about to override
         current_fields = thread_local_context.fields
         for key in self.fields:
             if key in current_fields:
                 self.previous_fields[key] = current_fields[key]
         
-        # Add new fields
-        current_fields.update(self.fields)
+        # Create new dict with merged fields to avoid shared state
+        new_fields = dict(current_fields)
+        new_fields.update(self.fields)
+        thread_local_context.fields = new_fields
         
         return self
     
@@ -115,14 +123,17 @@ class LogFieldContext:
         """Exit context and restore previous field values."""
         current_fields = thread_local_context.fields
         
-        # Remove fields we added
+        # Create new dict with restored fields to avoid shared state
+        new_fields = dict(current_fields)
         for key in self.fields:
             if key in self.previous_fields:
                 # Restore previous value
-                current_fields[key] = self.previous_fields[key]
+                new_fields[key] = self.previous_fields[key]
             else:
                 # Remove the field entirely
-                current_fields.pop(key, None)
+                new_fields.pop(key, None)
+        
+        thread_local_context.fields = new_fields
 
 
 class ContextualLogRecord:
@@ -144,7 +155,7 @@ class ContextualLogRecord:
                     setattr(self, attr, value)
     
     def get_context_fields(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-        """Get context fields from thread-local storage.
+        """Get context fields from context storage.
         
         Returns:
             Dictionary of context fields
@@ -207,3 +218,22 @@ def combined_log_context(
     with LogLevelContext(logger, level):
         with LogFieldContext(fields):
             yield
+
+
+class ContextCapturingFilter(logging.Filter):
+    """Filter that captures context fields at log record creation time."""
+    
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Capture context fields and store them in the log record.
+        
+        Args:
+            record: The log record to process
+            
+        Returns:
+            True to allow the record to be processed
+        """
+        # Capture current context fields at log time
+        context_fields = dict(thread_local_context.fields)
+        setattr(record, '_context_fields', context_fields)
+        return True

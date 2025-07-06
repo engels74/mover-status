@@ -78,6 +78,19 @@ class LogLevelManager:
             level: Log level to set
         """
         self.logger_levels[logger_name] = level
+        # Actually apply the level to the Python logger
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(level.value)
+        
+        # Apply level to child loggers that don't have their own explicit level set
+        # This ensures hierarchical level inheritance
+        logger_manager = logging.getLogger().manager
+        for existing_logger_name in logger_manager.loggerDict:
+            # Check if this is a child logger
+            if (existing_logger_name.startswith(logger_name + ".") and 
+                existing_logger_name not in self.logger_levels):
+                child_logger = logging.getLogger(existing_logger_name)
+                child_logger.setLevel(level.value)
     
     def get_logger_level(self, logger_name: str) -> LogLevel:
         """Get log level for a specific logger.

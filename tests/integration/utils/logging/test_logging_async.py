@@ -50,6 +50,7 @@ class LogEntry(TypedDict):
     taskName: str | None
 
 from mover_status.utils.logging import (
+    ContextCapturingFilter,
     LogFormat,
     LogLevel,
     StructuredFormatter,
@@ -63,6 +64,12 @@ from mover_status.utils.logging import (
 
 class TestAsyncLogging:
     """Test logging in async contexts."""
+    
+    def setup_method(self) -> None:
+        """Setup method called before each test."""
+        # Clear any existing correlation ID to ensure test isolation
+        from mover_status.utils.logging import clear_correlation_id
+        clear_correlation_id()
     
     @pytest.mark.asyncio
     async def test_correlation_id_async_isolation(self) -> None:
@@ -399,6 +406,11 @@ class TestAsyncLogging:
         handler = logging.StreamHandler(output)
         formatter = StructuredFormatter(format_type=LogFormat.JSON)
         handler.setFormatter(formatter)
+        
+        # Add context capturing filter to ensure context is captured at log time
+        context_filter = ContextCapturingFilter()
+        logger.addFilter(context_filter)
+        
         logger.addHandler(handler)
         
         async def operation_a() -> None:

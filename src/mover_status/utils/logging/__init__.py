@@ -27,6 +27,7 @@ from .structured_formatter import (
     TimestampFormat,
 )
 from .context_managers import (
+    ContextCapturingFilter,
     ContextualLogRecord,
     LogFieldContext,
     LogLevelContext,
@@ -51,6 +52,7 @@ __all__ = [
     "ColoredFormatter",
     "ConfigurationError",
     "ConsoleHandler",
+    "ContextCapturingFilter",
     "ContextualLogRecord",
     "CorrelationIdContext",
     "CorrelationIdManager",

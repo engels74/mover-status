@@ -116,8 +116,15 @@ class StructuredFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
         
-        # Add context fields from thread-local storage
-        context_fields = thread_local_context.fields
+        # Add context fields from record if they were captured at log time
+        # or fall back to current context if not
+        if hasattr(record, '_context_fields'):
+            # Use context fields that were captured when the log record was created
+            context_fields = getattr(record, '_context_fields', {})
+        else:
+            # Fall back to current context (for backward compatibility)
+            context_fields = dict(thread_local_context.fields)
+        
         for key, value in context_fields.items():  # pyright: ignore[reportAny] # context fields can be any type
             if key not in log_data:  # Don't override existing fields
                 serialized_value = self._serialize_value(value)
