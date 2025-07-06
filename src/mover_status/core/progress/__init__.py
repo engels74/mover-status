@@ -20,6 +20,10 @@ from .history_manager import (
     DataPoint,
     HistoryStats,
 )
+from .calculator import (
+    ProgressCalculator,
+    ProgressMetrics,
+)
 
 __all__ = [
     "ProgressPercentageCalculator",
@@ -34,4 +38,6 @@ __all__ = [
     "RetentionPolicy",
     "DataPoint",
     "HistoryStats",
+    "ProgressCalculator",
+    "ProgressMetrics",
 ]
