@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from .detector import ProcessDetector, ProcessFilter, ProcessMonitor
+from .models import ProcessInfo, ProcessStatus
+
 __all__ = [
-    # TODO: Add process classes when implemented
-    # "ProcessDetector",
-    # "UnraidDetector",
-    # "ProcessFilter",
+    "ProcessDetector",
+    "ProcessFilter", 
+    "ProcessMonitor",
+    "ProcessInfo",
+    "ProcessStatus",
 ]
