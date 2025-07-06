@@ -425,7 +425,7 @@ class TestThreadSafety:
             # Extract thread ID and message number
             parts = msg.split()
             thread_id = int(parts[1])
-            msg_num = int(parts[3])
+            # msg_num = int(parts[3])  # Not used in current test
             
             if thread_id not in thread_counts:
                 thread_counts[thread_id] = 0
@@ -638,7 +638,7 @@ class TestPerformanceCharacteristics:
             ("Colored", ColoredFormatter(enable_colors=True)),
         ]
         
-        results = {}
+        results: dict[str, float] = {}
         
         for name, formatter in formatters:
             # Create handler with formatter
@@ -775,7 +775,7 @@ class TestEdgeCasesAndErrorConditions:
         
         # Verify all values are preserved
         _ = output.seek(0)
-        log_data = json.loads(output.read())
+        log_data = cast(dict[str, object], json.loads(output.read()))
         assert log_data["none_value"] is None
         assert log_data["empty_string"] == ""
         assert log_data["empty_list"] == []
@@ -823,7 +823,7 @@ class TestEdgeCasesAndErrorConditions:
         
         # Verify exception was logged
         _ = output.seek(0)
-        log_data = json.loads(output.read())
+        log_data = cast(dict[str, object], json.loads(output.read()))
         assert log_data["message"] == "Exception occurred"
         assert log_data["request_id"] == "12345"
         assert log_data["level"] == "ERROR"
