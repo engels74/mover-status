@@ -29,7 +29,10 @@ class UnraidMoverDetector(ProcessDetector):
     MOVER_PATTERNS: list[str] = [
         "mover",
         "/usr/local/sbin/mover",
+        "/usr/local/sbin/mover.old",  # Real mover binary
         "/usr/local/bin/mover",
+        "/usr/local/emhttp/plugins/ca.mover.tuning/mover.php",  # PHP wrapper
+        "/usr/local/emhttp/plugins/ca.mover.tuning/age_mover",  # Enhanced mover
         "mover-backup",
         "mover.py",
     ]
@@ -42,17 +45,75 @@ class UnraidMoverDetector(ProcessDetector):
         """
         logger.debug("Initializing UnraidMoverDetector")
     
-    @override
-    def detect_mover(self) -> ProcessInfo | None:
-        """Detect running mover process on Unraid system.
-
-        Searches through all running processes to find the mover process
-        using predefined patterns specific to Unraid systems.
-
+    def _check_mover_pid_file(self) -> int | None:
+        """Check if mover PID file exists and return PID if valid.
+        
         Returns:
-            ProcessInfo for the mover process if found, None otherwise
+            PID if file exists and process is running, None otherwise
         """
-        logger.debug("Detecting mover process")
+        try:
+            with open('/var/run/mover.pid', 'r') as f:
+                pid_str = f.read().strip()
+                pid = int(pid_str)
+            
+            # Check if the process is actually running
+            if self.is_process_running(pid):
+                logger.debug(f"Found valid mover PID file with PID {pid}")
+                return pid
+            else:
+                logger.debug(f"PID file exists but process {pid} is not running")
+                return None
+                
+        except (FileNotFoundError, ValueError, PermissionError) as e:
+            logger.debug(f"Could not read mover PID file: {e}")
+            return None
+    
+    def _detect_mover_hierarchy(self) -> ProcessInfo | None:
+        """Detect mover process including ionice/nice wrappers.
+        
+        Returns:
+            ProcessInfo for wrapped mover process if found, None otherwise
+        """
+        logger.debug("Detecting mover process with hierarchy support")
+        
+        try:
+            # psutil.process_iter returns Iterator[Process] but type checker sees it as partially unknown
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):  # pyright: ignore[reportUnknownMemberType]
+                try:
+                    # Skip processes with no cmdline (kernel threads)
+                    if not proc.info['cmdline']:
+                        continue
+
+                    # Join command line arguments into a single string
+                    cmdline_list: list[str] = proc.info['cmdline']  # pyright: ignore[reportAny]
+                    cmdline = ' '.join(cmdline_list) if cmdline_list else ''
+
+                    # Check for ionice/nice wrapper containing mover
+                    if ('ionice' in cmdline and 'nice' in cmdline and 
+                        any(pattern in cmdline for pattern in self.MOVER_PATTERNS)):
+                        logger.debug(f"Found wrapped mover process: PID={proc.info['pid']}, cmdline='{cmdline}'")
+                        return self._create_process_info(proc)
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+                    logger.debug(f"Error accessing process {proc.info.get('pid', 'unknown')}: {e}")
+                    continue
+                except Exception as e:
+                    logger.debug(f"Error accessing process {proc.info.get('pid', 'unknown')}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error during hierarchy mover detection: {e}")
+
+        logger.debug("No wrapped mover process found")
+        return None
+    
+    def _detect_direct_mover(self) -> ProcessInfo | None:
+        """Detect mover process using direct pattern matching.
+        
+        Returns:
+            ProcessInfo for direct mover process if found, None otherwise
+        """
+        logger.debug("Detecting direct mover process")
 
         try:
             # psutil.process_iter returns Iterator[Process] but type checker sees it as partially unknown
@@ -69,7 +130,7 @@ class UnraidMoverDetector(ProcessDetector):
 
                     # Check if this process matches any mover pattern
                     if self._is_mover_process(cmdline, process_name):
-                        logger.debug(f"Found mover process: PID={proc.info['pid']}, cmdline='{cmdline}'")
+                        logger.debug(f"Found direct mover process: PID={proc.info['pid']}, cmdline='{cmdline}'")
                         return self._create_process_info(proc)
 
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
@@ -80,7 +141,44 @@ class UnraidMoverDetector(ProcessDetector):
                     continue
 
         except Exception as e:
-            logger.error(f"Error during mover detection: {e}")
+            logger.error(f"Error during direct mover detection: {e}")
+
+        logger.debug("No direct mover process found")
+        return None
+    
+    @override
+    def detect_mover(self) -> ProcessInfo | None:
+        """Enhanced mover detection with PID file and hierarchy support.
+
+        Detection strategy:
+        1. First check PID file for official mover process
+        2. Fall back to process hierarchy detection (ionice/nice wrappers)
+        3. Finally use direct process scanning
+
+        Returns:
+            ProcessInfo for the mover process if found, None otherwise
+        """
+        logger.debug("Detecting mover process with enhanced detection")
+
+        # First check PID file
+        pid = self._check_mover_pid_file()
+        if pid is not None:
+            process_info = self.get_process_info(pid)
+            if process_info is not None:
+                logger.debug(f"Found mover via PID file: {pid}")
+                return process_info
+
+        # Fall back to hierarchy detection (ionice/nice wrappers)
+        hierarchy_result = self._detect_mover_hierarchy()
+        if hierarchy_result is not None:
+            logger.debug("Found mover via hierarchy detection")
+            return hierarchy_result
+
+        # Finally try direct process scanning
+        direct_result = self._detect_direct_mover()
+        if direct_result is not None:
+            logger.debug("Found mover via direct detection")
+            return direct_result
 
         logger.debug("No mover process found")
         return None
@@ -286,3 +384,34 @@ class UnraidMoverDetector(ProcessDetector):
         }
         
         return status_mapping.get(psutil_status.lower(), ProcessStatus.UNKNOWN)
+    
+    def get_execution_context(self, process_info: ProcessInfo) -> str:
+        """Determine how mover was executed (cron/manual/web UI).
+        
+        Args:
+            process_info: ProcessInfo object for the mover process
+            
+        Returns:
+            Execution context: 'cron', 'manual', 'web_ui', or 'unknown'
+        """
+        if not process_info.command:
+            return "unknown"
+        
+        try:
+            proc = psutil.Process(process_info.pid)
+            parent = proc.parent()
+            if parent:
+                parent_name = parent.name()
+                parent_cmdline = parent.cmdline()
+                
+                if parent_name == "crond":
+                    return "cron"
+                elif parent_name in ["bash", "sh"]:
+                    return "manual"
+                elif parent_cmdline and "emhttp" in parent_cmdline[0]:
+                    return "web_ui"
+                    
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            logger.debug(f"Could not determine execution context for PID {process_info.pid}: {e}")
+        
+        return "unknown"

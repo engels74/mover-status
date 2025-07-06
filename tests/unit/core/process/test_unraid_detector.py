@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch, mock_open
 
 from mover_status.core.process.detector import ProcessDetector
 from mover_status.core.process.models import ProcessStatus
@@ -489,3 +489,292 @@ class TestUnraidMoverDetector:
         assert isinstance(detector.MOVER_PATTERNS, list)
         assert len(detector.MOVER_PATTERNS) > 0
         assert all(isinstance(pattern, str) for pattern in detector.MOVER_PATTERNS)
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_check_mover_pid_file_exists_and_valid(self, mock_psutil: MagicMock) -> None:
+        """Test _check_mover_pid_file when PID file exists and process is running."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Create a mock file object
+        mock_file = Mock()
+        mock_file.read.return_value = '1234\n'
+        
+        mock_process = Mock()
+        mock_process.is_running.return_value = True
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        
+        # Mock the open function with context manager support
+        with patch('builtins.open', mock_open(read_data='1234\n')):
+            result = detector._check_mover_pid_file()
+        
+        assert result == 1234
+        mock_psutil.Process.assert_called_once_with(1234)
+
+    def test_check_mover_pid_file_missing(self) -> None:
+        """Test _check_mover_pid_file when PID file doesn't exist."""
+        detector = UnraidMoverDetector()
+        
+        with patch('builtins.open', side_effect=FileNotFoundError()):
+            result = detector._check_mover_pid_file()
+        
+        assert result is None
+
+    def test_check_mover_pid_file_invalid_content(self) -> None:
+        """Test _check_mover_pid_file when PID file has invalid content."""
+        detector = UnraidMoverDetector()
+        
+        with patch('builtins.open', mock_open(read_data='invalid\n')):
+            result = detector._check_mover_pid_file()
+        
+        assert result is None
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_check_mover_pid_file_process_not_running(self, mock_psutil: MagicMock) -> None:
+        """Test _check_mover_pid_file when process in PID file is not running."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        mock_file = Mock()
+        mock_file.read.return_value = '1234\n'
+        
+        mock_process = Mock()
+        mock_process.is_running.return_value = False
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        
+        with patch('builtins.open', mock_open(read_data='1234\n')):
+            result = detector._check_mover_pid_file()
+        
+        assert result is None
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_detect_mover_hierarchy_with_ionice_nice(self, mock_psutil: MagicMock) -> None:
+        """Test _detect_mover_hierarchy with ionice and nice wrapped mover."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Mock process with ionice/nice wrapper
+        mock_proc = Mock()
+        mock_proc.info = {
+            'pid': 1234,
+            'name': 'ionice',
+            'cmdline': ['ionice', '-c', '2', '-n', '0', 'nice', '-n', '0', '/usr/local/sbin/mover.old', 'start']
+        }
+        mock_proc.pid = 1234
+        mock_proc.name.return_value = 'ionice'
+        mock_proc.cmdline.return_value = ['ionice', '-c', '2', '-n', '0', 'nice', '-n', '0', '/usr/local/sbin/mover.old', 'start']
+        mock_proc.create_time.return_value = 1735728000.0
+        mock_proc.status.return_value = 'running'
+        mock_proc.cpu_percent.return_value = 10.0
+        mock_proc.memory_info.return_value = Mock(rss=1024 * 1024 * 20)  # 20MB
+        mock_proc.cwd.return_value = '/tmp'
+        mock_proc.username.return_value = 'root'
+        
+        mock_psutil.process_iter.return_value = [mock_proc]
+        
+        detector = UnraidMoverDetector()
+        result = detector._detect_mover_hierarchy()
+        
+        assert result is not None
+        assert result.pid == 1234
+        assert result.name == 'ionice'
+        assert 'ionice' in result.command
+        assert 'nice' in result.command
+        assert 'mover.old' in result.command
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_detect_mover_hierarchy_no_match(self, mock_psutil: MagicMock) -> None:
+        """Test _detect_mover_hierarchy when no wrapped mover found."""
+        # Mock process without ionice/nice wrapper
+        mock_proc = Mock()
+        mock_proc.info = {
+            'pid': 1234,
+            'name': 'bash',
+            'cmdline': ['/bin/bash']
+        }
+        
+        mock_psutil.process_iter.return_value = [mock_proc]
+        
+        detector = UnraidMoverDetector()
+        result = detector._detect_mover_hierarchy()
+        
+        assert result is None
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_get_execution_context_cron(self, mock_psutil: MagicMock) -> None:
+        """Test get_execution_context for cron execution."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Mock parent process as crond
+        mock_parent = Mock()
+        mock_parent.name.return_value = 'crond'
+        mock_parent.cmdline.return_value = ['crond']
+        
+        # Mock main process
+        mock_process = Mock()
+        mock_process.parent.return_value = mock_parent
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        from mover_status.core.process.models import ProcessInfo, ProcessStatus
+        from datetime import datetime
+        
+        process_info = ProcessInfo(
+            pid=1234,
+            name='mover',
+            command='/usr/local/sbin/mover',
+            start_time=datetime.now(),
+            status=ProcessStatus.RUNNING
+        )
+        
+        result = detector.get_execution_context(process_info)
+        assert result == 'cron'
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_get_execution_context_manual(self, mock_psutil: MagicMock) -> None:
+        """Test get_execution_context for manual bash execution."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Mock parent process as bash
+        mock_parent = Mock()
+        mock_parent.name.return_value = 'bash'
+        mock_parent.cmdline.return_value = ['/bin/bash']
+        
+        # Mock main process
+        mock_process = Mock()
+        mock_process.parent.return_value = mock_parent
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        from mover_status.core.process.models import ProcessInfo, ProcessStatus
+        from datetime import datetime
+        
+        process_info = ProcessInfo(
+            pid=1234,
+            name='mover',
+            command='/usr/local/sbin/mover',
+            start_time=datetime.now(),
+            status=ProcessStatus.RUNNING
+        )
+        
+        result = detector.get_execution_context(process_info)
+        assert result == 'manual'
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_get_execution_context_web_ui(self, mock_psutil: MagicMock) -> None:
+        """Test get_execution_context for web UI execution."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Mock parent process as emhttp
+        mock_parent = Mock()
+        mock_parent.name.return_value = 'emhttp'
+        mock_parent.cmdline.return_value = ['/usr/local/emhttp/webgui/emhttp']
+        
+        # Mock main process
+        mock_process = Mock()
+        mock_process.parent.return_value = mock_parent
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        from mover_status.core.process.models import ProcessInfo, ProcessStatus
+        from datetime import datetime
+        
+        process_info = ProcessInfo(
+            pid=1234,
+            name='mover',
+            command='/usr/local/sbin/mover',
+            start_time=datetime.now(),
+            status=ProcessStatus.RUNNING
+        )
+        
+        result = detector.get_execution_context(process_info)
+        assert result == 'web_ui'
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_get_execution_context_unknown(self, mock_psutil: MagicMock) -> None:
+        """Test get_execution_context for unknown execution."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Mock parent process as unknown
+        mock_parent = Mock()
+        mock_parent.name.return_value = 'unknown'
+        mock_parent.cmdline.return_value = ['/bin/unknown']
+        
+        # Mock main process
+        mock_process = Mock()
+        mock_process.parent.return_value = mock_parent
+        mock_psutil.Process.return_value = mock_process
+        
+        detector = UnraidMoverDetector()
+        from mover_status.core.process.models import ProcessInfo, ProcessStatus
+        from datetime import datetime
+        
+        process_info = ProcessInfo(
+            pid=1234,
+            name='mover',
+            command='/usr/local/sbin/mover',
+            start_time=datetime.now(),
+            status=ProcessStatus.RUNNING
+        )
+        
+        result = detector.get_execution_context(process_info)
+        assert result == 'unknown'
+
+    def test_updated_mover_patterns_include_new_paths(self) -> None:
+        """Test that MOVER_PATTERNS includes new Unraid-specific paths."""
+        detector = UnraidMoverDetector()
+        
+        # Check for new patterns that should be added
+        expected_patterns = [
+            '/usr/local/sbin/mover.old',
+            '/usr/local/emhttp/plugins/ca.mover.tuning/mover.php',
+            '/usr/local/emhttp/plugins/ca.mover.tuning/age_mover'
+        ]
+        
+        # These should fail initially since we haven't implemented them yet
+        for pattern in expected_patterns:
+            assert pattern in detector.MOVER_PATTERNS, f"Pattern '{pattern}' should be in MOVER_PATTERNS"
+
+    @patch('mover_status.core.process.unraid_detector.psutil')
+    def test_detect_mover_with_pid_file_priority(self, mock_psutil: MagicMock) -> None:
+        """Test that detect_mover prioritizes PID file over process scanning."""
+        self._setup_mock_psutil(mock_psutil)
+        
+        # Setup PID file mock
+        mock_file = Mock()
+        mock_file.read.return_value = '1234\n'
+        
+        # Mock process from PID file
+        mock_pid_process = Mock()
+        mock_pid_process.is_running.return_value = True
+        mock_pid_process.pid = 1234
+        mock_pid_process.name.return_value = 'mover'
+        mock_pid_process.cmdline.return_value = ['/usr/local/sbin/mover.old', 'start']
+        mock_pid_process.create_time.return_value = 1735728000.0
+        mock_pid_process.status.return_value = 'running'
+        mock_pid_process.cpu_percent.return_value = 10.0
+        mock_pid_process.memory_info.return_value = Mock(rss=1024 * 1024 * 20)
+        mock_pid_process.cwd.return_value = '/tmp'
+        mock_pid_process.username.return_value = 'root'
+        
+        # Mock process from scanning (should be ignored)
+        mock_scan_process = Mock()
+        mock_scan_process.info = {
+            'pid': 5678,
+            'name': 'mover',
+            'cmdline': ['/usr/local/sbin/mover']
+        }
+        
+        mock_psutil.Process.return_value = mock_pid_process
+        mock_psutil.process_iter.return_value = [mock_scan_process]
+        
+        detector = UnraidMoverDetector()
+        
+        with patch('builtins.open', mock_open(read_data='1234\n')):
+            result = detector.detect_mover()
+        
+        # Should return process from PID file, not from scanning
+        assert result is not None
+        assert result.pid == 1234
+        assert 'mover.old' in result.command
