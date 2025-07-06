@@ -160,7 +160,7 @@ def with_advanced_retry(
                         break
                 
                 if valid_tuple:
-                    expected_exception = expected_exception_val  # type: ignore[assignment]
+                    expected_exception = expected_exception_val  # pyright: ignore[reportUnknownVariableType]
                 else:
                     expected_exception = Exception
             else:

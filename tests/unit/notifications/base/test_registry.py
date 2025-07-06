@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from mover_status.notifications.base.registry import (
     ProviderRegistry,
@@ -28,15 +28,18 @@ class MockProvider(NotificationProvider):
         self.send_calls: list[Message] = []
         self.validate_calls: list[bool] = []
         
+    @override
     async def send_notification(self, message: Message) -> bool:
         """Mock send notification."""
         self.send_calls.append(message)
         return True
         
+    @override
     def validate_config(self) -> None:
         """Mock validate config."""
         self.validate_calls.append(True)
         
+    @override
     def get_provider_name(self) -> str:
         """Mock get provider name."""
         return "mock"
@@ -48,14 +51,17 @@ class FailingProvider(NotificationProvider):
     def __init__(self, config: Mapping[str, object]) -> None:
         super().__init__(config)
         
+    @override
     async def send_notification(self, message: Message) -> bool:
         """Mock send notification."""
         return False
         
+    @override
     def validate_config(self) -> None:
         """Mock validate config that fails."""
         raise ValueError("Invalid configuration")
         
+    @override
     def get_provider_name(self) -> str:
         """Mock get provider name."""
         return "failing"
@@ -146,9 +152,9 @@ class TestProviderRegistry:
         """Test registry initialization."""
         registry = ProviderRegistry()
         
-        assert len(registry._providers) == 0
-        assert len(registry._metadata) == 0
-        assert len(registry._instances) == 0
+        assert len(registry._providers) == 0  # pyright: ignore[reportPrivateUsage]
+        assert len(registry._metadata) == 0  # pyright: ignore[reportPrivateUsage]
+        assert len(registry._instances) == 0  # pyright: ignore[reportPrivateUsage]
         
     def test_register_provider(self) -> None:
         """Test registering a provider."""

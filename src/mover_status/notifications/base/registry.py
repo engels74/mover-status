@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, override
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -35,6 +35,7 @@ class ProviderMetadata:
     tags: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     
+    @override
     def __str__(self) -> str:
         """String representation of metadata."""
         return f"{self.name} v{self.version} by {self.author}"
