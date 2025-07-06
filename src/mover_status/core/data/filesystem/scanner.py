@@ -9,6 +9,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .exclusions import DefaultExclusionFilter, ExclusionFilter
+
 if TYPE_CHECKING:
     pass
 
@@ -35,17 +37,30 @@ class DirectoryScanner:
         exclusions: set[str] | None = None,
         max_depth: int | None = None,
         strategy: ScanStrategy = ScanStrategy.DEPTH_FIRST,
+        exclusion_filter: ExclusionFilter | None = None,
     ) -> None:
         """Initialize the directory scanner.
         
         Args:
-            exclusions: Set of glob patterns to exclude from scanning
+            exclusions: Set of glob patterns to exclude from scanning (legacy)
             max_depth: Maximum depth to scan (None for unlimited)
             strategy: Scanning strategy to use
+            exclusion_filter: Advanced exclusion filter (overrides exclusions)
         """
         self.exclusions: set[str] = exclusions or {".snapshots", ".Recycle.Bin", "@eaDir"}
         self.max_depth: int | None = max_depth
         self.strategy: ScanStrategy = strategy
+        
+        # Use provided exclusion filter or create default one
+        if exclusion_filter is not None:
+            self.exclusion_filter: ExclusionFilter = exclusion_filter
+        elif exclusions:
+            # Create filter from legacy exclusions
+            self.exclusion_filter = ExclusionFilter()
+            self.exclusion_filter.add_patterns(exclusions)
+        else:
+            # Use default exclusions
+            self.exclusion_filter = DefaultExclusionFilter()
 
     def scan_directory(self, path: Path) -> Iterator[Path]:
         """Yield all files in directory tree, respecting exclusions and depth limits.
@@ -129,6 +144,11 @@ class DirectoryScanner:
         Returns:
             True if path should be excluded, False otherwise
         """
+        # Use new exclusion filter if available, fallback to legacy method
+        if hasattr(self, 'exclusion_filter'):
+            return self.exclusion_filter.should_exclude(path)
+        
+        # Legacy fallback
         return any(
             fnmatch.fnmatch(path.name, pattern) 
             for pattern in self.exclusions
