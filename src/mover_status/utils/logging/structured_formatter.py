@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, override
 
 from .correlation_id import get_correlation_id
+from .context_managers import thread_local_context
 
 type LogValue = str | int | float | bool | None | list[Any] | dict[str, Any]  # pyright: ignore[reportExplicitAny]
 
@@ -114,6 +115,13 @@ class StructuredFormatter(logging.Formatter):
         # Add exception information if present
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
+        
+        # Add context fields from thread-local storage
+        context_fields = thread_local_context.fields
+        for key, value in context_fields.items():
+            if key not in log_data:  # Don't override existing fields
+                serialized_value = self._serialize_value(value)
+                log_data[key] = serialized_value
         
         # Add extra fields from record
         for key, value in record.__dict__.items():  # pyright: ignore[reportAny] # log record fields are Any
