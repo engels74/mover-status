@@ -2,8 +2,27 @@
 
 from __future__ import annotations
 
+from .dispatcher import (
+    AsyncDispatcher,
+    BatchProcessor,
+    DeliveryTracker,
+    DispatchResult,
+    DispatchStatus,
+    MessageQueue,
+    ProviderResult,
+    QueuedMessage,
+    WorkerPool,
+)
+
 __all__ = [
-    # TODO: Add manager classes when implemented
-    # "NotificationManager",
-    # "ProviderRegistry",
+    # Async dispatch infrastructure
+    "AsyncDispatcher",
+    "BatchProcessor",
+    "DeliveryTracker",
+    "DispatchResult",
+    "DispatchStatus",
+    "MessageQueue",
+    "ProviderResult",
+    "QueuedMessage",
+    "WorkerPool",
 ]
