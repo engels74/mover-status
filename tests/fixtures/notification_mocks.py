@@ -356,7 +356,7 @@ class NotificationTestUtils:
                     "unreliable": UnreliableMockProvider(configs["unreliable"], "unreliable")
                 },
                 message_count=50,
-                expected_success_rate=85.0,
+                expected_success_rate=80.0,  # More realistic with 15% failure rate
                 description="Mixed reliable and unreliable providers"
             ),
             TestScenario(

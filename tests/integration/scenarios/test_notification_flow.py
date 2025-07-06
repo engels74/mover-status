@@ -282,7 +282,7 @@ class TestNotificationFlowIntegration:
         from mover_status.notifications.base.config_validator import ConfigValidator
 
         # Create validator
-        validator = ConfigValidator()
+        validator = ConfigValidator("config_test_provider")
 
         # Test valid configuration
         valid_config = {

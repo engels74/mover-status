@@ -469,7 +469,7 @@ class TestProviderLifecycleManager:
         async def startup_hook() -> None:
             pass
 
-        manager.add_startup_hook(startup_hook)
+        manager.add_global_startup_hook(startup_hook)
 
         assert manager.get_startup_hook_count() == 1
         
@@ -480,7 +480,7 @@ class TestProviderLifecycleManager:
         async def shutdown_hook() -> None:
             pass
 
-        manager.add_shutdown_hook(shutdown_hook)
+        manager.add_global_shutdown_hook(shutdown_hook)
 
         assert manager.get_shutdown_hook_count() == 1
         
@@ -496,7 +496,7 @@ class TestProviderLifecycleManager:
             nonlocal startup_called
             startup_called = True
             
-        manager.add_startup_hook(startup_hook)
+        manager.add_global_startup_hook(startup_hook)
         
         await manager.startup_provider("test", provider)
 
@@ -515,7 +515,7 @@ class TestProviderLifecycleManager:
             nonlocal shutdown_called
             shutdown_called = True
             
-        manager.add_shutdown_hook(shutdown_hook)
+        manager.add_global_shutdown_hook(shutdown_hook)
         
         await manager.startup_provider("test", provider)
         await manager.shutdown_provider("test")
@@ -536,7 +536,7 @@ class TestProviderLifecycleManager:
             nonlocal shutdown_count
             shutdown_count += 1
             
-        manager.add_shutdown_hook(shutdown_hook)
+        manager.add_global_shutdown_hook(shutdown_hook)
         
         await manager.startup_provider("test1", provider1)
         await manager.startup_provider("test2", provider2)

@@ -168,14 +168,51 @@ class ProviderRegistry:
         
     def provider_exists(self, name: str) -> bool:
         """Check if a provider is registered.
-        
+
         Args:
             name: Name of the provider
-            
+
         Returns:
             True if provider exists, False otherwise
         """
         return name in self._providers
+
+    def register_provider(
+        self,
+        name: str,
+        provider_class: type[NotificationProvider],
+        metadata: ProviderMetadata | None = None,
+        force: bool = False
+    ) -> None:
+        """Register a notification provider (alias for register method).
+
+        Args:
+            name: Unique name for the provider
+            provider_class: The provider class
+            metadata: Provider metadata (optional, will create default if None)
+            force: Whether to overwrite existing provider
+
+        Raises:
+            ProviderRegistryError: If provider already exists and force is False
+        """
+        if metadata is None:
+            # Create default metadata if not provided
+            metadata = ProviderMetadata(
+                name=name,
+                description=f"Provider {name}",
+                version="1.0.0",
+                author="Unknown",
+                provider_class=provider_class
+            )
+
+        self.register(name, provider_class, metadata, force)
+
+    def reset(self) -> None:
+        """Reset the registry by clearing all providers and instances."""
+        self._providers.clear()
+        self._metadata.clear()
+        self._instances.clear()
+        logger.info("Provider registry reset")
 
 
 class ProviderDiscovery:
@@ -273,60 +310,102 @@ class ProviderLifecycleManager:
         self._instances: dict[str, NotificationProvider] = {}
         self._startup_hooks: list[Callable[[], Awaitable[None]]] = []
         self._shutdown_hooks: list[Callable[[], Awaitable[None]]] = []
+        self._provider_startup_hooks: dict[str, list[Callable[[NotificationProvider], Awaitable[None]]]] = {}
+        self._provider_shutdown_hooks: dict[str, list[Callable[[NotificationProvider], Awaitable[None]]]] = {}
         logger.info("Provider lifecycle manager initialized")
         
-    def add_startup_hook(self, hook: Callable[[], Awaitable[None]]) -> None:
-        """Add a startup hook.
-        
+    def add_startup_hook(self, provider_name: str, hook: Callable[[NotificationProvider], Awaitable[None]]) -> None:
+        """Add a startup hook for a specific provider.
+
+        Args:
+            provider_name: Name of the provider
+            hook: Async function to call on startup (receives provider instance)
+        """
+        if provider_name not in self._provider_startup_hooks:
+            self._provider_startup_hooks[provider_name] = []
+        self._provider_startup_hooks[provider_name].append(hook)
+        logger.debug("Added startup hook for %s: %s", provider_name, hook.__name__)
+
+    def add_shutdown_hook(self, provider_name: str, hook: Callable[[NotificationProvider], Awaitable[None]]) -> None:
+        """Add a shutdown hook for a specific provider.
+
+        Args:
+            provider_name: Name of the provider
+            hook: Async function to call on shutdown (receives provider instance)
+        """
+        if provider_name not in self._provider_shutdown_hooks:
+            self._provider_shutdown_hooks[provider_name] = []
+        self._provider_shutdown_hooks[provider_name].append(hook)
+        logger.debug("Added shutdown hook for %s: %s", provider_name, hook.__name__)
+
+    def add_global_startup_hook(self, hook: Callable[[], Awaitable[None]]) -> None:
+        """Add a global startup hook (backward compatibility).
+
         Args:
             hook: Async function to call on startup
         """
         self._startup_hooks.append(hook)
-        logger.debug("Added startup hook: %s", hook.__name__)
-        
-    def add_shutdown_hook(self, hook: Callable[[], Awaitable[None]]) -> None:
-        """Add a shutdown hook.
-        
+        logger.debug("Added global startup hook: %s", hook.__name__)
+
+    def add_global_shutdown_hook(self, hook: Callable[[], Awaitable[None]]) -> None:
+        """Add a global shutdown hook (backward compatibility).
+
         Args:
             hook: Async function to call on shutdown
         """
         self._shutdown_hooks.append(hook)
-        logger.debug("Added shutdown hook: %s", hook.__name__)
+        logger.debug("Added global shutdown hook: %s", hook.__name__)
         
     async def startup_provider(self, name: str, provider: NotificationProvider) -> None:
         """Start up a provider.
-        
+
         Args:
             name: Name of the provider
             provider: Provider instance
         """
         self._instances[name] = provider
-        
-        # Execute startup hooks
+
+        # Execute global startup hooks
         for hook in self._startup_hooks:
             try:
                 await hook()
             except Exception as e:
-                logger.error("Startup hook failed: %s", e)
-                
+                logger.error("Global startup hook failed: %s", e)
+
+        # Execute provider-specific startup hooks
+        if name in self._provider_startup_hooks:
+            for hook in self._provider_startup_hooks[name]:
+                try:
+                    await hook(provider)
+                except Exception as e:
+                    logger.error("Provider startup hook failed for %s: %s", name, e)
+
         logger.info("Started provider: %s", name)
         
     async def shutdown_provider(self, name: str) -> None:
         """Shutdown a provider.
-        
+
         Args:
             name: Name of the provider
         """
         if name not in self._instances:
             return
-            
-        # Execute shutdown hooks
+
+        # Execute provider-specific shutdown hooks
+        if name in self._provider_shutdown_hooks:
+            for hook in self._provider_shutdown_hooks[name]:
+                try:
+                    await hook(self._instances[name])
+                except Exception as e:
+                    logger.error("Provider shutdown hook failed for %s: %s", name, e)
+
+        # Execute global shutdown hooks
         for hook in self._shutdown_hooks:
             try:
                 await hook()
             except Exception as e:
-                logger.error("Shutdown hook failed: %s", e)
-                
+                logger.error("Global shutdown hook failed: %s", e)
+
         del self._instances[name]
         logger.info("Shutdown provider: %s", name)
         
@@ -338,6 +417,10 @@ class ProviderLifecycleManager:
             await self.shutdown_provider(name)
             
         logger.info("Shutdown all providers")
+
+    async def shutdown_all(self) -> None:
+        """Shutdown all active providers (alias for shutdown_all_providers)."""
+        await self.shutdown_all_providers()
         
     def get_active_providers(self) -> list[str]:
         """Get list of active provider names.

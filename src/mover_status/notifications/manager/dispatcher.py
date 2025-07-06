@@ -48,6 +48,11 @@ class DispatchResult:
     created_at: float = field(default_factory=time.time)
     completed_at: float | None = None
 
+    @property
+    def provider_results(self) -> list[ProviderResult]:
+        """Get provider results as a list for backward compatibility."""
+        return list(self.results.values())
+
 
 @dataclass
 class QueuedMessage:
@@ -475,6 +480,14 @@ class AsyncDispatcher:
         
         self._dispatch_task = None
         logger.info("Stopped async dispatcher")
+
+    def is_running(self) -> bool:
+        """Check if the dispatcher is currently running.
+
+        Returns:
+            True if dispatcher is running, False otherwise
+        """
+        return self._dispatch_task is not None
     
     async def dispatch_message(
         self,

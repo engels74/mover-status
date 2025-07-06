@@ -328,18 +328,77 @@ class ConfigValidator:
         
         # Determine overall validity
         has_errors = any(issue.severity == ValidationSeverity.ERROR for issue in all_issues)
-        
+
         final_result = ValidationResult(
             is_valid=not has_errors,
             issues=all_issues,
             provider_name=self.provider_name
         )
-        
+
         # Log validation results
         if has_errors:
-            logger.warning("Configuration validation failed for %s: %s", 
+            logger.warning("Configuration validation failed for %s: %s",
                          self.provider_name, final_result.get_error_summary())
         else:
             logger.info("Configuration validation passed for %s", self.provider_name)
-            
+
         return final_result
+
+    def validate_config(self, config: Mapping[str, object]) -> ValidationResult:
+        """Synchronous wrapper for validate method.
+
+        Args:
+            config: Configuration to validate
+
+        Returns:
+            Validation result
+        """
+        import asyncio
+        try:
+            # Try to get the current event loop
+            loop = asyncio.get_running_loop()
+            # If we're in an async context, do basic synchronous validation
+            issues: list[ValidationIssue] = []
+
+            # Basic validation checks
+            if "enabled" in config:
+                if not isinstance(config["enabled"], bool):
+                    issues.append(ValidationIssue(
+                        field="enabled",
+                        message="Must be a boolean value",
+                        severity=ValidationSeverity.ERROR,
+                        code="INVALID_TYPE",
+                        details={"value": config["enabled"], "expected_type": "bool"}
+                    ))
+
+            if "timeout" in config:
+                if not isinstance(config["timeout"], (int, float)) or config["timeout"] <= 0:
+                    issues.append(ValidationIssue(
+                        field="timeout",
+                        message="Must be a positive number",
+                        severity=ValidationSeverity.ERROR,
+                        code="INVALID_VALUE",
+                        details={"value": config["timeout"], "constraint": "positive number"}
+                    ))
+
+            has_errors = any(issue.severity == ValidationSeverity.ERROR for issue in issues)
+            return ValidationResult(
+                is_valid=not has_errors,
+                issues=issues,
+                provider_name=self.provider_name
+            )
+        except RuntimeError:
+            # No event loop running, safe to use asyncio.run
+            return asyncio.run(self.validate(config))
+
+    def validate_provider_config(self, provider_name: str, config: Mapping[str, object]) -> ValidationResult:
+        """Validate provider configuration (backward compatibility method).
+
+        Args:
+            provider_name: Name of the provider (ignored, uses instance provider_name)
+            config: Configuration to validate
+
+        Returns:
+            Validation result
+        """
+        return self.validate_config(config)
