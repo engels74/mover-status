@@ -154,12 +154,14 @@ def with_advanced_retry(
             elif isinstance(expected_exception_val, tuple):
                 # Validate all tuple elements are exception types
                 valid_tuple = True
-                for exc in expected_exception_val:
+                for exc in expected_exception_val:  # pyright: ignore[reportUnknownVariableType]
+                    # Type narrowing: exc could be any object in the tuple
                     if not (isinstance(exc, type) and issubclass(exc, Exception)):
                         valid_tuple = False
                         break
                 
                 if valid_tuple:
+                    # Type assertion: we've validated all elements are exception types
                     expected_exception = expected_exception_val  # pyright: ignore[reportUnknownVariableType]
                 else:
                     expected_exception = Exception

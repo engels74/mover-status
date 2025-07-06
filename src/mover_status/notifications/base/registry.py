@@ -198,13 +198,32 @@ class ProviderDiscovery:
             
     def remove_search_path(self, path: str) -> None:
         """Remove a search path.
-        
+
         Args:
             path: Path to remove
         """
         if path in self._search_paths:
             self._search_paths.remove(path)
             logger.debug("Removed search path: %s", path)
+
+    def get_search_paths(self) -> list[str]:
+        """Get list of search paths.
+
+        Returns:
+            List of search paths
+        """
+        return self._search_paths.copy()
+
+    def has_search_path(self, path: str) -> bool:
+        """Check if a search path exists.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if path exists, False otherwise
+        """
+        return path in self._search_paths
             
     def discover_providers(self) -> dict[str, tuple[type[NotificationProvider], ProviderMetadata]]:
         """Discover providers in search paths.
@@ -330,14 +349,30 @@ class ProviderLifecycleManager:
         
     def is_provider_active(self, name: str) -> bool:
         """Check if a provider is active.
-        
+
         Args:
             name: Name of the provider
-            
+
         Returns:
             True if provider is active, False otherwise
         """
         return name in self._instances
+
+    def get_startup_hook_count(self) -> int:
+        """Get the number of startup hooks.
+
+        Returns:
+            Number of startup hooks
+        """
+        return len(self._startup_hooks)
+
+    def get_shutdown_hook_count(self) -> int:
+        """Get the number of shutdown hooks.
+
+        Returns:
+            Number of shutdown hooks
+        """
+        return len(self._shutdown_hooks)
 
 
 # Global provider registry instance

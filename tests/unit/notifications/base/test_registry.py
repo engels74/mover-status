@@ -168,11 +168,9 @@ class TestProviderRegistry:
         )
         
         registry.register("test", MockProvider, metadata)
-        
-        assert "test" in registry._providers
-        assert registry._providers["test"] == MockProvider
-        assert "test" in registry._metadata
-        assert registry._metadata["test"] == metadata
+
+        assert registry.provider_exists("test")
+        assert registry.get_provider_metadata("test") == metadata
         
     def test_register_duplicate_provider(self) -> None:
         """Test registering a duplicate provider raises error."""
@@ -210,8 +208,8 @@ class TestProviderRegistry:
         
         registry.register("test", MockProvider, metadata1)
         registry.register("test", MockProvider, metadata2, force=True)
-        
-        assert registry._metadata["test"] == metadata2
+
+        assert registry.get_provider_metadata("test") == metadata2
         
     def test_unregister_provider(self) -> None:
         """Test unregistering a provider."""
@@ -226,10 +224,9 @@ class TestProviderRegistry:
         
         registry.register("test", MockProvider, metadata)
         registry.unregister("test")
-        
-        assert "test" not in registry._providers
-        assert "test" not in registry._metadata
-        assert "test" not in registry._instances
+
+        assert not registry.provider_exists("test")
+        assert registry.get_provider_metadata("test") is None
         
     def test_unregister_nonexistent_provider(self) -> None:
         """Test unregistering a nonexistent provider raises error."""
@@ -402,25 +399,25 @@ class TestProviderDiscovery:
     def test_discovery_initialization(self) -> None:
         """Test discovery initialization."""
         discovery = ProviderDiscovery()
-        
-        assert len(discovery._search_paths) == 0
+
+        assert len(discovery.get_search_paths()) == 0
         
     def test_add_search_path(self) -> None:
         """Test adding search path."""
         discovery = ProviderDiscovery()
-        
+
         discovery.add_search_path("/test/path")
-        
-        assert "/test/path" in discovery._search_paths
+
+        assert discovery.has_search_path("/test/path")
         
     def test_remove_search_path(self) -> None:
         """Test removing search path."""
         discovery = ProviderDiscovery()
-        
+
         discovery.add_search_path("/test/path")
         discovery.remove_search_path("/test/path")
-        
-        assert "/test/path" not in discovery._search_paths
+
+        assert not discovery.has_search_path("/test/path")
         
     def test_discover_providers_empty(self) -> None:
         """Test discovering providers with no search paths."""
@@ -460,34 +457,32 @@ class TestProviderLifecycleManager:
     def test_lifecycle_manager_initialization(self) -> None:
         """Test lifecycle manager initialization."""
         manager = ProviderLifecycleManager()
-        
-        assert len(manager._instances) == 0
-        assert len(manager._startup_hooks) == 0
-        assert len(manager._shutdown_hooks) == 0
+
+        assert len(manager.get_active_providers()) == 0
+        assert manager.get_startup_hook_count() == 0
+        assert manager.get_shutdown_hook_count() == 0
         
     def test_add_startup_hook(self) -> None:
         """Test adding startup hook."""
         manager = ProviderLifecycleManager()
-        
+
         async def startup_hook() -> None:
             pass
-            
+
         manager.add_startup_hook(startup_hook)
-        
-        assert len(manager._startup_hooks) == 1
-        assert startup_hook in manager._startup_hooks
+
+        assert manager.get_startup_hook_count() == 1
         
     def test_add_shutdown_hook(self) -> None:
         """Test adding shutdown hook."""
         manager = ProviderLifecycleManager()
-        
+
         async def shutdown_hook() -> None:
             pass
-            
+
         manager.add_shutdown_hook(shutdown_hook)
-        
-        assert len(manager._shutdown_hooks) == 1
-        assert shutdown_hook in manager._shutdown_hooks
+
+        assert manager.get_shutdown_hook_count() == 1
         
     @pytest.mark.asyncio
     async def test_startup_provider(self) -> None:
@@ -504,9 +499,8 @@ class TestProviderLifecycleManager:
         manager.add_startup_hook(startup_hook)
         
         await manager.startup_provider("test", provider)
-        
-        assert "test" in manager._instances
-        assert manager._instances["test"] == provider
+
+        assert manager.is_provider_active("test")
         assert startup_called is True
         
     @pytest.mark.asyncio
@@ -525,8 +519,8 @@ class TestProviderLifecycleManager:
         
         await manager.startup_provider("test", provider)
         await manager.shutdown_provider("test")
-        
-        assert "test" not in manager._instances
+
+        assert not manager.is_provider_active("test")
         assert shutdown_called is True
         
     @pytest.mark.asyncio
@@ -548,8 +542,8 @@ class TestProviderLifecycleManager:
         await manager.startup_provider("test2", provider2)
         
         await manager.shutdown_all_providers()
-        
-        assert len(manager._instances) == 0
+
+        assert len(manager.get_active_providers()) == 0
         assert shutdown_count == 2
         
     def test_get_active_providers(self) -> None:
