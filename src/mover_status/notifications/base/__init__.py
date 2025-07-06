@@ -11,6 +11,15 @@ from .retry import (
     with_advanced_retry,
     with_timeout
 )
+from .registry import (
+    ProviderRegistry,
+    ProviderRegistryError,
+    ProviderMetadata,
+    ProviderDiscovery,
+    ProviderLifecycleManager,
+    get_global_registry,
+    reset_global_registry
+)
 
 __all__ = [
     "NotificationProvider",
@@ -20,5 +29,12 @@ __all__ = [
     "CircuitBreakerState",
     "RetryTimeoutError",
     "with_advanced_retry",
-    "with_timeout"
+    "with_timeout",
+    "ProviderRegistry",
+    "ProviderRegistryError",
+    "ProviderMetadata",
+    "ProviderDiscovery",
+    "ProviderLifecycleManager",
+    "get_global_registry",
+    "reset_global_registry"
 ]
