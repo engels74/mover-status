@@ -13,6 +13,13 @@ from .etc_estimator import (
     EstimationMethod,
     ETCResult,
 )
+from .history_manager import (
+    HistoryManager,
+    MovingAverageType,
+    RetentionPolicy,
+    DataPoint,
+    HistoryStats,
+)
 
 __all__ = [
     "ProgressPercentageCalculator",
@@ -22,4 +29,9 @@ __all__ = [
     "ETCEstimator",
     "EstimationMethod",
     "ETCResult",
+    "HistoryManager",
+    "MovingAverageType",
+    "RetentionPolicy",
+    "DataPoint",
+    "HistoryStats",
 ]
