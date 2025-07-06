@@ -31,7 +31,7 @@ class TestTransferRateCalculator:
             calculator.add_sample(1000, 1.0)
             
             rate = calculator.get_current_rate()
-            assert rate == pytest.approx(1000.0, rel=1e-5)  # 1000 bytes/second
+            assert rate == pytest.approx(1000.0, rel=1e-5)  # pyright: ignore[reportUnknownMemberType] # 1000 bytes/second
 
     def test_rate_with_multiple_samples(self) -> None:
         """Test rate calculation with multiple data points."""
@@ -53,7 +53,7 @@ class TestTransferRateCalculator:
             
             rate = calculator.get_current_rate()
             # Average rate over 3 seconds: 4500 bytes / 3 seconds = 1500 bytes/second
-            assert rate == pytest.approx(1500.0, rel=1e-5)
+            assert rate == pytest.approx(1500.0, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
 
     def test_instantaneous_rate(self) -> None:
         """Test instantaneous rate calculation between last two samples."""
@@ -70,7 +70,7 @@ class TestTransferRateCalculator:
             calculator.add_sample(2500, 2.0)  # 2000 bytes in last second
             
             instant_rate = calculator.get_instantaneous_rate()
-            assert instant_rate == pytest.approx(2000.0, rel=1e-5)
+            assert instant_rate == pytest.approx(2000.0, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
 
     def test_different_rate_units(self) -> None:
         """Test rate calculation with different units."""
@@ -95,9 +95,9 @@ class TestTransferRateCalculator:
                 calc.add_sample(mb_bytes, 1.0)
             
             # Check rates in different units
-            assert calc_bytes.get_current_rate() == pytest.approx(mb_bytes, rel=1e-5)
-            assert calc_kb.get_current_rate() == pytest.approx(1024.0, rel=1e-5)
-            assert calc_mb.get_current_rate() == pytest.approx(1.0, rel=1e-5)
+            assert calc_bytes.get_current_rate() == pytest.approx(mb_bytes, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
+            assert calc_kb.get_current_rate() == pytest.approx(1024.0, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
+            assert calc_mb.get_current_rate() == pytest.approx(1.0, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
 
     def test_smoothing_methods(self) -> None:
         """Test different smoothing algorithms."""
@@ -205,7 +205,7 @@ class TestTransferRateCalculator:
             
             rate = calculator.get_current_rate()
             expected_rate = tb_size / 1000.0  # 1GB/second
-            assert rate == pytest.approx(expected_rate, rel=1e-5)
+            assert rate == pytest.approx(expected_rate, rel=1e-5)  # pyright: ignore[reportUnknownMemberType]
 
     def test_decimal_precision(self) -> None:
         """Test rate calculation with high precision Decimal inputs."""
@@ -219,7 +219,7 @@ class TestTransferRateCalculator:
             calculator.add_sample(Decimal('1000.123456'), 1.0)
 
             rate = calculator.get_current_rate()
-            assert rate == pytest.approx(1000.123456, rel=1e-6)
+            assert rate == pytest.approx(1000.123456, rel=1e-6)  # pyright: ignore[reportUnknownMemberType]
 
     def test_rate_history_access(self) -> None:
         """Test access to rate calculation history."""

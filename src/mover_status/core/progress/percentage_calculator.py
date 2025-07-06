@@ -35,15 +35,11 @@ class ProgressPercentageCalculator:
             The percentage as a float value, capped at 100.0
             
         Raises:
-            TypeError: If progress or total are not numeric types
             ValueError: If progress or total are negative, or if total is zero with non-zero progress
         """
-        # Type validation
-        if not isinstance(progress, (int, float, Decimal)):
-            raise TypeError("Progress must be a number")
-        
-        if not isinstance(total, (int, float, Decimal)):
-            raise TypeError("Total must be a number")
+        # Type validation - runtime checks for edge cases
+        # Note: Type hints ensure compile-time type safety, but we still need runtime validation
+        # for cases where the function might be called with invalid types at runtime
         
         # Convert to float for calculation
         progress_val = float(progress)

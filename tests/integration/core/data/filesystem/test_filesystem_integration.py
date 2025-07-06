@@ -228,7 +228,7 @@ class TestFilesystemIntegration:
             # Should handle missing files gracefully
             missing_path = temp_path / "missing"
             with pytest.raises(OSError):
-                calculator.calculate_size(missing_path)
+                _ = calculator.calculate_size(missing_path)
             
             # Should handle directory scanning gracefully
             files = list(scanner.scan_directory(temp_path))
@@ -353,7 +353,7 @@ class TestFilesystemIntegration:
             for file_path in system_files:
                 full_path = temp_path / file_path
                 full_path.parent.mkdir(parents=True, exist_ok=True)
-                full_path.write_text("system file content")
+                _ = full_path.write_text("system file content")
             
             # Create some files that should be included
             normal_files = ["document.txt", "script.py", "data.json"]
@@ -478,7 +478,7 @@ class TestFilesystemPerformance:
             
             for i, size in enumerate(file_sizes * 20):  # 100 files total
                 file_path = temp_path / f"file_{i:03d}.dat"
-                file_path.write_bytes(b"x" * size)
+                _ = file_path.write_bytes(b"x" * size)
             
             # Test without cache
             calculator_no_cache = SizeCalculator(cache_enabled=False)
@@ -506,8 +506,8 @@ class TestFilesystemPerformance:
             assert second_cache_duration <= first_cache_duration
             assert second_cache_duration <= no_cache_duration
             
-            print(f"No cache: {no_cache_duration:.3f}s, "
-                  f"First cache: {first_cache_duration:.3f}s, "
+            print(f"No cache: {no_cache_duration:.3f}s, " +
+                  f"First cache: {first_cache_duration:.3f}s, " +
                   f"Second cache: {second_cache_duration:.3f}s")
 
     def test_deep_nesting_performance(self) -> None:
@@ -522,7 +522,7 @@ class TestFilesystemPerformance:
             for level in range(depth):
                 # Create a file at each level
                 file_path = current_path / f"level_{level}.txt"
-                file_path.write_text(f"Content at level {level}")
+                _ = file_path.write_text(f"Content at level {level}")
                 
                 # Create next level directory
                 if level < depth - 1:
@@ -583,7 +583,7 @@ class TestFilesystemEdgeCases:
             long_file = temp_path / long_name
             
             try:
-                long_file.write_text("Content with very long filename")
+                _ = long_file.write_text("Content with very long filename")
                 
                 scanner = DirectoryScanner()
                 calculator = SizeCalculator(scanner=scanner)
@@ -613,7 +613,7 @@ class TestFilesystemEdgeCases:
                 "café_résumé.txt",    # Accented characters
             ]
             
-            created_files = []
+            created_files: list[str] = []
             for filename in unicode_files:
                 try:
                     file_path = temp_path / filename
@@ -645,7 +645,7 @@ class TestFilesystemEdgeCases:
             # Create mix of zero-byte and normal files
             (temp_path / "empty1.txt").touch()
             (temp_path / "empty2.txt").touch()
-            (temp_path / "normal.txt").write_text("Some content")
+            _ = (temp_path / "normal.txt").write_text("Some content")
             (temp_path / "empty3.txt").touch()
             
             scanner = DirectoryScanner()
@@ -676,7 +676,7 @@ class TestFilesystemEdgeCases:
                 "file[with]brackets.txt",
             ]
             
-            created_files = []
+            created_files: list[str] = []
             for filename in special_names:
                 try:
                     file_path = temp_path / filename
@@ -719,7 +719,7 @@ class TestFilesystemEdgeCases:
                     # Add a file every 10 levels
                     if level % 10 == 0:
                         file_path = current_path / f"file_{level}.txt"
-                        file_path.write_text(f"File at level {level}")
+                        _ = file_path.write_text(f"File at level {level}")
                 
                 # Test scanning with depth limit
                 scanner_limited = DirectoryScanner(max_depth=50)
