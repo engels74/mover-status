@@ -110,14 +110,13 @@ class User:
 class TestWebAPIScenarios:
     """Test logging in web API scenarios."""
     
+    app_logger: logging.Logger  # pyright: ignore[reportUninitializedInstanceVariable]
+    console_output: io.StringIO  # pyright: ignore[reportUninitializedInstanceVariable]
+    temp_log: tempfile._TemporaryFileWrapper[str]  # pyright: ignore[reportPrivateUsage,reportUninitializedInstanceVariable]
+    file_handler: FileHandler  # pyright: ignore[reportUninitializedInstanceVariable]
+    
     def setup_method(self) -> None:
         """Set up test environment."""
-        # Initialize test instance variables
-        self.app_logger: logging.Logger
-        self.console_output: io.StringIO  
-        self.temp_log: tempfile._TemporaryFileWrapper[str]  # pyright: ignore[reportPrivateUsage]
-        self.file_handler: FileHandler
-        
         # Configure application logger
         self.app_logger = logging.getLogger("app")
         self.app_logger.setLevel(logging.DEBUG)
