@@ -2,21 +2,53 @@
 
 from __future__ import annotations
 
-import pytest
-from datetime import datetime
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 from mover_status.core.process.detector import ProcessDetector
-from mover_status.core.process.models import ProcessInfo, ProcessStatus
+from mover_status.core.process.models import ProcessStatus
 from mover_status.core.process.unraid_detector import UnraidMoverDetector
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
 
 
+# Create proper exception classes for mocking
+class MockNoSuchProcess(Exception):
+    """Mock exception for psutil.NoSuchProcess."""
+    pid: int
+
+    def __init__(self, pid: int = 0) -> None:
+        self.pid = pid
+        super().__init__(f"process no longer exists (pid={pid})")
+
+
+class MockAccessDenied(Exception):
+    """Mock exception for psutil.AccessDenied."""
+    pid: int
+
+    def __init__(self, pid: int = 0) -> None:
+        self.pid = pid
+        super().__init__(f"access denied (pid={pid})")
+
+
+class MockZombieProcess(Exception):
+    """Mock exception for psutil.ZombieProcess."""
+    pid: int
+
+    def __init__(self, pid: int = 0) -> None:
+        self.pid = pid
+        super().__init__(f"zombie process (pid={pid})")
+
+
 class TestUnraidMoverDetector:
     """Test the Unraid-specific process detector."""
+
+    def _setup_mock_psutil(self, mock_psutil: MagicMock) -> None:
+        """Set up mock psutil with proper exception classes."""
+        mock_psutil.NoSuchProcess = MockNoSuchProcess
+        mock_psutil.AccessDenied = MockAccessDenied
+        mock_psutil.ZombieProcess = MockZombieProcess
 
     def test_unraid_detector_is_process_detector(self) -> None:
         """Test that UnraidMoverDetector is a ProcessDetector."""
@@ -35,6 +67,8 @@ class TestUnraidMoverDetector:
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_detect_mover_with_matching_process(self, mock_psutil: MagicMock) -> None:
         """Test detect_mover when mover process is running."""
+        self._setup_mock_psutil(mock_psutil)
+
         # Mock process data
         mock_proc = Mock()
         mock_proc.info = {
@@ -42,7 +76,7 @@ class TestUnraidMoverDetector:
             'name': 'mover',
             'cmdline': ['/usr/local/sbin/mover']
         }
-        
+
         # Mock psutil.Process methods
         mock_proc.pid = 1234
         mock_proc.name.return_value = 'mover'
@@ -53,13 +87,13 @@ class TestUnraidMoverDetector:
         mock_proc.memory_info.return_value = Mock(rss=1024 * 1024 * 50)  # 50MB
         mock_proc.cwd.return_value = '/tmp'
         mock_proc.username.return_value = 'root'
-        
+
         # Mock psutil.process_iter to return our mock process
         mock_psutil.process_iter.return_value = [mock_proc]
-        
+
         detector = UnraidMoverDetector()
         result = detector.detect_mover()
-        
+
         assert result is not None
         assert result.pid == 1234
         assert result.name == 'mover'
@@ -191,21 +225,23 @@ class TestUnraidMoverDetector:
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_is_process_running_with_non_existing_process(self, mock_psutil: MagicMock) -> None:
         """Test is_process_running with non-existing process."""
-        mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(9999)
-        
+        self._setup_mock_psutil(mock_psutil)
+        mock_psutil.Process.side_effect = MockNoSuchProcess(9999)
+
         detector = UnraidMoverDetector()
         result = detector.is_process_running(9999)
-        
+
         assert result is False
 
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_is_process_running_with_access_denied(self, mock_psutil: MagicMock) -> None:
         """Test is_process_running with access denied."""
-        mock_psutil.Process.side_effect = mock_psutil.AccessDenied()
-        
+        self._setup_mock_psutil(mock_psutil)
+        mock_psutil.Process.side_effect = MockAccessDenied()
+
         detector = UnraidMoverDetector()
         result = detector.is_process_running(1234)
-        
+
         assert result is False
 
     @patch('mover_status.core.process.unraid_detector.psutil')
@@ -240,16 +276,19 @@ class TestUnraidMoverDetector:
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_get_process_info_with_non_existing_process(self, mock_psutil: MagicMock) -> None:
         """Test get_process_info with non-existing process."""
-        mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(9999)
-        
+        self._setup_mock_psutil(mock_psutil)
+        mock_psutil.Process.side_effect = MockNoSuchProcess(9999)
+
         detector = UnraidMoverDetector()
         result = detector.get_process_info(9999)
-        
+
         assert result is None
 
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_list_processes(self, mock_psutil: MagicMock) -> None:
         """Test list_processes functionality."""
+        self._setup_mock_psutil(mock_psutil)
+
         # Mock process data
         mock_proc1 = Mock()
         mock_proc1.info = {
@@ -264,7 +303,13 @@ class TestUnraidMoverDetector:
         mock_proc1.create_time.return_value = 1735728000.0
         mock_proc1.cpu_percent.return_value = 5.0
         mock_proc1.memory_info.return_value = Mock(rss=1024 * 1024 * 10)  # 10MB
-        
+        mock_proc1.pid = 1111
+        mock_proc1.name.return_value = 'process1'
+        mock_proc1.cmdline.return_value = ['/bin/process1']
+        mock_proc1.status.return_value = 'running'
+        mock_proc1.cwd.return_value = '/tmp'
+        mock_proc1.username.return_value = 'user1'
+
         mock_proc2 = Mock()
         mock_proc2.info = {
             'pid': 2222,
@@ -278,12 +323,18 @@ class TestUnraidMoverDetector:
         mock_proc2.create_time.return_value = 1735728001.0
         mock_proc2.cpu_percent.return_value = 8.0
         mock_proc2.memory_info.return_value = Mock(rss=1024 * 1024 * 20)  # 20MB
-        
+        mock_proc2.pid = 2222
+        mock_proc2.name.return_value = 'process2'
+        mock_proc2.cmdline.return_value = ['/bin/process2']
+        mock_proc2.status.return_value = 'running'
+        mock_proc2.cwd.return_value = '/home'
+        mock_proc2.username.return_value = 'user2'
+
         mock_psutil.process_iter.return_value = [mock_proc1, mock_proc2]
-        
+
         detector = UnraidMoverDetector()
         result = detector.list_processes()
-        
+
         assert len(result) == 2
         assert result[0].pid == 1111
         assert result[0].name == 'process1'
@@ -293,6 +344,8 @@ class TestUnraidMoverDetector:
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_find_processes_with_pattern(self, mock_psutil: MagicMock) -> None:
         """Test find_processes with pattern matching."""
+        self._setup_mock_psutil(mock_psutil)
+
         # Mock process data
         mock_proc1 = Mock()
         mock_proc1.info = {
@@ -307,7 +360,13 @@ class TestUnraidMoverDetector:
         mock_proc1.create_time.return_value = 1735728000.0
         mock_proc1.cpu_percent.return_value = 5.0
         mock_proc1.memory_info.return_value = Mock(rss=1024 * 1024 * 10)  # 10MB
-        
+        mock_proc1.pid = 1111
+        mock_proc1.name.return_value = 'test_process'
+        mock_proc1.cmdline.return_value = ['/bin/test_process']
+        mock_proc1.status.return_value = 'running'
+        mock_proc1.cwd.return_value = '/tmp'
+        mock_proc1.username.return_value = 'user1'
+
         mock_proc2 = Mock()
         mock_proc2.info = {
             'pid': 2222,
@@ -321,12 +380,18 @@ class TestUnraidMoverDetector:
         mock_proc2.create_time.return_value = 1735728001.0
         mock_proc2.cpu_percent.return_value = 8.0
         mock_proc2.memory_info.return_value = Mock(rss=1024 * 1024 * 20)  # 20MB
-        
+        mock_proc2.pid = 2222
+        mock_proc2.name.return_value = 'other_process'
+        mock_proc2.cmdline.return_value = ['/bin/other_process']
+        mock_proc2.status.return_value = 'running'
+        mock_proc2.cwd.return_value = '/home'
+        mock_proc2.username.return_value = 'user2'
+
         mock_psutil.process_iter.return_value = [mock_proc1, mock_proc2]
-        
+
         detector = UnraidMoverDetector()
         result = detector.find_processes('test')
-        
+
         assert len(result) == 1
         assert result[0].pid == 1111
         assert result[0].name == 'test_process'
@@ -334,6 +399,8 @@ class TestUnraidMoverDetector:
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_find_processes_no_matches(self, mock_psutil: MagicMock) -> None:
         """Test find_processes with no matches."""
+        self._setup_mock_psutil(mock_psutil)
+
         # Mock process data
         mock_proc = Mock()
         mock_proc.info = {
@@ -348,17 +415,25 @@ class TestUnraidMoverDetector:
         mock_proc.create_time.return_value = 1735728000.0
         mock_proc.cpu_percent.return_value = 5.0
         mock_proc.memory_info.return_value = Mock(rss=1024 * 1024 * 10)  # 10MB
-        
+        mock_proc.pid = 1111
+        mock_proc.name.return_value = 'unrelated_process'
+        mock_proc.cmdline.return_value = ['/bin/unrelated_process']
+        mock_proc.status.return_value = 'running'
+        mock_proc.cwd.return_value = '/tmp'
+        mock_proc.username.return_value = 'user1'
+
         mock_psutil.process_iter.return_value = [mock_proc]
-        
+
         detector = UnraidMoverDetector()
         result = detector.find_processes('nonexistent')
-        
+
         assert len(result) == 0
 
     @patch('mover_status.core.process.unraid_detector.psutil')
     def test_mover_pattern_matching_variations(self, mock_psutil: MagicMock) -> None:
         """Test various mover pattern matching scenarios."""
+        self._setup_mock_psutil(mock_psutil)
+
         test_cases = [
             # (command, should_match)
             ('/usr/local/sbin/mover', True),
@@ -370,7 +445,7 @@ class TestUnraidMoverDetector:
             ('/usr/bin/rsync', False),
             ('systemctl start mover', True),
         ]
-        
+
         for command, should_match in test_cases:
             mock_proc = Mock()
             mock_proc.info = {
@@ -385,12 +460,18 @@ class TestUnraidMoverDetector:
             mock_proc.create_time.return_value = 1735728000.0
             mock_proc.cpu_percent.return_value = 0.0
             mock_proc.memory_info.return_value = Mock(rss=1024 * 1024 * 10)  # 10MB
-            
+            mock_proc.pid = 1234
+            mock_proc.name.return_value = command.split('/')[-1].split()[0]
+            mock_proc.cmdline.return_value = command.split()
+            mock_proc.status.return_value = 'running'
+            mock_proc.cwd.return_value = '/tmp'
+            mock_proc.username.return_value = 'root'
+
             mock_psutil.process_iter.return_value = [mock_proc]
-            
+
             detector = UnraidMoverDetector()
             result = detector.detect_mover()
-            
+
             if should_match:
                 assert result is not None, f"Expected command '{command}' to match but it didn't"
             else:
