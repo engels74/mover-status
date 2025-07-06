@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -25,15 +25,12 @@ from mover_status.utils.logging import (
     ColoredFormatter,
     ConsoleHandler,
     FileHandler,
-    LogFieldContext,
     LogFormat,
     LogLevel,
-    LogLevelContext,
     StructuredFormatter,
     TimestampFormat,
     combined_log_context,
     correlation_id_context,
-    get_correlation_id,
     log_field_context,
     log_level_context,
     set_correlation_id,

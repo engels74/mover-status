@@ -118,7 +118,7 @@ class StructuredFormatter(logging.Formatter):
         
         # Add context fields from thread-local storage
         context_fields = thread_local_context.fields
-        for key, value in context_fields.items():
+        for key, value in context_fields.items():  # pyright: ignore[reportAny] # context fields can be any type
             if key not in log_data:  # Don't override existing fields
                 serialized_value = self._serialize_value(value)
                 log_data[key] = serialized_value

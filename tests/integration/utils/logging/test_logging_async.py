@@ -81,17 +81,17 @@ class TestAsyncLogging:
             async_task(f"task-{i}")
             for i in range(5)
         ]
-        await asyncio.gather(*tasks)
+        _ = await asyncio.gather(*tasks)
         
         # Parse and verify output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         
         # Group logs by correlation ID
         logs_by_correlation: dict[str, list[dict[str, Any]]] = {}  # pyright: ignore[reportExplicitAny]
         for line in lines:
-            log_entry = json.loads(line)
-            correlation_id = log_entry.get("correlation_id")
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            correlation_id: str | None = log_entry.get("correlation_id")
             if correlation_id:
                 if correlation_id not in logs_by_correlation:
                     logs_by_correlation[correlation_id] = []
@@ -105,7 +105,7 @@ class TestAsyncLogging:
             assert len(logs) == 3
             messages = [log["message"] for log in logs]
             # Extract task ID from first message
-            task_id = messages[0].split()[1]
+            task_id: str = messages[0].split()[1]  # pyright: ignore[reportAny] # message parsing from log content
             assert messages == [
                 f"Task {task_id} started",
                 f"Task {task_id} middle",
@@ -148,24 +148,24 @@ class TestAsyncLogging:
         await async_operation()
         
         # Verify output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 4
         
         # All should have correlation ID
         for line in lines:
-            log_entry = json.loads(line)
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
             assert log_entry["correlation_id"] == "async-op-123"
         
         # Check specific messages
-        log1 = json.loads(lines[0])
+        log1: dict[str, Any] = json.loads(lines[0])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
         assert "operation" not in log1
         
-        log2 = json.loads(lines[1])
+        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
         assert log2["operation"] == "data_fetch"
         assert log2["user"] == "async_user"
         
-        log3 = json.loads(lines[2])
+        log3: dict[str, Any] = json.loads(lines[2])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
         assert log3["level"] == "DEBUG"
         assert log3["operation"] == "data_fetch"
     
@@ -208,22 +208,22 @@ class TestAsyncLogging:
                 logger.info(f"Parent task {task_id} completed")
         
         # Run multiple parent tasks
-        await asyncio.gather(
+        _ = await asyncio.gather(
             parent_task(1),
             parent_task(2),
             parent_task(3)
         )
         
         # Verify output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         
         # Group by correlation ID
         logs_by_parent: dict[str, list[str]] = {}
         for line in lines:
-            log_entry = json.loads(line)
-            correlation_id = log_entry["correlation_id"]
-            message = log_entry["message"]
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            correlation_id: str = log_entry["correlation_id"]
+            message: str = log_entry["message"]
             
             if correlation_id not in logs_by_parent:
                 logs_by_parent[correlation_id] = []
@@ -232,6 +232,7 @@ class TestAsyncLogging:
         # Each parent should have 5 messages (1 start + 3 children + 1 complete)
         assert len(logs_by_parent) == 3
         for parent_id, messages in logs_by_parent.items():
+            _ = parent_id  # iteration variable needed for dict comprehension
             assert len(messages) == 5
             # Verify parent messages are first and last
             assert "started" in messages[0]
@@ -267,16 +268,16 @@ class TestAsyncLogging:
                 logger.exception("Operation failed as expected")
         
         # Verify both logs have same correlation ID
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 2
         
         for line in lines:
-            log_entry = json.loads(line)
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
             assert log_entry["correlation_id"] == "failing-op"
         
         # Second log should be ERROR level
-        log2 = json.loads(lines[1])
+        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
         assert log2["level"] == "ERROR"
     
     @pytest.mark.asyncio
@@ -325,26 +326,26 @@ class TestAsyncLogging:
         thread.start()
         
         # Wait for thread to set context
-        thread_ready.wait()
+        _ = thread_ready.wait()
         
         # Run async task (should have independent context)
         await async_part()
         
         # Wait for thread to complete
-        thread.join()
+        _ = thread.join()
         
         # Verify contexts were isolated
         assert correlation_id_in_async is None  # Async didn't inherit thread context
         
         # Check logs
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         
-        thread_logs = []
-        async_logs = []
+        thread_logs: list[str] = []
+        async_logs: list[str] = []
         
         for line in lines:
-            log_entry = json.loads(line)
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
             if log_entry.get("correlation_id") == "thread-correlation":
                 thread_logs.append(log_entry["message"])
             else:
@@ -392,22 +393,22 @@ class TestAsyncLogging:
                 logger.info("Operation C completed")
         
         # Run all operations concurrently
-        await asyncio.gather(
+        _ = await asyncio.gather(
             operation_a(),
             operation_b(),
             operation_c()
         )
         
         # Parse output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         
         # Group by operation
         ops: dict[str, list[dict[str, Any]]] = {"A": [], "B": [], "C": []}  # pyright: ignore[reportExplicitAny]
         
         for line in lines:
-            log_entry = json.loads(line)
-            op = log_entry.get("operation", "C")  # C doesn't have operation field
+            log_entry: dict[str, Any] = json.loads(line)  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+            op: str = log_entry.get("operation", "C")  # C doesn't have operation field
             ops[op].append(log_entry)
         
         # Verify each operation
@@ -453,13 +454,13 @@ class TestAsyncLogging:
                 logger.error("Operation timed out")
         
         # Verify output
-        output.seek(0)
+        _ = output.seek(0)
         lines = output.readlines()
         assert len(lines) == 2
         
         # Both logs should have same correlation ID
-        log1 = json.loads(lines[0])
-        log2 = json.loads(lines[1])
+        log1: dict[str, Any] = json.loads(lines[0])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
+        log2: dict[str, Any] = json.loads(lines[1])  # pyright: ignore[reportExplicitAny] # log entries contain mixed types
         
         assert log1["correlation_id"] == "slow-op"
         assert log2["correlation_id"] == "slow-op"
@@ -534,8 +535,8 @@ class TestAsyncPerformance:
 
 if __name__ == "__main__":
     # Run async tests
-    pytest.main([__file__, "-v", "-s", "-k", "not Performance"])
+    _ = pytest.main([__file__, "-v", "-s", "-k", "not Performance"])
     print("\n" + "="*50)
     print("Running async performance tests:")
     print("="*50)
-    pytest.main([__file__, "-v", "-s", "-k", "Performance"]) 
+    _ = pytest.main([__file__, "-v", "-s", "-k", "Performance"]) 
