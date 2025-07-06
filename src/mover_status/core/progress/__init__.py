@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from .percentage_calculator import ProgressPercentageCalculator
+
 __all__ = [
-    # TODO: Add progress classes when implemented
-    # "ProgressCalculator",
+    "ProgressPercentageCalculator",
+    # TODO: Add more progress classes when implemented
     # "TransferRateCalculator",
     # "ETCEstimator",
 ]

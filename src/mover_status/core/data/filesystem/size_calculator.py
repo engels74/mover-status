@@ -52,6 +52,12 @@ class SizeCalculator:
         # Multi-level caches
         self._file_cache: dict[Path, tuple[int, float]] = {}  # (size, mtime)
         self._directory_cache: dict[Path, tuple[int, float]] = {}  # (size, mtime)
+        
+        # Cache statistics
+        self._file_cache_hits: int = 0
+        self._file_cache_misses: int = 0
+        self._directory_cache_hits: int = 0
+        self._directory_cache_misses: int = 0
 
     def calculate_size(self, path: Path) -> int:
         """Calculate the total size of a file or directory.
@@ -145,6 +151,10 @@ class SizeCalculator:
             "file_cache_size": len(self._file_cache),
             "directory_cache_size": len(self._directory_cache),
             "total_cache_entries": len(self._file_cache) + len(self._directory_cache),
+            "file_cache_hits": self._file_cache_hits,
+            "file_cache_misses": self._file_cache_misses,
+            "directory_cache_hits": self._directory_cache_hits,
+            "directory_cache_misses": self._directory_cache_misses,
         }
 
     def _get_file_size(self, path: Path) -> int:
@@ -157,6 +167,7 @@ class SizeCalculator:
             File size in bytes
         """
         if not self.cache_enabled:
+            self._file_cache_misses += 1
             return self._calculate_file_size(path)
         
         try:
@@ -167,15 +178,18 @@ class SizeCalculator:
             if path in self._file_cache:
                 cached_size, cached_mtime = self._file_cache[path]
                 if cached_mtime == current_mtime:
+                    self._file_cache_hits += 1
                     return cached_size
             
             # Calculate and cache
             size = self._calculate_file_size_from_stat(stat)
             self._file_cache[path] = (size, current_mtime)
+            self._file_cache_misses += 1
             return size
             
         except (OSError, PermissionError):
             # Fallback to direct calculation
+            self._file_cache_misses += 1
             return self._calculate_file_size(path)
 
     def _get_directory_size(self, path: Path) -> int:
@@ -188,6 +202,7 @@ class SizeCalculator:
             Total directory size in bytes
         """
         if not self.cache_enabled:
+            self._directory_cache_misses += 1
             return self._calculate_directory_size(path)
         
         try:
@@ -198,15 +213,18 @@ class SizeCalculator:
             if path in self._directory_cache:
                 cached_size, cached_mtime = self._directory_cache[path]
                 if cached_mtime == current_mtime:
+                    self._directory_cache_hits += 1
                     return cached_size
             
             # Calculate and cache
             size = self._calculate_directory_size(path)
             self._directory_cache[path] = (size, current_mtime)
+            self._directory_cache_misses += 1
             return size
             
         except (OSError, PermissionError):
             # Fallback to direct calculation
+            self._directory_cache_misses += 1
             return self._calculate_directory_size(path)
 
     def _calculate_file_size(self, path: Path) -> int:

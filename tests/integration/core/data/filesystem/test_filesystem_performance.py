@@ -12,6 +12,7 @@ import pytest
 
 from mover_status.core.data.filesystem.scanner import DirectoryScanner
 from mover_status.core.data.filesystem.size_calculator import SizeCalculator
+from mover_status.core.data.filesystem.exclusions import ExclusionFilter
 
 if TYPE_CHECKING:
     pass
@@ -138,7 +139,7 @@ class TestFilesystemPerformanceBenchmarks:
             subdir_path = temp_path / "dir_05"
             start_time = time.time()
             subdir_size = calculator_cached.calculate_size(subdir_path)
-            subdir_time = time.time() - start_time
+            _ = time.time() - start_time
             
             # Verify correctness
             assert size1 == size2
@@ -147,10 +148,23 @@ class TestFilesystemPerformanceBenchmarks:
             # Cache should provide significant speedup
             assert second_time <= first_time
             
-            # Check cache statistics
+            # Check cache statistics - directory caching should provide the speedup
             stats = calculator_cached.get_cache_stats()
-            assert stats["file_cache_hits"] > 0
+            assert stats["directory_cache_hits"] > 0  # Directory cache should have hits
             assert stats["total_cache_entries"] > 0
+            
+            # Test file cache hits by calculating individual files
+            # Get a specific file and calculate it multiple times
+            test_file = temp_path / "dir_05" / "file_10.txt"
+            if test_file.exists():
+                file_size1 = calculator_cached.calculate_size(test_file)
+                file_stats_before = calculator_cached.get_cache_stats()
+                
+                file_size2 = calculator_cached.calculate_size(test_file)  # Should be cache hit
+                file_stats_after = calculator_cached.get_cache_stats()
+                
+                assert file_size1 == file_size2
+                assert file_stats_after["file_cache_hits"] > file_stats_before["file_cache_hits"]
             
             print(f"Cold cache: {first_time:.3f}s, Warm cache: {second_time:.3f}s")
             print(f"Cache stats: {stats}")
@@ -180,7 +194,7 @@ class TestFilesystemPerformanceBenchmarks:
                     _ = file_path.write_text(f"Content {i}")
             
             # Test without exclusions
-            scanner_no_filter = DirectoryScanner()
+            scanner_no_filter = DirectoryScanner(exclusion_filter=ExclusionFilter())
             start_time = time.time()
             files_no_filter = list(scanner_no_filter.scan_directory(temp_path))
             no_filter_time = time.time() - start_time
@@ -192,7 +206,6 @@ class TestFilesystemPerformanceBenchmarks:
             default_filter_time = time.time() - start_time
             
             # Test with extensive custom exclusions
-            from mover_status.core.data.filesystem.exclusions import ExclusionFilter
             custom_filter = ExclusionFilter()
             custom_filter.add_patterns(["*.tmp", "*.cache", "*.log", "*.bak"])
             custom_filter.add_extensions([".ini"])
@@ -350,7 +363,7 @@ class TestFilesystemStressTesting:
             # Test progress tracking
             progress_count = 0
             start_time = time.time()
-            for current_size, current_file in calculator.calculate_size_with_progress(temp_path):
+            for _, _ in calculator.calculate_size_with_progress(temp_path):
                 progress_count += 1
             progress_time = time.time() - start_time
             
@@ -468,8 +481,8 @@ class TestFilesystemConcurrency:
             calculators = [SizeCalculator() for _ in range(5)]
             
             # Perform calculations "concurrently" (sequentially but rapidly)
-            results = []
-            times = []
+            results: list[int] = []
+            times: list[float] = []
             
             for calc in calculators:
                 start_time = time.time()

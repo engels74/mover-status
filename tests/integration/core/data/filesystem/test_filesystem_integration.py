@@ -110,6 +110,8 @@ class TestFilesystemIntegration:
             stats = calculator.get_cache_stats()
             assert stats["file_cache_hits"] == 0  # First run, no hits
             assert stats["directory_cache_hits"] == 0
+            assert stats["file_cache_misses"] > 0  # Should have cache misses
+            assert stats["directory_cache_misses"] > 0
             
             # Second calculation - should use cache
             start_time = time.time()
@@ -120,10 +122,24 @@ class TestFilesystemIntegration:
             assert size1 == size2
             assert second_duration <= first_duration  # Should be faster with cache
             
-            # Check cache utilization
+            # Check cache utilization - directory caching should provide the speedup
             stats = calculator.get_cache_stats()
-            assert stats["file_cache_hits"] > 0
+            assert stats["directory_cache_hits"] > 0  # Directory cache should have hits
             assert stats["total_cache_entries"] > 0
+            
+            # Test file cache hits by calculating individual files
+            # Get some files from the structure
+            docs_dir = temp_path / "documents"
+            if docs_dir.exists():
+                report_file = docs_dir / "report.pdf"
+                if report_file.exists():
+                    # Calculate individual file size - should use file cache
+                    file_size1 = calculator.calculate_size(report_file)
+                    file_size2 = calculator.calculate_size(report_file)  # Second time should be cache hit
+                    assert file_size1 == file_size2
+                    
+                    final_stats = calculator.get_cache_stats()
+                    assert final_stats["file_cache_hits"] > stats["file_cache_hits"]
 
     def test_symlink_handling_integration(self) -> None:
         """Test complete symlink handling workflow."""
@@ -308,7 +324,7 @@ class TestFilesystemIntegration:
             assert total_size > 0
             
             # Compare with no exclusions
-            scanner_no_exclusions = DirectoryScanner()
+            scanner_no_exclusions = DirectoryScanner(exclusion_filter=ExclusionFilter())
             all_files = list(scanner_no_exclusions.scan_directory(temp_path))
             
             assert len(all_files) > len(files)
@@ -354,9 +370,11 @@ class TestFilesystemIntegration:
                 assert normal_file in file_names
             
             # System files should be excluded
-            excluded_names = {"backup.txt", "deleted.txt", "metadata.txt", "config", 
-                            "package.json", "module.pyc", "python.py", "thumbs.db", 
-                            "desktop.ini", "temp.tmp"}
+            excluded_names = {
+                "backup.txt", "deleted.txt", "metadata.txt", "config", 
+                "package.json", "module.pyc", "python.py", "thumbs.db", 
+                "desktop.ini", "temp.tmp"
+            }
             
             for excluded_name in excluded_names:
                 assert excluded_name not in file_names
