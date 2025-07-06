@@ -114,7 +114,7 @@ class TestWebAPIScenarios:
         """Initialize test instance variables."""
         self.app_logger: logging.Logger
         self.console_output: io.StringIO  
-        self.temp_log: Any  # pyright: ignore[reportExplicitAny] # tempfile typing issue
+        self.temp_log: tempfile._TemporaryFileWrapper[str]  # pyright: ignore[reportPrivateUsage]
         self.file_handler: FileHandler
     
     def setup_method(self) -> None:
@@ -322,7 +322,8 @@ class TestWebAPIScenarios:
         assert all(log["ip_address"] == "10.0.0.50" for log in audit_logs)
         
         # Verify sensitive operation has correlation ID
-        sensitive_op: LogEntry = next(log for log in audit_logs if log["event"] == "USER_DELETED")        assert sensitive_op["correlation_id"] == "audit-op-123"
+        sensitive_op: LogEntry = next(log for log in audit_logs if log["event"] == "USER_DELETED")
+        assert sensitive_op["correlation_id"] == "audit-op-123"
         
         # Clean up
         Path(audit_file.name).unlink()
@@ -412,7 +413,8 @@ class TestBackgroundJobScenarios:
         assert all(log["correlation_id"] == job_id for log in job_logs)
         
         # Check completion summary
-        summary: LogEntry = next(log for log in job_logs if "Batch job completed" in log["message"])        assert summary["processed"] + summary["errors"] == total_items
+        summary: LogEntry = next(log for log in job_logs if "Batch job completed" in log["message"])
+        assert (summary.get("processed") or 0) + (summary.get("errors") or 0) == total_items
         
         # Clean up
         Path(job_log.name).unlink()
@@ -470,10 +472,14 @@ class TestBackgroundJobScenarios:
         
         # Verify task processing
         _ = output.seek(0)
-        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
+        logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in output.readlines()]
+        
         # Each task should have 3 logs (received, debug, completed)
-        task_logs: dict[str, list[LogEntry]] = {}        for log in logs:
-            task_id: str = log["correlation_id"]
+        task_logs: dict[str, list[LogEntry]] = {}
+        for log in logs:
+            task_id: str | None = log.get("correlation_id")
+            if task_id is None:
+                continue
             if task_id not in task_logs:
                 task_logs[task_id] = []
             task_logs[task_id].append(log)
@@ -550,12 +556,14 @@ class TestMicroserviceScenarios:
         
         # Verify cross-service tracing
         _ = output.seek(0)
-        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
+        logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in output.readlines()]
+        
         # All logs should have same correlation ID
         assert all(log["correlation_id"] == request_id for log in logs)
         
         # Verify service identification
-        service_a_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-a"]        service_b_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-b"]        
+        service_a_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-a"]
+        service_b_logs: list[LogEntry] = [log for log in logs if log.get("service") == "service-b"]        
         assert len(service_a_logs) == 2  # Call and response
         assert len(service_b_logs) == 3  # Receive, process, send
     
@@ -695,9 +703,13 @@ class TestPerformanceMonitoring:
         
         # Analyze performance data
         _ = output.seek(0)
-        logs: list[LogEntry] = [json.loads(line) for line in output.readlines()]        
+        logs: list[LogEntry] = [cast(LogEntry, json.loads(line)) for line in output.readlines()]
+        
         # Calculate metrics
-        request_logs: list[LogEntry] = [log for log in logs if log["message"] == "Request completed"]        _ = sum(log["duration_ms"] for log in request_logs) / len(request_logs)  # avg_duration not used
+        request_logs: list[LogEntry] = [log for log in logs if log["message"] == "Request completed"]
+        durations = [log.get("duration_ms") for log in request_logs if log.get("duration_ms") is not None]
+        valid_durations = [d for d in durations if d is not None]
+        _ = sum(valid_durations) / len(valid_durations) if valid_durations else 0  # avg_duration not used
         
         # Verify performance tracking
         assert len(request_logs) == 5
@@ -705,7 +717,8 @@ class TestPerformanceMonitoring:
         assert any(log["level"] == "ERROR" for log in logs)
         
         # Check cache hit tracking
-        cached_requests: list[LogEntry] = [log for log in request_logs if log.get("cache_hit", False)]        assert len(cached_requests) == 2  # Two successful GETs
+        cached_requests: list[LogEntry] = [log for log in request_logs if log.get("cache_hit", False)]
+        assert len(cached_requests) == 2  # Two successful GETs
 
 
 class TestDebuggingScenarios:

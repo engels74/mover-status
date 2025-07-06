@@ -191,7 +191,7 @@ class TestAsyncLogging:
         log1: LogEntry = cast(LogEntry, json.loads(lines[0]))
         assert "operation" not in log1
         
-        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))  # pyright: ignore[reportUnreachable]
         assert log2["operation"] == "data_fetch"
         assert log2["user"] == "async_user"
         

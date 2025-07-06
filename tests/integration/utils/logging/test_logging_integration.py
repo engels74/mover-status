@@ -187,7 +187,7 @@ class TestCompleteLoggingFlow:
         assert "user_id" not in log1
         
         # Second message - correlation ID and extra fields
-        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))
+        log2: LogEntry = cast(LogEntry, json.loads(lines[1]))  # pyright: ignore[reportUnreachable]
         assert log2["correlation_id"] == "test-correlation-123"
         assert log2["user_id"] == "user456"
         assert log2["request_id"] == "req789"
@@ -262,7 +262,7 @@ class TestCompleteLoggingFlow:
         set_logger_level("test.parent.child", LogLevel.DEBUG)
         
         # Clear output
-        output.truncate(0)
+        _ = output.truncate(0)
         _ = output.seek(0)
         
         # Test with changed level
@@ -303,7 +303,7 @@ class TestCompleteLoggingFlow:
         logger.info("This should still be logged")
         
         # Verify working handler got the message
-        working_output.seek(0)
+        _ = working_output.seek(0)
         output = working_output.read()
         assert "This should still be logged" in output
     
@@ -329,9 +329,11 @@ class TestCompleteLoggingFlow:
         
         # Verify it was logged correctly
         _ = output.seek(0)
-        log_entry = json.loads(output.read())
+        log_entry: LogEntry = cast(LogEntry, json.loads(output.read()))
         assert log_entry["message"] == large_message
-        assert len(log_entry["data"]) == 100
+        data_field = log_entry.get("data")
+        assert data_field is not None
+        assert len(data_field) == 100
     
     def test_unicode_and_special_characters(self) -> None:
         """Test handling of unicode and special characters."""
@@ -383,7 +385,7 @@ class TestThreadSafety:
         
         class ThreadSafeHandler(logging.Handler):
             @override
-    def emit(self, record: logging.LogRecord) -> None:
+            def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(msg)
@@ -445,7 +447,7 @@ class TestThreadSafety:
         
         class ThreadSafeHandler(logging.Handler):
             @override
-    def emit(self, record: logging.LogRecord) -> None:
+            def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(msg)
@@ -461,7 +463,7 @@ class TestThreadSafety:
             # Set thread-specific context
             with log_field_context({"thread_id": thread_id, "data": f"thread_{thread_id}_data"}):
                 # Wait for all threads to set context
-                barrier.wait()
+                _ = barrier.wait()
                 
                 # Log with context
                 logger.info(f"Message from thread {thread_id}")
@@ -471,7 +473,7 @@ class TestThreadSafety:
                 
                 # Wait again
                 try:
-                    barrier.wait()
+                    _ = barrier.wait()
                 except threading.BrokenBarrierError:
                     pass  # Expected if threads finish at different times
                 
@@ -535,7 +537,7 @@ class TestThreadSafety:
         
         class ThreadSafeHandler(logging.Handler):
             @override
-    def emit(self, record: logging.LogRecord) -> None:
+            def emit(self, record: logging.LogRecord) -> None:
                 msg = self.format(record)
                 with output_lock:
                     output_lines.append(f"{record.name}:{record.levelname}:{msg}")
@@ -598,7 +600,7 @@ class TestPerformanceCharacteristics:
         # Use null handler for pure throughput testing
         class NullHandler(logging.Handler):
             @override
-    def emit(self, record: logging.LogRecord) -> None:
+            def emit(self, record: logging.LogRecord) -> None:
                 # Format the record to include formatting overhead
                 _ = self.format(record)
         
@@ -745,7 +747,7 @@ class TestEdgeCasesAndErrorConditions:
         
         # Should not crash and should produce valid JSON
         _ = output.seek(0)
-        log_entry = json.loads(output.read())
+        log_entry: LogEntry = cast(LogEntry, json.loads(output.read()))
         assert log_entry["message"] == "Message with circular reference"
         # The circular reference should be handled gracefully
         assert "circular" in log_entry
@@ -773,11 +775,11 @@ class TestEdgeCasesAndErrorConditions:
         
         # Verify all values are preserved
         _ = output.seek(0)
-        log_entry = json.loads(output.read())
-        assert log_entry["none_value"] is None
-        assert log_entry["empty_string"] == ""
-        assert log_entry["empty_list"] == []
-        assert log_entry["empty_dict"] == {}
+        log_data = json.loads(output.read())
+        assert log_data["none_value"] is None
+        assert log_data["empty_string"] == ""
+        assert log_data["empty_list"] == []
+        assert log_data["empty_dict"] == {}
     
     def test_invalid_logger_names(self) -> None:
         """Test handling of invalid logger names."""
@@ -794,7 +796,7 @@ class TestEdgeCasesAndErrorConditions:
         logger.info("Message from root logger")
         
         _ = output.seek(0)
-        log_entry = json.loads(output.read())
+        log_entry: LogEntry = cast(LogEntry, json.loads(output.read()))
         assert log_entry["logger"] == "root"
     
     def test_exception_logging(self) -> None:
@@ -821,10 +823,10 @@ class TestEdgeCasesAndErrorConditions:
         
         # Verify exception was logged
         _ = output.seek(0)
-        log_entry = json.loads(output.read())
-        assert log_entry["message"] == "Exception occurred"
-        assert log_entry["request_id"] == "12345"
-        assert log_entry["level"] == "ERROR"
+        log_data = json.loads(output.read())
+        assert log_data["message"] == "Exception occurred"
+        assert log_data["request_id"] == "12345"
+        assert log_data["level"] == "ERROR"
         # Exception info should be in the message or a separate field
     
     def test_handler_recovery_after_failure(self) -> None:
@@ -841,7 +843,7 @@ class TestEdgeCasesAndErrorConditions:
                 self.messages: list[str] = []
             
             @override
-    def emit(self, record: logging.LogRecord) -> None:
+            def emit(self, record: logging.LogRecord) -> None:
                 if self.fail_count < 3:
                     self.fail_count += 1
                     raise RuntimeError("Temporary failure")
