@@ -6,9 +6,7 @@ import asyncio
 import logging
 import threading
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 import pytest
 
@@ -87,7 +85,7 @@ class TestCorrelationIdManager:
             results[thread_id] = manager.get_correlation_id()
         
         # Start multiple threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(5):
             thread = threading.Thread(target=thread_work, args=(str(i),))
             threads.append(thread)
@@ -180,7 +178,7 @@ class TestCorrelationIdContext:
         results: dict[str, list[str | None]] = {}
         
         def thread_work(thread_id: str) -> None:
-            thread_results = []
+            thread_results: list[str | None] = []
             
             # Set initial ID
             set_correlation_id(f"thread-{thread_id}-initial")
@@ -198,7 +196,7 @@ class TestCorrelationIdContext:
             results[thread_id] = thread_results
         
         # Start multiple threads
-        threads = []
+        threads: list[threading.Thread] = []
         for i in range(3):
             thread = threading.Thread(target=thread_work, args=(str(i),))
             threads.append(thread)
@@ -365,12 +363,12 @@ class TestIntegrationWithLogging:
         # Test without correlation ID
         logger.info("Message without correlation ID")
         log_line = stream.getvalue().strip()
-        log_data = json.loads(log_line)
-        assert "correlation_id" not in log_data
+        log_data_without_id = json.loads(log_line)  # pyright: ignore[reportAny]
+        assert "correlation_id" not in log_data_without_id
         
         # Clear stream
-        stream.seek(0)
-        stream.truncate(0)
+        _ = stream.seek(0)
+        _ = stream.truncate(0)
         
         # Test with correlation ID
         test_id = "test-structured-logging-123"
@@ -378,11 +376,11 @@ class TestIntegrationWithLogging:
         
         logger.info("Message with correlation ID")
         log_line = stream.getvalue().strip()
-        log_data = json.loads(log_line)
+        log_data_with_id = json.loads(log_line)  # pyright: ignore[reportAny]
         
-        assert log_data["correlation_id"] == test_id
-        assert log_data["message"] == "Message with correlation ID"
-        assert log_data["level"] == "INFO"
+        assert log_data_with_id["correlation_id"] == test_id
+        assert log_data_with_id["message"] == "Message with correlation ID"
+        assert log_data_with_id["level"] == "INFO"
         
         # Clean up
         logger.removeHandler(handler)
@@ -413,20 +411,20 @@ class TestIntegrationWithLogging:
         with correlation_id_context(test_id):
             logger.info("Message inside context")
             log_line = stream.getvalue().strip()
-            log_data = json.loads(log_line)
+            log_data_context = json.loads(log_line)  # pyright: ignore[reportAny]
             
-            assert log_data["correlation_id"] == test_id
-            assert log_data["message"] == "Message inside context"
+            assert log_data_context["correlation_id"] == test_id
+            assert log_data_context["message"] == "Message inside context"
         
         # Clear stream for next test
-        stream.seek(0)
-        stream.truncate(0)
+        _ = stream.seek(0)
+        _ = stream.truncate(0)
         
         # After context exit, correlation ID should not be present
         logger.info("Message after context")
         log_line = stream.getvalue().strip()
-        log_data = json.loads(log_line)
-        assert "correlation_id" not in log_data
+        log_data_after = json.loads(log_line)  # pyright: ignore[reportAny]
+        assert "correlation_id" not in log_data_after
         
         # Clean up
         logger.removeHandler(handler)
@@ -489,11 +487,11 @@ class TestIntegrationWithLogging:
         
         logger.info("Message with excluded correlation ID")
         log_line = stream.getvalue().strip()
-        log_data = json.loads(log_line)
+        log_data_excluded = json.loads(log_line)  # pyright: ignore[reportAny]
         
         # Correlation ID should not be present in output
-        assert "correlation_id" not in log_data
-        assert log_data["message"] == "Message with excluded correlation ID"
+        assert "correlation_id" not in log_data_excluded
+        assert log_data_excluded["message"] == "Message with excluded correlation ID"
         
         # Clean up
         logger.removeHandler(handler)
