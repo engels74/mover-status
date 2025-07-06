@@ -4,13 +4,29 @@ from __future__ import annotations
 
 from .detector import ProcessDetector, ProcessFilter, ProcessMonitor
 from .models import ProcessInfo, ProcessStatus
+from .pattern_matcher import (
+    PatternMatcher,
+    RegexMatcher,
+    WildcardMatcher,
+    CustomMatcher,
+    ProcessGrouper,
+    ProcessHierarchyDetector,
+    FilterableProcessDetector,
+)
 from .unraid_detector import UnraidMoverDetector
 
 __all__ = [
     "ProcessDetector",
-    "ProcessFilter", 
+    "ProcessFilter",
     "ProcessMonitor",
     "ProcessInfo",
     "ProcessStatus",
+    "PatternMatcher",
+    "RegexMatcher",
+    "WildcardMatcher",
+    "CustomMatcher",
+    "ProcessGrouper",
+    "ProcessHierarchyDetector",
+    "FilterableProcessDetector",
     "UnraidMoverDetector",
 ]
