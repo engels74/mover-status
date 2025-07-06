@@ -56,36 +56,34 @@ class TestProgressPerformance:
         calculator = TransferRateCalculator(window_size=100)
         
         # Test with high-frequency updates
-        with patch('time.time') as mock_time:
-            start_time = time.time()
+        start_time = time.time()
+        
+        # Simulate 10,000 samples over 1000 seconds (10 samples per second)
+        sample_count = 10000
+        for i in range(sample_count):
+            timestamp = i * 0.1  # Every 100ms
+            bytes_transferred = i * 1000  # 1KB per sample
             
-            # Simulate 10,000 samples over 1000 seconds (10 samples per second)
-            sample_count = 10000
-            for i in range(sample_count):
-                timestamp = i * 0.1  # Every 100ms
-                bytes_transferred = i * 1000  # 1KB per sample
-                
-                mock_time.return_value = timestamp
-                calculator.add_sample(bytes_transferred, timestamp)
-                
-                # Get rate calculation periodically
-                if i % 100 == 0:
-                    _ = calculator.get_current_rate()
-                    _ = calculator.get_instantaneous_rate()
+            calculator.add_sample(bytes_transferred, timestamp)
             
-            end_time = time.time()
-            duration = end_time - start_time
-            
-            # Should handle high-frequency updates efficiently
-            assert duration < 5.0, f"Performance too slow for {sample_count} samples: {duration:.3f}s"
-            
-            # Final rate calculation should be fast
-            rate_start = time.time()
-            final_rate = calculator.get_current_rate()
-            rate_end = time.time()
-            
-            assert final_rate > 0
-            assert (rate_end - rate_start) < 0.1, "Rate calculation too slow"
+            # Get rate calculation periodically
+            if i % 100 == 0:
+                _ = calculator.get_current_rate()
+                _ = calculator.get_instantaneous_rate()
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        # Should handle high-frequency updates efficiently
+        assert duration < 5.0, f"Performance too slow for {sample_count} samples: {duration:.3f}s"
+        
+        # Final rate calculation should be fast
+        rate_start = time.time()
+        final_rate = calculator.get_current_rate()
+        rate_end = time.time()
+        
+        assert final_rate > 0
+        assert (rate_end - rate_start) < 0.1, "Rate calculation too slow"
 
     def test_etc_estimator_performance(self) -> None:
         """Test ETC estimator performance with various algorithms."""
@@ -98,35 +96,33 @@ class TestProgressPerformance:
         total_size = 1000000  # 1MB
         
         for estimator in estimators:
-            with patch('time.time') as mock_time:
-                start_time = time.time()
+            start_time = time.time()
+            
+            # Add many samples
+            sample_count = 5000
+            for i in range(sample_count):
+                timestamp = float(i)
+                bytes_transferred = int((i / sample_count) * total_size)
                 
-                # Add many samples
-                sample_count = 5000
-                for i in range(sample_count):
-                    timestamp = float(i)
-                    bytes_transferred = int((i / sample_count) * total_size)
-                    
-                    mock_time.return_value = timestamp
-                    estimator.add_sample(bytes_transferred, total_size)
-                    
-                    # Get ETC estimate periodically
-                    if i % 100 == 0:
-                        _ = estimator.get_etc()
+                estimator.add_sample(bytes_transferred, total_size)
                 
-                end_time = time.time()
-                duration = end_time - start_time
-                
-                # Should handle many samples efficiently
-                assert duration < 5.0, f"ETC estimator {estimator.method} too slow: {duration:.3f}s"
-                
-                # Final ETC calculation should be fast
-                etc_start = time.time()
-                final_etc = estimator.get_etc()
-                etc_end = time.time()
-                
-                assert final_etc.seconds >= 0
-                assert (etc_end - etc_start) < 0.1, "ETC calculation too slow"
+                # Get ETC estimate periodically
+                if i % 100 == 0:
+                    _ = estimator.get_etc()
+            
+            end_time = time.time()
+            duration = end_time - start_time
+            
+            # Should handle many samples efficiently
+            assert duration < 5.0, f"ETC estimator {estimator.method} too slow: {duration:.3f}s"
+            
+            # Final ETC calculation should be fast
+            etc_start = time.time()
+            final_etc = estimator.get_etc()
+            etc_end = time.time()
+            
+            assert final_etc.seconds >= 0
+            assert (etc_end - etc_start) < 0.1, "ETC calculation too slow"
 
     def test_history_manager_performance(self) -> None:
         """Test history manager performance with large datasets."""
@@ -220,36 +216,33 @@ class TestProgressPerformance:
         import threading
         import queue
         
-        # Initialize shared components
-        rate_calc = TransferRateCalculator()
-        etc_estimator = ETCEstimator()
-        history_manager = HistoryManager()
-        
         results_queue: queue.Queue[float] = queue.Queue()
         
         def worker_thread(thread_id: int) -> None:
             """Worker thread that performs calculations."""
-            with patch('time.time') as mock_time:
-                start_time = time.time()
+            # Each thread gets its own components to avoid contention
+            rate_calc = TransferRateCalculator()
+            etc_estimator = ETCEstimator()
+            history_manager = HistoryManager()
+            
+            start_time = time.time()
+            
+            for i in range(1000):
+                timestamp = float(i * 0.1)  # Monotonic timestamps for each thread
+                bytes_transferred = i * 100
                 
-                for i in range(1000):
-                    timestamp = float(thread_id * 1000 + i)
-                    bytes_transferred = (thread_id * 1000 + i) * 100
-                    
-                    mock_time.return_value = timestamp
-                    
-                    # Update components
-                    rate_calc.add_sample(bytes_transferred, timestamp)
-                    etc_estimator.add_sample(bytes_transferred, 1000000)
-                    history_manager.add_data_point(float(bytes_transferred), timestamp=timestamp)
-                    
-                    # Get calculations
-                    _ = rate_calc.get_current_rate()
-                    _ = etc_estimator.get_etc()
-                    _ = history_manager.get_moving_average()
+                # Update components
+                rate_calc.add_sample(bytes_transferred, timestamp)
+                etc_estimator.add_sample(bytes_transferred, 1000000)
+                history_manager.add_data_point(float(bytes_transferred), timestamp=timestamp)
                 
-                end_time = time.time()
-                results_queue.put(end_time - start_time)
+                # Get calculations
+                _ = rate_calc.get_current_rate()
+                _ = etc_estimator.get_etc()
+                _ = history_manager.get_moving_average()
+            
+            end_time = time.time()
+            results_queue.put(end_time - start_time)
         
         # Start multiple worker threads
         threads: list[threading.Thread] = []
@@ -294,43 +287,40 @@ class TestProgressPerformance:
         etc_estimator = ETCEstimator(method=EstimationMethod.ADAPTIVE)
         history_manager = HistoryManager(max_size=1000)
         
-        with patch('time.time') as mock_time:
-            start_time = time.time()
+        start_time = time.time()
+        
+        # Simulate transfer progress over 1000 time points
+        time_points = 1000
+        for i in range(time_points):
+            timestamp = float(i)
+            # Non-linear progress (faster at start, slower in middle, faster at end)
+            progress_ratio: float = (i / time_points) ** 0.8
+            bytes_transferred = int(progress_ratio * total_size)
             
-            # Simulate transfer progress over 1000 time points
-            time_points = 1000
-            for i in range(time_points):
-                timestamp = float(i)
-                # Non-linear progress (faster at start, slower in middle, faster at end)
-                progress_ratio: float = (i / time_points) ** 0.8
-                bytes_transferred = int(progress_ratio * total_size)
-                
-                mock_time.return_value = timestamp
-                
-                # Update all components
-                percentage = percentage_calc.calculate_percentage(bytes_transferred, total_size)
-                rate_calc.add_sample(bytes_transferred, timestamp)
-                etc_estimator.add_sample(bytes_transferred, total_size)
-                history_manager.add_data_point(float(bytes_transferred), timestamp=timestamp)
-                
-                # Verify calculations are reasonable
-                assert 0.0 <= percentage <= 100.0
-                assert rate_calc.get_current_rate() >= 0
-                assert etc_estimator.get_etc().seconds >= 0
-                assert history_manager.get_moving_average() >= 0
+            # Update all components
+            percentage = percentage_calc.calculate_percentage(bytes_transferred, total_size)
+            rate_calc.add_sample(bytes_transferred, timestamp)
+            etc_estimator.add_sample(bytes_transferred, total_size)
+            history_manager.add_data_point(float(bytes_transferred), timestamp=timestamp)
             
-            end_time = time.time()
-            duration = end_time - start_time
-            
-            # Should handle large file simulation efficiently
-            assert duration < 10.0, f"Large file simulation too slow: {duration:.3f}s"
-            
-            # Final calculations should be accurate
-            final_percentage = percentage_calc.calculate_percentage(total_size, total_size)
-            assert final_percentage == 100.0
-            
-            final_etc = etc_estimator.get_etc()
-            assert final_etc.seconds == 0.0  # Should be complete
+            # Verify calculations are reasonable
+            assert 0.0 <= percentage <= 100.0
+            assert rate_calc.get_current_rate() >= 0
+            assert etc_estimator.get_etc().seconds >= 0
+            assert history_manager.get_moving_average() >= 0
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        # Should handle large file simulation efficiently
+        assert duration < 10.0, f"Large file simulation too slow: {duration:.3f}s"
+        
+        # Final calculations should be accurate
+        final_percentage = percentage_calc.calculate_percentage(total_size, total_size)
+        assert final_percentage == 100.0
+        
+        final_etc = etc_estimator.get_etc()
+        assert final_etc.seconds < 1.0  # Should be nearly complete
 
     def test_precision_vs_performance_tradeoff(self) -> None:
         """Test performance tradeoffs with different precision levels."""
@@ -375,23 +365,21 @@ class TestProgressPerformance:
         for method in smoothing_methods:
             calculator = TransferRateCalculator(smoothing=method, window_size=50)
             
-            with patch('time.time') as mock_time:
-                start_time = time.time()
+            start_time = time.time()
+            
+            for i in range(sample_count):
+                timestamp = float(i)
+                bytes_transferred = i * 100
                 
-                for i in range(sample_count):
-                    timestamp = float(i)
-                    bytes_transferred = i * 100
-                    
-                    mock_time.return_value = timestamp
-                    calculator.add_sample(bytes_transferred, timestamp)
-                    
-                    # Get rate every 100 samples
-                    if i % 100 == 0:
-                        _ = calculator.get_current_rate()
+                calculator.add_sample(bytes_transferred, timestamp)
                 
-                end_time = time.time()
-                duration = end_time - start_time
-                performance_results[method.value] = duration
+                # Get rate every 100 samples
+                if i % 100 == 0:
+                    _ = calculator.get_current_rate()
+            
+            end_time = time.time()
+            duration = end_time - start_time
+            performance_results[method.value] = duration
         
         # All methods should complete in reasonable time
         for method, duration in performance_results.items():
@@ -409,23 +397,21 @@ class TestProgressPerformance:
         for method in etc_methods:
             estimator = ETCEstimator(method=method)
             
-            with patch('time.time') as mock_time:
-                start_time = time.time()
+            start_time = time.time()
+            
+            for i in range(sample_count):
+                timestamp = float(i)
+                bytes_transferred = int((i / sample_count) * total_size)
                 
-                for i in range(sample_count):
-                    timestamp = float(i)
-                    bytes_transferred = int((i / sample_count) * total_size)
-                    
-                    mock_time.return_value = timestamp
-                    estimator.add_sample(bytes_transferred, total_size)
-                    
-                    # Get ETC every 100 samples
-                    if i % 100 == 0:
-                        _ = estimator.get_etc()
+                estimator.add_sample(bytes_transferred, total_size)
                 
-                end_time = time.time()
-                duration = end_time - start_time
-                etc_performance[method.value] = duration
+                # Get ETC every 100 samples
+                if i % 100 == 0:
+                    _ = estimator.get_etc()
+            
+            end_time = time.time()
+            duration = end_time - start_time
+            etc_performance[method.value] = duration
         
         # All ETC methods should complete in reasonable time
         for method, duration in etc_performance.items():

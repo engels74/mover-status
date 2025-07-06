@@ -134,9 +134,15 @@ class HistoryManager:
             value: The data value to add
             timestamp: Timestamp of the data point (uses current time if None)
             metadata: Optional metadata associated with the data point
+            
+        Raises:
+            ValueError: If timestamp is negative
         """
         if timestamp is None:
             timestamp = time.time()
+        
+        if timestamp < 0:
+            raise ValueError("Timestamp cannot be negative")
         
         if metadata is None:
             metadata_dict: dict[str, str | int | float | bool] = {}
