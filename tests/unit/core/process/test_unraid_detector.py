@@ -507,7 +507,7 @@ class TestUnraidMoverDetector:
         
         # Mock the open function with context manager support
         with patch('builtins.open', mock_open(read_data='1234\n')):
-            result = detector._check_mover_pid_file()
+            result = detector._check_mover_pid_file()  # pyright: ignore[reportPrivateUsage]
         
         assert result == 1234
         mock_psutil.Process.assert_called_once_with(1234)
@@ -517,7 +517,7 @@ class TestUnraidMoverDetector:
         detector = UnraidMoverDetector()
         
         with patch('builtins.open', side_effect=FileNotFoundError()):
-            result = detector._check_mover_pid_file()
+            result = detector._check_mover_pid_file()  # pyright: ignore[reportPrivateUsage]
         
         assert result is None
 
@@ -526,7 +526,7 @@ class TestUnraidMoverDetector:
         detector = UnraidMoverDetector()
         
         with patch('builtins.open', mock_open(read_data='invalid\n')):
-            result = detector._check_mover_pid_file()
+            result = detector._check_mover_pid_file()  # pyright: ignore[reportPrivateUsage]
         
         assert result is None
 
@@ -545,7 +545,7 @@ class TestUnraidMoverDetector:
         detector = UnraidMoverDetector()
         
         with patch('builtins.open', mock_open(read_data='1234\n')):
-            result = detector._check_mover_pid_file()
+            result = detector._check_mover_pid_file()  # pyright: ignore[reportPrivateUsage]
         
         assert result is None
 
@@ -574,7 +574,7 @@ class TestUnraidMoverDetector:
         mock_psutil.process_iter.return_value = [mock_proc]
         
         detector = UnraidMoverDetector()
-        result = detector._detect_mover_hierarchy()
+        result = detector._detect_mover_hierarchy()  # pyright: ignore[reportPrivateUsage]
         
         assert result is not None
         assert result.pid == 1234
@@ -597,7 +597,7 @@ class TestUnraidMoverDetector:
         mock_psutil.process_iter.return_value = [mock_proc]
         
         detector = UnraidMoverDetector()
-        result = detector._detect_mover_hierarchy()
+        result = detector._detect_mover_hierarchy()  # pyright: ignore[reportPrivateUsage]
         
         assert result is None
 
