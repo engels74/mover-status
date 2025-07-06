@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-import time
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -20,7 +19,6 @@ from mover_status.core.progress.etc_estimator import (
 from mover_status.core.progress.history_manager import (
     HistoryManager,
     MovingAverageType,
-    RetentionPolicy,
 )
 
 
@@ -59,9 +57,6 @@ class TestProgressEdgeCases:
             assert initial_etc.seconds > 0
             
             # Network interruption: no progress for 30 seconds
-            interruption_start = 5.0
-            interruption_duration = 30.0
-            
             for i in range(6, 36):  # 30 seconds of no progress
                 timestamp = float(i)
                 bytes_transferred = 50000  # Stuck at 50KB
@@ -485,14 +480,14 @@ class TestProgressEdgeCases:
         
         error_queue: queue.Queue[str] = queue.Queue()
         
-        def worker_with_edge_cases(thread_id: int) -> None:
+        def worker_with_edge_cases(_thread_id: int) -> None:
             """Worker that simulates various edge case scenarios."""
             try:
                 with patch('time.time') as mock_time:
                     for i in range(50):
                         # Create edge case scenarios
-                        timestamp = float(thread_id * 100 + i + random.uniform(0, 0.1))
-                        bytes_transferred = thread_id * 10000 + i * 100
+                        timestamp = float(_thread_id * 100 + i + random.uniform(0, 0.1))
+                        bytes_transferred = _thread_id * 10000 + i * 100
                         
                         # Occasionally create edge cases
                         if random.random() < 0.1:  # 10% chance
@@ -512,16 +507,16 @@ class TestProgressEdgeCases:
                             avg = history_manager.get_moving_average()
                             
                             if rate < 0 or etc.seconds < 0 or avg < 0:
-                                error_queue.put(f"Thread {thread_id}: Invalid values detected")
+                                error_queue.put(f"Thread {_thread_id}: Invalid values detected")
                                 
                         except ValueError as e:
                             # Some edge cases might trigger validation errors
                             # This is acceptable behavior
                             if "monotonic" not in str(e).lower():
-                                error_queue.put(f"Thread {thread_id}: Unexpected error: {e}")
+                                error_queue.put(f"Thread {_thread_id}: Unexpected error: {e}")
                         
             except Exception as e:
-                error_queue.put(f"Thread {thread_id}: Exception: {e}")
+                error_queue.put(f"Thread {_thread_id}: Exception: {e}")
         
         # Start multiple threads with edge cases
         threads: list[threading.Thread] = []

@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from decimal import Decimal
 from unittest.mock import patch
-from typing import Any
 
 from mover_status.core.progress.percentage_calculator import ProgressPercentageCalculator
 from mover_status.core.progress.transfer_rate_calculator import (
@@ -257,7 +256,7 @@ class TestProgressIntegration:
         
         # Test invalid data handling
         with pytest.raises(ValueError):
-            percentage_calc.calculate_percentage(-100, 1000)  # Negative progress
+            _ = percentage_calc.calculate_percentage(-100, 1000)  # Negative progress
         
         with pytest.raises(ValueError):
             rate_calc.add_sample(-100, 1.0)  # Negative bytes
@@ -275,7 +274,7 @@ class TestProgressIntegration:
         
         etc_estimator.add_sample(1000, 10000)
         etc_estimator.add_sample(2000, 10000)
-        _ = etc_estimator.get_etc().seconds  # Verify it works
+        _ = etc_estimator.get_etc().seconds
 
     def test_memory_efficiency_integration(self) -> None:
         """Test memory efficiency when components work together."""

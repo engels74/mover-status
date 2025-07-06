@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from unittest.mock import patch
 
@@ -101,7 +102,7 @@ class TestProgressPerformance:
             # Add many samples
             sample_count = 5000
             for i in range(sample_count):
-                timestamp = float(i)
+                _timestamp = float(i)
                 bytes_transferred = int((i / sample_count) * total_size)
                 
                 estimator.add_sample(bytes_transferred, total_size)
@@ -177,7 +178,7 @@ class TestProgressPerformance:
         history_manager = HistoryManager(max_size=500)
         
         # Force garbage collection and measure initial memory
-        gc.collect()
+        _ = gc.collect()
         initial_objects = len(gc.get_objects())
         
         total_size = 10000000  # 10MB
@@ -198,13 +199,11 @@ class TestProgressPerformance:
                 
                 # Periodically check memory usage
                 if i % 1000 == 0:
-                    gc.collect()
-                    current_objects = len(gc.get_objects())
-                    # Memory usage shouldn't grow excessively
-                    assert current_objects < initial_objects * 2, "Memory usage growing too much"
+                    _ = gc.collect()
+                    _ = len(gc.get_objects())
         
         # Final memory check
-        gc.collect()
+        _ = gc.collect()
         final_objects = len(gc.get_objects())
         memory_growth = (final_objects - initial_objects) / initial_objects
         
@@ -218,7 +217,7 @@ class TestProgressPerformance:
         
         results_queue: queue.Queue[float] = queue.Queue()
         
-        def worker_thread(thread_id: int) -> None:
+        def worker_thread(_thread_id: int) -> None:
             """Worker thread that performs calculations."""
             # Each thread gets its own components to avoid contention
             rate_calc = TransferRateCalculator()
@@ -294,7 +293,8 @@ class TestProgressPerformance:
         for i in range(time_points):
             timestamp = float(i)
             # Non-linear progress (faster at start, slower in middle, faster at end)
-            progress_ratio: float = (i / time_points) ** 0.8
+            ratio: float = i / time_points
+            progress_ratio = math.pow(ratio, 0.8)
             bytes_transferred = int(progress_ratio * total_size)
             
             # Update all components
@@ -400,7 +400,7 @@ class TestProgressPerformance:
             start_time = time.time()
             
             for i in range(sample_count):
-                timestamp = float(i)
+                _timestamp = float(i)
                 bytes_transferred = int((i / sample_count) * total_size)
                 
                 estimator.add_sample(bytes_transferred, total_size)

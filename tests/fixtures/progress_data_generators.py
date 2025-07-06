@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 import math
-from typing import Iterator, NamedTuple, override, Callable
+from typing import NamedTuple, override, Callable
+from collections.abc import Iterator
 from decimal import Decimal
 
 
@@ -20,10 +21,10 @@ class TransferPattern:
     
     def __init__(self, total_size: int, duration: float) -> None:
         """Initialize pattern with total size and duration."""
-        self.total_size = total_size
-        self.duration = duration
+        self.total_size: int = total_size
+        self.duration: float = duration
     
-    def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
+    def generate(self, _sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate progress data points for the pattern."""
         raise NotImplementedError
 
@@ -31,6 +32,7 @@ class TransferPattern:
 class LinearTransferPattern(TransferPattern):
     """Generates a linear progress pattern with constant transfer rate."""
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate linear progress data points."""
         for i in range(sample_count):
@@ -51,8 +53,9 @@ class ExponentialTransferPattern(TransferPattern):
     def __init__(self, total_size: int, duration: float, decay_factor: float = 2.0) -> None:
         """Initialize with decay factor controlling exponential curve."""
         super().__init__(total_size, duration)
-        self.decay_factor = decay_factor
+        self.decay_factor: float = decay_factor
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate exponential progress data points."""
         for i in range(sample_count):
@@ -76,8 +79,9 @@ class LogarithmicTransferPattern(TransferPattern):
     def __init__(self, total_size: int, duration: float, scale_factor: float = 5.0) -> None:
         """Initialize with scale factor controlling logarithmic curve."""
         super().__init__(total_size, duration)
-        self.scale_factor = scale_factor
+        self.scale_factor: float = scale_factor
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate logarithmic progress data points."""
         for i in range(sample_count):
@@ -105,9 +109,10 @@ class SinusoidalTransferPattern(TransferPattern):
     def __init__(self, total_size: int, duration: float, frequency: float = 2.0, amplitude: float = 0.3) -> None:
         """Initialize with frequency and amplitude of speed variations."""
         super().__init__(total_size, duration)
-        self.frequency = frequency
-        self.amplitude = amplitude
+        self.frequency: float = frequency
+        self.amplitude: float = amplitude
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate sinusoidal progress data points."""
         total_progress = 0.0
@@ -145,9 +150,10 @@ class BurstyTransferPattern(TransferPattern):
     def __init__(self, total_size: int, duration: float, burst_ratio: float = 0.8, burst_frequency: float = 4.0) -> None:
         """Initialize with burst characteristics."""
         super().__init__(total_size, duration)
-        self.burst_ratio = burst_ratio  # Portion of data transferred during bursts
-        self.burst_frequency = burst_frequency  # Number of burst cycles
+        self.burst_ratio: float = burst_ratio  # Portion of data transferred during bursts
+        self.burst_frequency: float = burst_frequency  # Number of burst cycles
     
+    @override
     def generate(self, sample_count: int) -> Iterator[ProgressDataPoint]:
         """Generate bursty progress data points."""
         total_progress = 0.0
@@ -237,12 +243,10 @@ class StallAndResumePattern(TransferPattern):
 class NoisyTransferPattern(TransferPattern):
     """Generates noisy transfer pattern with random variations."""
     
-    noise_level: float
-    
     def __init__(self, total_size: int, duration: float, noise_level: float = 0.2, seed: int | None = None) -> None:
         """Initialize with noise level (0.0 = no noise, 1.0 = high noise)."""
         super().__init__(total_size, duration)
-        self.noise_level = noise_level
+        self.noise_level: float = noise_level
         if seed is not None:
             random.seed(seed)
     
@@ -386,7 +390,7 @@ class ProgressDataGenerator:
             seed=42
         )
         
-        return patterns
+        return patterns  # pyright: ignore[reportUnknownVariableType]
     
     @staticmethod
     def generate_high_precision_data(total_size: Decimal, duration: float, 
@@ -442,7 +446,7 @@ class ProgressDataGenerator:
             sample_count=24
         )
         
-        return edge_cases
+        return edge_cases  # pyright: ignore[reportUnknownVariableType]
 
 
 # Convenience functions for common test scenarios

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from unittest.mock import patch
 
 from mover_status.core.progress.percentage_calculator import ProgressPercentageCalculator
@@ -241,7 +242,8 @@ class TestProgressScenarios:
             # Verify rate variability was captured
             if len(rates) > 10:
                 mean_rate = sum(rates) / len(rates)
-                rate_std: float = (sum((r - mean_rate)**2 for r in rates) / len(rates))**0.5
+                variance: float = sum((r - mean_rate)**2 for r in rates) / len(rates)
+                rate_std = math.sqrt(variance)
                 assert rate_std > 0  # Should have some variability
 
     def test_torrent_download_bursty_pattern(self) -> None:
