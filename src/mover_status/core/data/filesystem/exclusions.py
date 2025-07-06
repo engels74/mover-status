@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     pass
@@ -63,6 +63,7 @@ class GlobPattern(ExclusionPattern):
         super().__init__(pattern, case_sensitive)
         self._compiled: str | None = None
     
+    @override
     def compile(self) -> None:
         """Compile the glob pattern."""
         if not self.case_sensitive:
@@ -70,6 +71,7 @@ class GlobPattern(ExclusionPattern):
         else:
             self._compiled = self.pattern
     
+    @override
     def matches(self, path: Path) -> bool:
         """Check if the glob pattern matches the path.
         
@@ -95,11 +97,13 @@ class RegexPattern(ExclusionPattern):
         super().__init__(pattern, case_sensitive)
         self._compiled: re.Pattern[str] | None = None
     
+    @override
     def compile(self) -> None:
         """Compile the regex pattern."""
         flags = 0 if self.case_sensitive else re.IGNORECASE
         self._compiled = re.compile(self.pattern, flags)
     
+    @override
     def matches(self, path: Path) -> bool:
         """Check if the regex pattern matches the path.
         
@@ -124,12 +128,14 @@ class ExtensionPattern(ExclusionPattern):
         super().__init__(pattern, case_sensitive)
         self._compiled: str | None = None
     
+    @override
     def compile(self) -> None:
         """Compile the extension pattern."""
         # Normalize extension (ensure it starts with a dot)
         ext = self.pattern if self.pattern.startswith('.') else f'.{self.pattern}'
         self._compiled = ext if self.case_sensitive else ext.lower()
     
+    @override
     def matches(self, path: Path) -> bool:
         """Check if the extension pattern matches the path.
         
@@ -159,10 +165,12 @@ class ExactPattern(ExclusionPattern):
         super().__init__(pattern, case_sensitive)
         self._compiled: str | None = None
     
+    @override
     def compile(self) -> None:
         """Compile the exact pattern."""
         self._compiled = self.pattern if self.case_sensitive else self.pattern.lower()
     
+    @override
     def matches(self, path: Path) -> bool:
         """Check if the exact pattern matches the path.
         
@@ -188,6 +196,7 @@ class GitignorePattern(ExclusionPattern):
         super().__init__(pattern, case_sensitive)
         self._compiled: re.Pattern[str] | None = None
     
+    @override
     def compile(self) -> None:
         """Compile the gitignore pattern."""
         # Convert gitignore pattern to regex
@@ -212,6 +221,7 @@ class GitignorePattern(ExclusionPattern):
         flags = 0 if self.case_sensitive else re.IGNORECASE
         self._compiled = re.compile(f'^{pattern}$', flags)
     
+    @override
     def matches(self, path: Path) -> bool:
         """Check if the gitignore pattern matches the path.
         
