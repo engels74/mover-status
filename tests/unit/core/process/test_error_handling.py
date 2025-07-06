@@ -214,13 +214,19 @@ class TestPermissionManager:
         assert info["name"] == "test_process"
         assert info["cmdline"] == ["test", "command"]
 
-    def test_requires_elevated_privileges(self) -> None:
+    @patch('psutil.Process')
+    def test_requires_elevated_privileges(self, mock_process: Mock) -> None:
         """Test elevated privileges requirement check."""
         manager = PermissionManager()
         
         # System processes typically require elevated privileges
         assert manager.requires_elevated_privileges(1) is True  # init process
         assert manager.requires_elevated_privileges(2) is True  # kernel thread
+        
+        # Mock a user process (non-root owned)
+        mock_proc = Mock()
+        mock_proc.uids.return_value = Mock(real=1000)  # pyright: ignore[reportAny]
+        mock_process.return_value = mock_proc
         
         # User processes typically don't
         assert manager.requires_elevated_privileges(1000) is False
