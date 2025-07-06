@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 from .detector import ProcessDetector, ProcessFilter, ProcessMonitor
+from .error_handling import (
+    ProcessDetectionError,
+    ProcessPermissionError,
+    ProcessNotFoundError,
+    ProcessAccessDeniedError,
+    ProcessTimeoutError,
+    SystemResourceError,
+    ErrorHandler,
+    PermissionManager,
+    RetryManager,
+    GracefulDegradationManager,
+)
 from .models import ProcessInfo, ProcessStatus
 from .pattern_matcher import (
     PatternMatcher,
@@ -29,4 +41,14 @@ __all__ = [
     "ProcessHierarchyDetector",
     "FilterableProcessDetector",
     "UnraidMoverDetector",
+    "ProcessDetectionError",
+    "ProcessPermissionError",
+    "ProcessNotFoundError",
+    "ProcessAccessDeniedError",
+    "ProcessTimeoutError",
+    "SystemResourceError",
+    "ErrorHandler",
+    "PermissionManager",
+    "RetryManager",
+    "GracefulDegradationManager",
 ]
