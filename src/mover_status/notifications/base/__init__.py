@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from .provider import NotificationProvider, with_retry
+
 __all__ = [
-    # TODO: Add base classes when implemented
-    # "NotificationProvider",
-    # "BaseProvider",
+    "NotificationProvider",
+    "with_retry",
 ]

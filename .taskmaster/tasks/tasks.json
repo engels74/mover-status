@@ -581,8 +581,8 @@
             "title": "Create Abstract Provider Base Class",
             "description": "Design and implement an abstract base class that defines the interface for all notification providers, including methods for sending notifications, handling authentication, and provider-specific configuration.",
             "dependencies": [],
-            "details": "Define abstract methods for send(), validate_config(), get_provider_name(), and handle_response(). Include common properties like provider_id, config, and status. Establish the contract that all concrete providers must implement.",
-            "status": "pending",
+            "details": "Define abstract methods for send(), validate_config(), get_provider_name(), and handle_response(). Include common properties like provider_id, config, and status. Establish the contract that all concrete providers must implement.\n<info added on 2025-07-06T19:17:32.627Z>\nSubtask completed successfully. Implemented the abstract NotificationProvider base class with the following key components:\n\n**Abstract NotificationProvider class** (src/mover_status/notifications/base/provider.py):\n- Uses Mapping[str, object] for flexible configuration input\n- Defines abstract methods: send_notification(), validate_config(), get_provider_name()\n- Includes is_enabled() helper method\n- Properly typed with Python 3.13 type annotations\n\n**with_retry decorator**:\n- Implements exponential backoff retry logic\n- Configurable max attempts and backoff factor\n- Preserves function metadata using @wraps\n- Handles async functions properly\n\n**Message model** (src/mover_status/notifications/models/message.py):\n- Pydantic-based model with proper validation\n- Fields: title, content, priority, tags, metadata\n- String representation for debugging\n\n**Comprehensive test suite** (tests/unit/notifications/base/test_provider.py):\n- 12 test cases covering all functionality\n- Tests abstract provider interface, configuration validation\n- Tests retry decorator with various failure scenarios\n- Tests timing and metadata preservation\n- All tests passing with proper type safety\n\n**Updated __init__.py files** to properly export the new classes\n\nThe implementation follows TDD principles and achieves 0 errors and 0 warnings from basedpyright. All tests pass and the code is ready for the next subtask.\n</info added on 2025-07-06T19:17:32.627Z>",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -985,7 +985,7 @@
     ],
     "metadata": {
       "created": "2025-07-05T16:05:55.689Z",
-      "updated": "2025-07-06T19:06:19.015Z",
+      "updated": "2025-07-06T19:17:38.235Z",
       "description": "Tasks for master context"
     }
   }
