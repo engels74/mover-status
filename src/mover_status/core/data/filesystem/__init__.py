@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from .scanner import DirectoryScanner, ScanStrategy
+
 __all__ = [
-    # TODO: Add filesystem classes when implemented
-    # "DirectoryScanner",
+    "DirectoryScanner",
+    "ScanStrategy",
+    # TODO: Add additional filesystem classes when implemented
     # "SizeCalculator",
     # "ExclusionManager",
 ]
