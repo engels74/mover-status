@@ -10,8 +10,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from queue import PriorityQueue
-from typing import Callable
-from collections.abc import Mapping
+from typing import Callable, override, cast
 import logging
 
 logger = logging.getLogger(__name__)
@@ -98,16 +97,19 @@ class EventTopic:
         
         return bool(re.match(regex_pattern, self.name))
     
+    @override
     def __eq__(self, other: object) -> bool:
         """Check equality with another EventTopic."""
         if not isinstance(other, EventTopic):
             return False
         return self.name == other.name
     
+    @override
     def __hash__(self) -> int:
         """Get hash of the topic."""
         return hash(self.name)
     
+    @override
     def __repr__(self) -> str:
         """Get string representation of the topic."""
         return f"EventTopic('{self.name}')"
@@ -150,11 +152,12 @@ class Event:
         return cls(
             event_id=str(data['event_id']),
             topic=EventTopic(str(data['topic'])),
-            data=dict(data['data']) if isinstance(data['data'], dict) else {},  # pyright: ignore[arg-type]
+            data=cast(dict[str, object], data['data']) if isinstance(data['data'], dict) else {},
             priority=EventPriority(int(data['priority'])) if isinstance(data['priority'], int) else EventPriority.NORMAL,
             timestamp=float(data['timestamp']) if isinstance(data['timestamp'], (int, float)) else time.time()
         )
     
+    @override
     def __eq__(self, other: object) -> bool:
         """Check equality with another Event."""
         if not isinstance(other, Event):
@@ -385,12 +388,14 @@ class EventSubscriber:
                 original_error=e
             ) from e
     
+    @override
     def __eq__(self, other: object) -> bool:
         """Check equality with another EventSubscriber."""
         if not isinstance(other, EventSubscriber):
             return False
         return self.subscriber_id == other.subscriber_id
     
+    @override
     def __hash__(self) -> int:
         """Get hash of the subscriber."""
         return hash(self.subscriber_id)
@@ -428,7 +433,7 @@ class EventPublisher:
         else:
             logger.warning(
                 f"Publisher {self.publisher_id} attempted to publish event {event.event_id} "
-                "but no event bus is configured"
+                + "but no event bus is configured"
             )
     
     def create_event(
@@ -454,12 +459,14 @@ class EventPublisher:
             priority=priority
         )
     
+    @override
     def __eq__(self, other: object) -> bool:
         """Check equality with another EventPublisher."""
         if not isinstance(other, EventPublisher):
             return False
         return self.publisher_id == other.publisher_id
     
+    @override
     def __hash__(self) -> int:
         """Get hash of the publisher."""
         return hash(self.publisher_id)
@@ -707,7 +714,7 @@ class EventBus:
         event = queued_event.event
         
         # Find matching subscribers
-        matching_subscribers = []
+        matching_subscribers: list[EventSubscriber] = []
         with self._lock:
             for subscriber in self.subscribers:
                 if subscriber.can_handle_event(event):
@@ -747,7 +754,7 @@ class EventBus:
             except Exception as e:
                 logger.error(
                     f"Unexpected error in subscriber {subscriber.subscriber_id} "
-                    f"handling event {event.event_id}: {e}",
+                    + f"handling event {event.event_id}: {e}",
                     extra={
                         'event_id': event.event_id,
                         'subscriber_id': subscriber.subscriber_id,

@@ -27,7 +27,7 @@ from mover_status.core.monitor.event_bus import (
 
 
 @dataclass
-class TestEvent:
+class TestEventData:
     """Test event for testing purposes."""
     name: str
     data: dict[str, object] = field(default_factory=dict)
@@ -106,7 +106,7 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         
         def handler(event: Event) -> None:
             received_events.append(event)
@@ -141,7 +141,7 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         
         def handler(event: Event) -> None:
             received_events.append(event)
@@ -185,7 +185,7 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         
         def handler(event: Event) -> None:
             received_events.append(event)
@@ -234,8 +234,8 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events1 = []
-        received_events2 = []
+        received_events1: list[Event] = []
+        received_events2: list[Event] = []
         
         def handler1(event: Event) -> None:
             received_events1.append(event)
@@ -275,9 +275,9 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         
-        def failing_handler(event: Event) -> None:
+        def failing_handler(_event: Event) -> None:
             raise ValueError("Handler error")
         
         def good_handler(event: Event) -> None:
@@ -317,7 +317,7 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         lock = threading.Lock()
         
         def handler(event: Event) -> None:
@@ -340,7 +340,7 @@ class TestEventBus:
                 )
                 publisher.publish(event)
         
-        threads = []
+        threads: list[threading.Thread] = []
         for _ in range(5):
             thread = threading.Thread(target=publish_events, args=(10,))
             threads.append(thread)
@@ -361,7 +361,7 @@ class TestEventBus:
         bus = EventBus()
         bus.start()
         
-        received_events = []
+        received_events: list[Event] = []
         
         def handler(event: Event) -> None:
             received_events.append(event)
@@ -610,10 +610,10 @@ class TestEventPublisher:
             priority=EventPriority.NORMAL
         )
         
-        with Mock() as mock_bus:
-            publisher.event_bus = mock_bus
-            publisher.publish(event)
-            mock_bus.publish_event.assert_called_once_with(event)
+        mock_bus = Mock()
+        publisher.event_bus = mock_bus  # type: ignore
+        publisher.publish(event)
+        mock_bus.publish_event.assert_called_once_with(event)  # type: ignore
 
 
 class TestDeadLetterQueue:
@@ -694,7 +694,7 @@ class TestEventHandler:
     
     def test_event_handler_creation(self) -> None:
         """Test EventHandler creation."""
-        def handler_func(event: Event) -> None:
+        def handler_func(_event: Event) -> None:
             pass
         
         handler = EventHandler(handler_func)
@@ -702,7 +702,7 @@ class TestEventHandler:
     
     def test_event_handler_call(self) -> None:
         """Test EventHandler call method."""
-        called_events = []
+        called_events: list[Event] = []
         
         def handler_func(event: Event) -> None:
             called_events.append(event)
@@ -722,7 +722,7 @@ class TestEventHandler:
     
     def test_event_handler_error_handling(self) -> None:
         """Test EventHandler error handling."""
-        def failing_handler(event: Event) -> None:
+        def failing_handler(_event: Event) -> None:
             raise ValueError("Handler failed")
         
         handler = EventHandler(failing_handler)
@@ -742,7 +742,7 @@ class TestEventFilter:
     
     def test_event_filter_creation(self) -> None:
         """Test EventFilter creation."""
-        def filter_func(event: Event) -> bool:
+        def filter_func(_event: Event) -> bool:
             return True
         
         event_filter = EventFilter(filter_func)
@@ -774,7 +774,7 @@ class TestEventFilter:
     
     def test_event_filter_error_handling(self) -> None:
         """Test EventFilter error handling."""
-        def failing_filter(event: Event) -> bool:
+        def failing_filter(_event: Event) -> bool:
             raise ValueError("Filter failed")
         
         event_filter = EventFilter(failing_filter)
