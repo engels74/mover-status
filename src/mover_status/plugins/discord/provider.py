@@ -6,8 +6,9 @@ import logging
 from typing import TYPE_CHECKING, override
 from collections.abc import Mapping
 
-from mover_status.notifications.base import NotificationProvider, with_retry
+from mover_status.notifications.base import NotificationProvider
 from mover_status.plugins.discord.webhook.client import DiscordWebhookClient, DiscordEmbed
+from mover_status.plugins.discord.webhook.error_handling import DiscordApiError, DiscordErrorType
 
 if TYPE_CHECKING:
     from mover_status.notifications.models.message import Message
@@ -99,7 +100,6 @@ class DiscordProvider(NotificationProvider):
         """Get the provider name."""
         return "discord"
     
-    @with_retry(max_attempts=3, backoff_factor=2.0)
     @override
     async def send_notification(self, message: Message) -> bool:
         """Send notification via Discord webhook.
@@ -124,8 +124,20 @@ class DiscordProvider(NotificationProvider):
             
             return success
             
+        except DiscordApiError as e:
+            # Handle Discord-specific errors appropriately
+            if e.error_type in (DiscordErrorType.INVALID_WEBHOOK, DiscordErrorType.MISSING_PERMISSIONS):
+                logger.error(f"Discord configuration error for '{message.title}': {e}")
+                return False
+            elif e.error_type in (DiscordErrorType.RATE_LIMITED, DiscordErrorType.SERVER_ERROR):
+                logger.warning(f"Discord service error for '{message.title}': {e}")
+                return False
+            else:
+                logger.error(f"Discord API error for '{message.title}': {e}")
+                return False
+            
         except Exception as e:
-            logger.error(f"Error sending Discord notification: {e}")
+            logger.error(f"Unexpected error sending Discord notification for '{message.title}': {e}")
             return False
     
     def _create_embed(self, message: Message) -> DiscordEmbed:

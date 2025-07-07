@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TypedDict, override
-from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field, field_validator
+
+from .error_handling import (
+    AdvancedRateLimiter,
+    DiscordErrorClassifier,
+    WebhookValidator,
+    with_discord_error_handling,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,54 +84,32 @@ class DiscordWebhookClient:
         self.max_retries: int = max_retries
         self.retry_delay: float = retry_delay
         
-        self._validate_webhook_url()
+        # Validate webhook URL using enhanced validator
+        WebhookValidator.validate_webhook_url(webhook_url)
         
-        # Rate limiting (Discord allows 30 requests per minute per webhook)
-        self._rate_limit_window: float = 60.0  # 1 minute
-        self._rate_limit_max: int = 30
-        self._rate_limit_timestamps: list[float] = []
-        self._rate_limit_lock: asyncio.Lock = asyncio.Lock()
+        # Use advanced rate limiter (Discord allows 30 requests per minute per webhook)
+        self._rate_limiter: AdvancedRateLimiter = AdvancedRateLimiter(
+            max_requests=30,
+            time_window=60.0,
+            burst_limit=5,
+            adaptive_delay=True,
+        )
     
-    def _validate_webhook_url(self) -> None:
-        """Validate the webhook URL format."""
-        parsed = urlparse(self.webhook_url)
+    def get_rate_limit_stats(self) -> dict[str, object]:
+        """Get rate limiter statistics.
         
-        if not parsed.scheme in ("http", "https"):
-            raise ValueError("Webhook URL must use HTTP or HTTPS")
-        
-        if not parsed.netloc.endswith(("discord.com", "discordapp.com")):
-            raise ValueError("Webhook URL must be a Discord webhook")
-        
-        if not parsed.path.startswith("/api/webhooks/"):
-            raise ValueError("Invalid Discord webhook URL format")
+        Returns:
+            Dictionary with rate limiter statistics
+        """
+        return self._rate_limiter.get_stats()
     
-    async def _check_rate_limit(self) -> None:
-        """Check and enforce rate limits."""
-        import time
-        
-        async with self._rate_limit_lock:
-            current_time = time.time()
-            
-            # Remove timestamps older than the window
-            self._rate_limit_timestamps = [
-                ts for ts in self._rate_limit_timestamps
-                if current_time - ts < self._rate_limit_window
-            ]
-            
-            # Check if we're at the limit
-            if len(self._rate_limit_timestamps) >= self._rate_limit_max:
-                oldest_timestamp = min(self._rate_limit_timestamps)
-                wait_time = self._rate_limit_window - (current_time - oldest_timestamp)
-                
-                if wait_time > 0:
-                    logger.warning(
-                        f"Rate limit reached for Discord webhook. Waiting {wait_time:.1f} seconds"
-                    )
-                    await asyncio.sleep(wait_time)
-            
-            # Add current timestamp
-            self._rate_limit_timestamps.append(current_time)
-    
+    @with_discord_error_handling(
+        max_attempts=3,
+        backoff_factor=2.0,
+        max_backoff=60.0,
+        jitter=True,
+        respect_retry_after=True,
+    )
     async def send_message(
         self,
         content: str | None = None,
@@ -144,16 +127,11 @@ class DiscordWebhookClient:
             
         Returns:
             True if message was sent successfully, False otherwise
+            
+        Raises:
+            DiscordApiError: If there's an error sending the message
         """
-        if not content and not embeds:
-            raise ValueError("Either content or embeds must be provided")
-        
-        if content and len(content) > 2000:
-            raise ValueError("Message content cannot exceed 2000 characters")
-        
-        if embeds and len(embeds) > 10:
-            raise ValueError("Cannot send more than 10 embeds")
-        
+        # Build payload
         payload: WebhookPayload = {}
         
         if content:
@@ -170,60 +148,40 @@ class DiscordWebhookClient:
         if effective_avatar_url:
             payload["avatar_url"] = effective_avatar_url
         
-        await self._check_rate_limit()
+        # Validate payload before sending
+        WebhookValidator.validate_embed_payload(payload)
         
-        for attempt in range(self.max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.post(
-                        self.webhook_url,
-                        json=payload,
-                        headers={"Content-Type": "application/json"},
-                    )
-                    
-                    if response.status_code == 204:
-                        logger.debug("Discord webhook message sent successfully")
-                        return True
-                    elif response.status_code == 429:
-                        # Rate limited by Discord
-                        retry_after_str = response.headers.get("Retry-After", "1")  # pyright: ignore[reportAny]
-                        retry_after = float(retry_after_str)  # pyright: ignore[reportAny]
-                        logger.warning(
-                            f"Discord webhook rate limited. Retrying after {retry_after} seconds"
-                        )
-                        await asyncio.sleep(retry_after)
-                        continue
-                    else:
-                        logger.error(
-                            f"Discord webhook request failed with status {response.status_code}: {response.text}"
-                        )
-                        
-                        # Don't retry on client errors (4xx)
-                        if 400 <= response.status_code < 500:
-                            return False
-                        
-                        if attempt < self.max_retries:
-                            wait_time = self.retry_delay * (2 ** attempt)  # pyright: ignore[reportAny]
-                            logger.debug(f"Retrying in {wait_time} seconds...")
-                            await asyncio.sleep(wait_time)  # pyright: ignore[reportAny]
-                        else:
-                            return False
-                            
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
-                logger.error(f"Discord webhook connection error: {e}")
+        # Apply rate limiting
+        await self._rate_limiter.acquire()
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
                 
-                if attempt < self.max_retries:
-                    wait_time_conn = self.retry_delay * (2 ** attempt)  # pyright: ignore[reportAny]
-                    logger.debug(f"Retrying in {wait_time_conn} seconds...")
-                    await asyncio.sleep(wait_time_conn)  # pyright: ignore[reportAny]
+                if response.status_code == 204:
+                    logger.debug("Discord webhook message sent successfully")
+                    return True
                 else:
-                    return False
+                    # Convert HTTP error to Discord API error
+                    discord_error = DiscordErrorClassifier.classify_http_error(response)
+                    logger.error(f"Discord webhook request failed: {discord_error}")
+                    raise discord_error
+                    
+        except httpx.HTTPStatusError as e:
+            # Convert HTTP status errors to Discord API errors
+            discord_error = DiscordErrorClassifier.classify_http_error(e.response)
+            logger.error(f"Discord webhook HTTP error: {discord_error}")
+            raise discord_error
             
-            except Exception as e:
-                logger.error(f"Unexpected error sending Discord webhook: {e}")
-                return False
-        
-        return False
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as e:
+            # Convert network errors to Discord API errors
+            discord_error = DiscordErrorClassifier.classify_network_error(e)
+            logger.error(f"Discord webhook network error: {discord_error}")
+            raise discord_error
     
     @override
     def __repr__(self) -> str:

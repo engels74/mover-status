@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +10,10 @@ import httpx
 from mover_status.plugins.discord.webhook.client import (
     DiscordWebhookClient,
     DiscordEmbed,
+)
+from mover_status.plugins.discord.webhook.error_handling import (
+    DiscordApiError,
+    DiscordErrorType,
 )
 
 
@@ -130,17 +133,17 @@ class TestDiscordWebhookClient:
 
     def test_validate_webhook_url_invalid_scheme(self) -> None:
         """Test webhook URL validation with invalid scheme."""
-        with pytest.raises(ValueError, match="must use HTTP or HTTPS"):
+        with pytest.raises(DiscordApiError, match="must use HTTP or HTTPS"):
             _ = DiscordWebhookClient(webhook_url="ftp://discord.com/api/webhooks/123/abc")
 
     def test_validate_webhook_url_invalid_domain(self) -> None:
         """Test webhook URL validation with invalid domain."""
-        with pytest.raises(ValueError, match="must be a Discord webhook"):
+        with pytest.raises(DiscordApiError, match="must be a Discord webhook"):
             _ = DiscordWebhookClient(webhook_url="https://example.com/api/webhooks/123/abc")
 
     def test_validate_webhook_url_invalid_path(self) -> None:
         """Test webhook URL validation with invalid path."""
-        with pytest.raises(ValueError, match="Invalid Discord webhook URL format"):
+        with pytest.raises(DiscordApiError, match="Invalid Discord webhook URL"):
             _ = DiscordWebhookClient(webhook_url="https://discord.com/invalid/path")
 
     def test_validate_webhook_url_discordapp_domain(self) -> None:
@@ -152,34 +155,27 @@ class TestDiscordWebhookClient:
 
     @pytest.mark.asyncio
     async def test_rate_limit_tracking(self, client: DiscordWebhookClient) -> None:
-        """Test rate limit timestamp tracking."""
-        # Access private attributes for testing
-        client._rate_limit_max = 2  # Low limit for testing  # pyright: ignore[reportPrivateUsage]
+        """Test rate limit functionality through stats."""
+        # Use the new advanced rate limiter through stats
+        stats = client.get_rate_limit_stats()
         
-        await client._check_rate_limit()  # pyright: ignore[reportPrivateUsage]
-        assert len(client._rate_limit_timestamps) == 1  # pyright: ignore[reportPrivateUsage]
-        
-        await client._check_rate_limit()  # pyright: ignore[reportPrivateUsage]
-        assert len(client._rate_limit_timestamps) == 2  # pyright: ignore[reportPrivateUsage]
+        # Should start with no requests
+        assert stats["requests_in_window"] == 0
+        assert stats["max_requests"] == 30  # Default Discord limit
+        assert stats["burst_limit"] == 5  # Default burst limit
 
-    @pytest.mark.asyncio
-    async def test_rate_limit_enforcement(self, client: DiscordWebhookClient) -> None:
-        """Test rate limit enforcement with sleep."""
-        # Set very low limit to trigger rate limiting
-        client._rate_limit_max = 1  # pyright: ignore[reportPrivateUsage]
-        client._rate_limit_window = 1.0  # 1 second window  # pyright: ignore[reportPrivateUsage]
+    @pytest.mark.asyncio 
+    async def test_rate_limit_stats(self, client: DiscordWebhookClient) -> None:
+        """Test rate limit stats after making requests."""
+        # Make some calls to the rate limiter
+        await client._rate_limiter.acquire()  # pyright: ignore[reportPrivateUsage]
+        await client._rate_limiter.acquire()  # pyright: ignore[reportPrivateUsage]
         
-        # First call should succeed immediately
-        start_time = asyncio.get_event_loop().time()
-        await client._check_rate_limit()  # pyright: ignore[reportPrivateUsage]
-        first_call_time = asyncio.get_event_loop().time() - start_time
-        assert first_call_time < 0.1  # Should be very fast
+        stats = client.get_rate_limit_stats()
         
-        # Second call should be delayed
-        start_time = asyncio.get_event_loop().time()
-        await client._check_rate_limit()  # pyright: ignore[reportPrivateUsage]
-        second_call_time = asyncio.get_event_loop().time() - start_time
-        assert second_call_time >= 0.9  # Should wait close to 1 second
+        # Should show the requests made
+        assert stats["requests_in_window"] == 2
+        assert stats["burst_requests"] == 2
 
     @pytest.mark.asyncio
     async def test_send_message_success(self, client: DiscordWebhookClient) -> None:
@@ -268,70 +264,68 @@ class TestDiscordWebhookClient:
             mock_response.text = "Bad Request"
             mock_post.return_value = mock_response
             
-            result = await client.send_message(content="Test message")
+            with pytest.raises(DiscordApiError) as exc_info:
+                _ = await client.send_message(content="Test message")
             
-            assert result is False
+            assert exc_info.value.error_type == DiscordErrorType.INVALID_PAYLOAD
             # Should not retry on client errors
             mock_post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_send_message_server_error_with_retries(self, client: DiscordWebhookClient) -> None:
         """Test handling server errors with retries."""
-        client.retry_delay = 0.01  # Fast retries for testing
-        
         with patch('httpx.AsyncClient.post', new_callable=AsyncMock) as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 500
             mock_response.text = "Internal Server Error"
             mock_post.return_value = mock_response
             
-            result = await client.send_message(content="Test message")
+            with pytest.raises(DiscordApiError) as exc_info:
+                _ = await client.send_message(content="Test message")
             
-            assert result is False
-            # Should retry max_retries + 1 times
-            assert mock_post.call_count == client.max_retries + 1
+            assert exc_info.value.error_type == DiscordErrorType.SERVER_ERROR
+            # Should retry max_attempts times (default is 3)
+            assert mock_post.call_count == 3
 
     @pytest.mark.asyncio
     async def test_send_message_network_error(self, client: DiscordWebhookClient) -> None:
         """Test handling network errors."""
-        client.retry_delay = 0.01  # Fast retries for testing
-        
         with patch('httpx.AsyncClient.post', new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = httpx.ConnectError("Connection failed")
             
-            result = await client.send_message(content="Test message")
+            with pytest.raises(DiscordApiError) as exc_info:
+                _ = await client.send_message(content="Test message")
             
-            assert result is False
-            assert mock_post.call_count == client.max_retries + 1
+            assert exc_info.value.error_type == DiscordErrorType.NETWORK_ERROR
+            assert mock_post.call_count == 3  # Default max_attempts
 
     @pytest.mark.asyncio
     async def test_send_message_timeout_error(self, client: DiscordWebhookClient) -> None:
         """Test handling timeout errors."""
-        client.retry_delay = 0.01  # Fast retries for testing
-        
         with patch('httpx.AsyncClient.post', new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = httpx.TimeoutException("Request timed out")
             
-            result = await client.send_message(content="Test message")
+            with pytest.raises(DiscordApiError) as exc_info:
+                _ = await client.send_message(content="Test message")
             
-            assert result is False
-            assert mock_post.call_count == client.max_retries + 1
+            assert exc_info.value.error_type == DiscordErrorType.TIMEOUT_ERROR
+            assert mock_post.call_count == 3  # Default max_attempts
 
     @pytest.mark.asyncio
     async def test_send_message_validation_errors(self, client: DiscordWebhookClient) -> None:
         """Test validation errors for message sending."""
         # No content or embeds
-        with pytest.raises(ValueError, match="Either content or embeds must be provided"):
+        with pytest.raises(DiscordApiError, match="Either content or embeds must be provided"):
             _ = await client.send_message()
         
         # Content too long
         long_content = "x" * 2001
-        with pytest.raises(ValueError, match="cannot exceed 2000 characters"):
+        with pytest.raises(DiscordApiError, match="cannot exceed 2000 characters"):
             _ = await client.send_message(content=long_content)
         
         # Too many embeds
         embeds = [DiscordEmbed(title=f"Embed {i}", description="Test") for i in range(11)]
-        with pytest.raises(ValueError, match="Cannot send more than 10 embeds"):
+        with pytest.raises(DiscordApiError, match="Cannot send more than 10 embeds"):
             _ = await client.send_message(embeds=embeds)
 
     def test_repr(self, client: DiscordWebhookClient) -> None:
