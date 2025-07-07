@@ -58,33 +58,46 @@ class DiscordProvider(NotificationProvider):
         if "discord.com" not in webhook_url and "discordapp.com" not in webhook_url:
             raise ValueError("webhook_url must be a Discord webhook URL")
         
-        # Validate optional numeric configs (only validate convertible values)
+        # Validate optional numeric configs
         timeout_val = self.config.get("timeout")
-        if timeout_val is not None and isinstance(timeout_val, (int, float, str)):
-            try:
-                timeout = float(timeout_val)
-                if timeout <= 0:
-                    raise ValueError("timeout must be positive")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid timeout value: {e}")
+        if timeout_val is not None:
+            # Only validate types that suggest configuration errors (like dicts)
+            # Other invalid types will fall back to defaults in initialization
+            if isinstance(timeout_val, dict):
+                raise ValueError("timeout must be a number")
+            if isinstance(timeout_val, (int, float, str)):
+                try:
+                    timeout = float(timeout_val)
+                    if timeout <= 0:
+                        raise ValueError("timeout must be positive")
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid timeout value: {e}")
 
         max_retries_val = self.config.get("max_retries")
-        if max_retries_val is not None and isinstance(max_retries_val, (int, float, str)):
-            try:
-                max_retries = int(max_retries_val)
-                if max_retries < 0:
-                    raise ValueError("max_retries must be non-negative")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid max_retries value: {e}")
-        
+        if max_retries_val is not None:
+            # Only validate types that suggest configuration errors (like dicts)
+            if isinstance(max_retries_val, dict):
+                raise ValueError("max_retries must be a number")
+            if isinstance(max_retries_val, (int, float, str)):
+                try:
+                    max_retries = int(max_retries_val)
+                    if max_retries < 0:
+                        raise ValueError("max_retries must be non-negative")
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid max_retries value: {e}")
+
         retry_delay_val = self.config.get("retry_delay")
-        if retry_delay_val is not None and isinstance(retry_delay_val, (int, float, str)):
-            try:
-                retry_delay = float(retry_delay_val)
-                if retry_delay < 0:
-                    raise ValueError("retry_delay must be non-negative")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid retry_delay value: {e}")
+        if retry_delay_val is not None:
+            # Only validate types that suggest configuration errors (like dicts)
+            if isinstance(retry_delay_val, dict):
+                raise ValueError("retry_delay must be a number")
+            if isinstance(retry_delay_val, (int, float, str)):
+                try:
+                    retry_delay = float(retry_delay_val)
+                    if retry_delay < 0:
+                        raise ValueError("retry_delay must be non-negative")
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid retry_delay value: {e}")
     
     @override
     def get_provider_name(self) -> str:
