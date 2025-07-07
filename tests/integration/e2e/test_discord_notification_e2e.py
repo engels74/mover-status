@@ -4,14 +4,36 @@ from __future__ import annotations
 
 import asyncio
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from typing import Any
+from unittest.mock import patch, MagicMock
+from typing import TypedDict, cast
 
 from mover_status.plugins.discord.provider import DiscordProvider
 from mover_status.notifications.models.message import Message
-from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus
+from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus, DispatchResult
 from mover_status.notifications.base.registry import get_global_registry, ProviderMetadata
 from mover_status.notifications.base.config_validator import ConfigValidator
+
+
+class EmbedField(TypedDict):
+    """Type definition for Discord embed field."""
+    name: str
+    value: str
+    inline: bool
+
+
+class Embed(TypedDict):
+    """Type definition for Discord embed."""
+    title: str
+    description: str
+    color: int
+    fields: list[EmbedField]
+
+
+class DiscordWebhookPayload(TypedDict):
+    """Type definition for Discord webhook payload."""
+    embeds: list[Embed]
+    username: str
+    avatar_url: str
 
 
 class TestDiscordNotificationE2E:
@@ -169,7 +191,7 @@ class TestDiscordNotificationE2E:
             
             # Step 7: Verify Payload Structure
             for i, call in enumerate(mock_post.call_args_list):
-                payload: dict[str, Any] = call.kwargs["json"]
+                payload = cast(DiscordWebhookPayload, call.kwargs["json"])
                 
                 # Verify basic payload structure
                 assert "embeds" in payload
@@ -178,7 +200,7 @@ class TestDiscordNotificationE2E:
                 assert len(payload["embeds"]) == 1
                 
                 # Verify embed content matches message
-                embed: dict[str, Any] = payload["embeds"][0]
+                embed = payload["embeds"][0]
                 message = realistic_messages[i]
                 
                 assert embed["title"] == message.title
@@ -194,7 +216,7 @@ class TestDiscordNotificationE2E:
                 assert embed["color"] == expected_colors[message.priority]
                 
                 # Verify fields
-                field_names = [str(field["name"]) for field in embed["fields"]]
+                field_names = [field["name"] for field in embed["fields"]]
                 
                 # Should have priority field
                 assert "Priority" in field_names
@@ -248,7 +270,7 @@ class TestDiscordNotificationE2E:
             
             with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
                 # Dispatch all messages
-                dispatch_results = []
+                dispatch_results: list[DispatchResult] = []
                 for message in realistic_messages:
                     result = await dispatcher.dispatch_message(message, ["discord"])
                     dispatch_results.append(result)
@@ -302,7 +324,7 @@ class TestDiscordNotificationE2E:
         permanent_failure_response = MagicMock()
         permanent_failure_response.status_code = 404
         permanent_failure_response.headers = {}
-        permanent_failure_response.raise_for_status.side_effect = Exception("Not found")
+        permanent_failure_response.raise_for_status = MagicMock(side_effect=Exception("Not found"))
         
         with patch("httpx.AsyncClient.post", return_value=permanent_failure_response):
             result = await provider.send_notification(test_message)
@@ -361,8 +383,11 @@ class TestDiscordNotificationE2E:
             start_time = time.time()
             
             # Send all messages
-            tasks = [provider.send_notification(msg) for msg in volume_messages]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            tasks: list[asyncio.Task[bool]] = [
+                asyncio.create_task(provider.send_notification(msg)) 
+                for msg in volume_messages
+            ]
+            results: list[bool | BaseException] = await asyncio.gather(*tasks, return_exceptions=True)
             
             end_time = time.time()
             total_time = end_time - start_time
@@ -424,11 +449,11 @@ class TestDiscordNotificationE2E:
         
         with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
             # Send all messages from all services concurrently
-            all_tasks = []
+            all_tasks: list[tuple[str, asyncio.Task[bool]]] = []
             for service_name, messages in service_messages.items():
                 provider = providers[service_name]
                 for message in messages:
-                    task = provider.send_notification(message)
+                    task = asyncio.create_task(provider.send_notification(message))
                     all_tasks.append((service_name, task))
             
             # Execute all tasks concurrently
@@ -442,8 +467,8 @@ class TestDiscordNotificationE2E:
             assert mock_post.call_count == total_expected_calls
             
             # Verify each provider sent its messages with correct username
-            call_usernames = [call.kwargs["json"]["username"] for call in mock_post.call_args_list]
-            expected_usernames = [
+            call_usernames: list[str | None] = [call.kwargs["json"]["username"] for call in mock_post.call_args_list]
+            expected_usernames: list[str | None] = [
                 providers[service_name].webhook_client.username
                 for service_name, messages in service_messages.items()
                 for _ in messages
@@ -451,8 +476,8 @@ class TestDiscordNotificationE2E:
 
             # Should have correct usernames (order might vary due to concurrency)
             # Handle None values by converting to empty string for sorting
-            call_usernames_sorted = sorted(u or "" for u in call_usernames)
-            expected_usernames_sorted = sorted(u or "" for u in expected_usernames)
+            call_usernames_sorted = sorted(str(u or "") for u in call_usernames)
+            expected_usernames_sorted = sorted(str(u or "") for u in expected_usernames)
             assert call_usernames_sorted == expected_usernames_sorted
     
     @pytest.mark.asyncio
@@ -479,7 +504,7 @@ class TestDiscordNotificationE2E:
             assert result is False
         
         # Partial service degradation (very slow responses)
-        async def slow_response(*args: Any, **kwargs: Any) -> MagicMock:
+        async def slow_response(*_args: object, **_kwargs: object) -> MagicMock:
             await asyncio.sleep(0.5)  # Simulate slow response
             response = MagicMock()
             response.status_code = 204

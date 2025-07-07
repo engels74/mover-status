@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import pytest
 from unittest.mock import patch, MagicMock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict, cast
 import httpx
 
 from mover_status.plugins.discord.provider import DiscordProvider
@@ -15,6 +15,28 @@ from mover_status.notifications.base.registry import get_global_registry, Provid
 
 if TYPE_CHECKING:
     pass
+
+
+class EmbedField(TypedDict):
+    """Type definition for Discord embed field."""
+    name: str
+    value: str
+    inline: bool
+
+
+class Embed(TypedDict):
+    """Type definition for Discord embed."""
+    title: str
+    description: str
+    color: int
+    fields: list[EmbedField]
+
+
+class DiscordWebhookPayload(TypedDict):
+    """Type definition for Discord webhook payload."""
+    embeds: list[Embed]
+    username: str
+    avatar_url: str
 
 
 class TestDiscordIntegration:
@@ -87,11 +109,11 @@ class TestDiscordIntegration:
             
             # Verify webhook calls contain proper embeds
             for i, call in enumerate(mock_post.call_args_list):
-                payload: dict[str, Any] = call.kwargs["json"]
+                payload = cast(DiscordWebhookPayload, call.kwargs["json"])
                 assert "embeds" in payload
                 assert len(payload["embeds"]) == 1
                 
-                embed: dict[str, Any] = payload["embeds"][0]
+                embed = payload["embeds"][0]
                 assert embed["title"] == sample_messages[i].title
                 assert embed["description"] == sample_messages[i].content
                 
@@ -173,11 +195,11 @@ class TestDiscordIntegration:
             mock_response = MagicMock()
             mock_response.status_code = status_code
             mock_response.headers = headers
-            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError(
                 f"HTTP {status_code}",
                 request=MagicMock(),
                 response=mock_response,
-            )
+            ))
             
             with patch("httpx.AsyncClient.post", return_value=mock_response):
                 result = await provider.send_notification(message)
@@ -293,8 +315,8 @@ class TestDiscordIntegration:
             
             # Verify each message was processed correctly
             for call in mock_post.call_args_list:
-                payload: dict[str, Any] = call.kwargs["json"]
-                embed: dict[str, Any] = payload["embeds"][0]
+                payload = cast(DiscordWebhookPayload, call.kwargs["json"])
+                embed = payload["embeds"][0]
                 
                 # Find corresponding message by title
                 expected_message = next(
@@ -331,15 +353,15 @@ class TestDiscordIntegration:
             assert result is True
             
             # Verify field limiting was applied
-            payload: dict[str, Any] = mock_post.call_args.kwargs["json"]
-            embed: dict[str, Any] = payload["embeds"][0]
+            payload = cast(DiscordWebhookPayload, mock_post.call_args.kwargs["json"])
+            embed = payload["embeds"][0]
             
             # Discord has a 25 field limit, but we reserve space for tags and priority
             # So total should be <= 25
             assert len(embed["fields"]) <= 25
             
             # Verify tags and priority fields are present
-            field_names: list[str] = [str(field["name"]) for field in embed["fields"]]
+            field_names = [field["name"] for field in embed["fields"]]
             assert "Tags" in field_names
             assert "Priority" in field_names
     
@@ -488,15 +510,15 @@ class TestDiscordIntegration:
         assert mock_post.call_count == len(test_cases)
         
         for i, call in enumerate(mock_post.call_args_list):
-            payload: dict[str, Any] = call.kwargs["json"]
-            embed: dict[str, Any] = payload["embeds"][0]
+            payload = cast(DiscordWebhookPayload, call.kwargs["json"])
+            embed = payload["embeds"][0]
             test_message = test_cases[i]
             
             assert embed["title"] == test_message.title
             assert embed["description"] == test_message.content
             
             # Verify fields based on message content
-            field_names: list[str] = [str(field["name"]) for field in embed["fields"]]
+            field_names = [field["name"] for field in embed["fields"]]
             
             if test_message.tags:
                 assert "Tags" in field_names

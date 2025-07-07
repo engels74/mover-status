@@ -4,7 +4,35 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import AsyncMock, patch
-from typing import Any
+from typing import TYPE_CHECKING, TypedDict, cast
+
+if TYPE_CHECKING:
+    from mover_status.plugins.discord.webhook.client import DiscordEmbed
+
+
+class EmbedField(TypedDict):
+    """Type definition for Discord embed field."""
+    name: str
+    value: str
+    inline: bool
+
+
+class Embed(TypedDict):
+    """Type definition for Discord embed."""
+    title: str
+    description: str
+    color: int
+    fields: list[EmbedField]
+
+
+class DiscordWebhookPayload(TypedDict):
+    """Type definition for Discord webhook payload."""
+    embeds: list[Embed]
+    username: str
+    avatar_url: str
+
+
+from unittest.mock import MagicMock
 
 from mover_status.plugins.discord.provider import DiscordProvider
 from mover_status.plugins.discord.webhook.error_handling import DiscordApiError, DiscordErrorType
@@ -29,22 +57,22 @@ class TestDiscordProviderEdgeCases:
         # Test empty webhook URL
         config = {**base_config, "webhook_url": ""}
         with pytest.raises(ValueError, match="webhook_url is required"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test None webhook URL
         config = {**base_config, "webhook_url": None}
         with pytest.raises(ValueError, match="webhook_url is required"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test webhook URL without protocol
         config = {**base_config, "webhook_url": "discord.com/api/webhooks/123/abc"}
         with pytest.raises(ValueError, match="must be a valid HTTP/HTTPS URL"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test non-Discord webhook URL
         config = {**base_config, "webhook_url": "https://example.com/webhook"}
         with pytest.raises(ValueError, match="must be a Discord webhook URL"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test discordapp.com domain (should be valid)
         config = {**base_config, "webhook_url": "https://discordapp.com/api/webhooks/123/abc"}
@@ -53,17 +81,17 @@ class TestDiscordProviderEdgeCases:
         # Test zero timeout
         config = {**base_config, "timeout": 0}
         with pytest.raises(ValueError, match="timeout must be positive"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test negative timeout
         config = {**base_config, "timeout": -5.0}
         with pytest.raises(ValueError, match="timeout must be positive"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test timeout as object
         config = {**base_config, "timeout": {"value": 30}}
         with pytest.raises(ValueError, match="timeout must be a number"):
-            DiscordProvider(config)
+            _ = DiscordProvider(config)
         
         # Test max_retries boundary cases
         config = {**base_config, "max_retries": 0}  # Should be valid
@@ -242,7 +270,7 @@ class TestDiscordProviderEdgeCases:
         ]
         
         # Mock successful responses with delay to simulate rate limiting
-        async def mock_send_with_delay(*_: Any, **__: Any) -> bool:
+        async def mock_send_with_delay(*_: object, **_kwargs: object) -> bool:
             await asyncio.sleep(0.01)  # Small delay
             return True
         
@@ -360,7 +388,7 @@ class TestDiscordProviderEdgeCases:
             
             # Send multiple messages
             for _ in range(3):
-                await provider.send_notification(message)
+                _ = await provider.send_notification(message)
             
             # Verify state hasn't changed
             assert provider.webhook_client.webhook_url == initial_webhook_url
@@ -441,7 +469,7 @@ class TestDiscordProviderEdgeCases:
         )
         
         # Generate multiple embeds for the same message
-        embeds: list[Any] = []
+        embeds: list[DiscordEmbed] = []
         for _ in range(5):
             embed = provider._create_embed(message)  # pyright: ignore[reportPrivateUsage]
             embeds.append(embed)
@@ -459,3 +487,84 @@ class TestDiscordProviderEdgeCases:
                 assert field["name"] == first_embed.fields[i]["name"]
                 assert field["value"] == first_embed.fields[i]["value"]
                 assert field["inline"] == first_embed.fields[i]["inline"]
+    
+    @pytest.mark.asyncio
+    async def test_provider_initialization_edge_cases(self) -> None:
+        """Test edge cases in provider initialization."""
+        # Test with empty webhook URL
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({"webhook_url": ""})
+        
+        # Test with None webhook URL
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({"webhook_url": None})
+        
+        # Test with invalid URL scheme
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({"webhook_url": "ftp://discord.com/api/webhooks/123/abc"})
+        
+        # Test with non-Discord URL
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({"webhook_url": "https://example.com/webhook"})
+        
+        # Test with invalid numeric values
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({
+                "webhook_url": "https://discord.com/api/webhooks/123/abc",
+                "timeout": "not-a-number",
+            })
+        
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({
+                "webhook_url": "https://discord.com/api/webhooks/123/abc",
+                "max_retries": "invalid",
+            })
+        
+        with pytest.raises(ValueError):
+            _ = DiscordProvider({
+                "webhook_url": "https://discord.com/api/webhooks/123/abc",
+                "retry_delay": "invalid",
+            })
+    
+    @pytest.mark.asyncio
+    async def test_embed_field_ordering(self) -> None:
+        """Test that embed fields maintain proper ordering and structure."""
+        provider = DiscordProvider({
+            "webhook_url": "https://discord.com/api/webhooks/123/abc",
+        })
+        
+        # Message with metadata that has special ordering requirements
+        message = Message(
+            title="Field Order Test",
+            content="Testing field ordering",
+            priority="normal",
+            tags=["order", "test"],
+            metadata={
+                "z_last": "should appear last",
+                "a_first": "should appear first",
+                "m_middle": "should appear middle",
+            },
+        )
+        
+        # Mock successful response
+        mock_response = MagicMock()
+        mock_response.status_code = 204
+        
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            result = await provider.send_notification(message)
+            assert result is True
+            
+            # Get the generated embed from the call
+            call_args = mock_post.call_args
+            assert call_args is not None
+            payload = cast(DiscordWebhookPayload, call_args.kwargs["json"])
+            embed = payload["embeds"][0]
+            
+            # Verify fields are present
+            assert "fields" in embed
+            fields = embed["fields"]
+            
+            # Find tags and priority fields
+            field_names = [field["name"] for field in fields]
+            assert "Tags" in field_names
+            assert "Priority" in field_names
