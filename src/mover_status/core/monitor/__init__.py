@@ -17,6 +17,36 @@ from .event_bus import (
     EventHandlerError,
     EventSubscriptionError,
 )
+from .state_machine import (
+    MonitorState,
+    StateMachine,
+    StateTransition,
+    StateContext,
+    StatePersistence,
+    StateTransitionError,
+)
+from .orchestrator import (
+    MonitorOrchestrator,
+    ComponentRegistry,
+    ServiceHealth,
+    WorkflowEngine,
+    ResourceAllocator,
+    Component,
+    ComponentType,
+    ComponentStatus,
+    WorkflowStep,
+    WorkflowResult,
+    WorkflowStatus,
+    Resource,
+    ResourceType,
+    AllocationResult,
+    AllocationStatus,
+    OrchestratorError,
+    ComponentRegistrationError,
+    WorkflowExecutionError,
+    ResourceAllocationError,
+    HealthCheckError,
+)
 
 __all__ = [
     # Event Bus Components
@@ -33,6 +63,32 @@ __all__ = [
     "EventBusError",
     "EventHandlerError",
     "EventSubscriptionError",
-    # TODO: Add when orchestrator is implemented
-    # "MonitorOrchestrator",
+    # State Machine Components
+    "MonitorState",
+    "StateMachine",
+    "StateTransition",
+    "StateContext",
+    "StatePersistence",
+    "StateTransitionError",
+    # Orchestrator Components
+    "MonitorOrchestrator",
+    "ComponentRegistry",
+    "ServiceHealth",
+    "WorkflowEngine",
+    "ResourceAllocator",
+    "Component",
+    "ComponentType",
+    "ComponentStatus",
+    "WorkflowStep",
+    "WorkflowResult",
+    "WorkflowStatus",
+    "Resource",
+    "ResourceType",
+    "AllocationResult",
+    "AllocationStatus",
+    "OrchestratorError",
+    "ComponentRegistrationError",
+    "WorkflowExecutionError",
+    "ResourceAllocationError",
+    "HealthCheckError",
 ]
