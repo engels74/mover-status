@@ -270,7 +270,7 @@ class DiscordErrorClassifier:
         
         if status_code == 429:
             # Rate limited
-            retry_after_header = response.headers.get("Retry-After")
+            retry_after_header: str | None = cast(str | None, response.headers.get("Retry-After"))
             try:
                 retry_after = float(retry_after_header) if retry_after_header is not None else 1.0
             except (ValueError, TypeError):

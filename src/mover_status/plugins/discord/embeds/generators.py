@@ -299,12 +299,13 @@ class ProgressEmbedGenerator(EmbedGenerator):
             return "0 B"
         
         units = ["B", "KB", "MB", "GB", "TB", "PB"]
-        unit_index = int(math.floor(math.log(bytes_value, 1024)))
+        unit_index: int = int(math.floor(math.log(bytes_value, 1024)))
         
         # Clamp to available units
         unit_index = min(unit_index, len(units) - 1)
         
-        size: float = bytes_value / (1024 ** unit_index)
+        divisor: int = int(math.pow(1024, unit_index))
+        size: float = float(bytes_value) / float(divisor)
         
         if size >= 100:
             return f"{size:.0f} {units[unit_index]}"
