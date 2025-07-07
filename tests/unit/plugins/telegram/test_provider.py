@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from typing import TYPE_CHECKING
 
 from mover_status.plugins.telegram.provider import TelegramProvider
@@ -86,7 +86,7 @@ class TestTelegramProvider:
     
     def test_config_validation_empty_chat_ids(self) -> None:
         """Test config validation fails when chat_ids list is empty."""
-        config = {
+        config: dict[str, object] = {
             "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
             "chat_ids": []
         }
@@ -185,13 +185,13 @@ class TestTelegramProvider:
     @pytest.mark.asyncio
     async def test_send_notification_partial_failure(self, test_message: Message) -> None:
         """Test handling when some chats succeed and others fail."""
-        config = {
+        config: dict[str, object] = {
             "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
             "chat_ids": ["123456789", "987654321"]
         }
         provider = TelegramProvider(config)
         
-        def side_effect(*args: object, **kwargs: object) -> AsyncMock | None:
+        def side_effect(**kwargs: object) -> AsyncMock | None:
             if kwargs.get("chat_id") == "123456789":
                 return AsyncMock()  # Success
             else:

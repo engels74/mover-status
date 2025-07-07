@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, override, cast
 from collections.abc import Mapping
 
 
@@ -31,10 +31,12 @@ class TelegramProvider(NotificationProvider):
         
         # Extract configuration
         self.bot_token: str = str(config["bot_token"])
-        chat_ids_raw = config["chat_ids"]
+        chat_ids_raw: object = config["chat_ids"]
         if not isinstance(chat_ids_raw, list):
             raise ValueError("chat_ids must be a list")
-        self.chat_ids: list[str] = [str(chat_id) for chat_id in chat_ids_raw]
+        # Type narrowing: chat_ids_raw is now known to be a list
+        chat_ids_list = cast(list[object], chat_ids_raw)
+        self.chat_ids: list[str] = [str(chat_id) for chat_id in chat_ids_list]
         
         # Optional configuration with defaults
         parse_mode_config = config.get("parse_mode", "HTML")
@@ -76,11 +78,15 @@ class TelegramProvider(NotificationProvider):
             raise ValueError(f"Invalid bot token format: {bot_token}")
         
         # Validate chat IDs
-        chat_ids = self.config["chat_ids"]
-        if not isinstance(chat_ids, list) or len(chat_ids) == 0:
-            raise ValueError("chat_ids cannot be empty")
+        chat_ids: object = self.config["chat_ids"]
+        if not isinstance(chat_ids, list):
+            raise ValueError("chat_ids must be a list")
         
-        for chat_id in chat_ids:
+        # Type narrowing: chat_ids is now known to be a list
+        chat_ids_list = cast(list[object], chat_ids)
+        if len(chat_ids_list) == 0:
+            raise ValueError("chat_ids cannot be empty")
+        for chat_id in chat_ids_list:
             chat_id_str = str(chat_id)
             if not self._is_valid_chat_id(chat_id_str):
                 raise ValueError(f"Invalid chat ID format: {chat_id_str}")
