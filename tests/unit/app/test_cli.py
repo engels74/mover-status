@@ -407,19 +407,242 @@ class TestCLIDefaults:
 
     def test_cli_default_values(self, runner: CliRunner) -> None:
         """Test CLI uses correct default values."""
-        with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
-            mock_instance = MagicMock()
-            mock_runner.return_value = mock_instance
-            
-            result = runner.invoke(cli, [])
-            
-            assert result.exit_code == 0
-            mock_runner.assert_called_once()
-            call_args = mock_runner.call_args
-            assert call_args is not None
-            
-            # Check default values
-            assert call_args.kwargs['config_path'] == Path('config.yaml')
-            assert call_args.kwargs['dry_run'] is False
-            assert call_args.kwargs['log_level'] == 'INFO'
-            assert call_args.kwargs['run_once'] is False
+        with runner.isolated_filesystem():
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+
+                result = runner.invoke(cli, [])
+
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+
+                # Check default values - config_path should be discovered (defaults to config.yaml if none found)
+                assert call_args.kwargs['config_path'] == Path('config.yaml')
+                assert call_args.kwargs['dry_run'] is False
+                assert call_args.kwargs['log_level'] == 'INFO'
+                assert call_args.kwargs['run_once'] is False
+
+
+class TestCLIConfigurationFileSupport:
+    """Test CLI configuration file discovery and loading."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    def test_config_file_discovery_current_directory(self, runner: CliRunner) -> None:
+        """Test configuration file discovery in current directory."""
+        with runner.isolated_filesystem():
+            # Create config files in order of precedence
+            config_files = ['config.yaml', 'config.yml', 'config.json', 'config.toml']
+
+            for config_file in config_files:
+                _ = Path(config_file).write_text(f'test: {config_file}')
+
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    # Test without explicit config - should discover the file
+                    result = runner.invoke(cli, [])
+
+                    assert result.exit_code == 0
+                    mock_runner.assert_called_once()
+                    call_args = mock_runner.call_args
+                    assert call_args is not None
+                    # Should use discovered config file
+                    assert call_args.kwargs['config_path'] == Path(config_file)
+
+                # Clean up for next iteration
+                Path(config_file).unlink()
+
+    def test_config_file_discovery_precedence(self, runner: CliRunner) -> None:
+        """Test configuration file discovery precedence order."""
+        with runner.isolated_filesystem():
+            # Create multiple config files - should prefer .yaml over others
+            _ = Path('config.toml').write_text('test: toml')
+            _ = Path('config.json').write_text('{"test": "json"}')
+            _ = Path('config.yml').write_text('test: yml')
+            _ = Path('config.yaml').write_text('test: yaml')
+
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+
+                result = runner.invoke(cli, [])
+
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should prefer .yaml over other formats
+                assert call_args.kwargs['config_path'] == Path('config.yaml')
+
+    def test_config_file_discovery_home_directory(self, runner: CliRunner) -> None:
+        """Test configuration file discovery in home directory."""
+        with runner.isolated_filesystem():
+            # Create a fake home directory structure
+            home_dir = Path('fake_home')
+            home_dir.mkdir()
+            config_file = home_dir / '.mover-status.yaml'
+            _ = config_file.write_text('test: home_config')
+
+            with patch('pathlib.Path.home', return_value=home_dir):
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    result = runner.invoke(cli, [])
+
+                    assert result.exit_code == 0
+                    mock_runner.assert_called_once()
+                    call_args = mock_runner.call_args
+                    assert call_args is not None
+                    # Should discover config in home directory
+                    assert call_args.kwargs['config_path'] == config_file
+
+    def test_config_file_discovery_system_directory(self, runner: CliRunner) -> None:
+        """Test configuration file discovery in system directory."""
+        with runner.isolated_filesystem():
+            # Create a fake system config directory
+            system_dir = Path('fake_etc')
+            system_dir.mkdir()
+            config_file = system_dir / 'mover-status.yaml'
+            _ = config_file.write_text('test: system_config')
+
+            with patch('mover_status.app.cli.SYSTEM_CONFIG_PATHS', [system_dir / 'mover-status.yaml']):
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    result = runner.invoke(cli, [])
+
+                    assert result.exit_code == 0
+                    mock_runner.assert_called_once()
+                    call_args = mock_runner.call_args
+                    assert call_args is not None
+                    # Should discover config in system directory
+                    assert call_args.kwargs['config_path'] == config_file
+
+    def test_config_file_discovery_precedence_order(self, runner: CliRunner) -> None:
+        """Test configuration file discovery follows correct precedence order."""
+        with runner.isolated_filesystem():
+            # Create config files in different locations
+            current_config = Path('config.yaml')
+            _ = current_config.write_text('location: current')
+
+            home_dir = Path('fake_home')
+            home_dir.mkdir()
+            home_config = home_dir / '.mover-status.yaml'
+            _ = home_config.write_text('location: home')
+
+            system_dir = Path('fake_etc')
+            system_dir.mkdir()
+            system_config = system_dir / 'mover-status.yaml'
+            _ = system_config.write_text('location: system')
+
+            with patch('pathlib.Path.home', return_value=home_dir):
+                with patch('mover_status.app.cli.SYSTEM_CONFIG_PATHS', [system_config]):
+                    with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                        mock_instance = MagicMock()
+                        mock_runner.return_value = mock_instance
+
+                        result = runner.invoke(cli, [])
+
+                        assert result.exit_code == 0
+                        mock_runner.assert_called_once()
+                        call_args = mock_runner.call_args
+                        assert call_args is not None
+                        # Should prefer current directory over home/system
+                        assert call_args.kwargs['config_path'] == current_config
+
+    def test_explicit_config_overrides_discovery(self, runner: CliRunner) -> None:
+        """Test explicit config option overrides automatic discovery."""
+        with runner.isolated_filesystem():
+            # Create discovered config
+            _ = Path('config.yaml').write_text('location: discovered')
+
+            # Create explicit config
+            explicit_config = Path('explicit.yaml')
+            _ = explicit_config.write_text('location: explicit')
+
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+
+                result = runner.invoke(cli, ['--config', str(explicit_config)])
+
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should use explicit config, not discovered one
+                assert call_args.kwargs['config_path'] == explicit_config
+
+    def test_config_discovery_no_files_found(self, runner: CliRunner) -> None:
+        """Test configuration discovery when no config files are found."""
+        with runner.isolated_filesystem():
+            # Don't create any config files
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+
+                result = runner.invoke(cli, [])
+
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should fall back to default config.yaml
+                assert call_args.kwargs['config_path'] == Path('config.yaml')
+
+    def test_config_discovery_home_directory_error_handling(self, runner: CliRunner) -> None:
+        """Test configuration discovery handles home directory access errors gracefully."""
+        with runner.isolated_filesystem():
+            # Mock Path.home() to raise an exception
+            with patch('pathlib.Path.home', side_effect=OSError("Cannot access home directory")):
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    result = runner.invoke(cli, [])
+
+                    assert result.exit_code == 0
+                    mock_runner.assert_called_once()
+                    call_args = mock_runner.call_args
+                    assert call_args is not None
+                    # Should fall back to default config.yaml when home access fails
+                    assert call_args.kwargs['config_path'] == Path('config.yaml')
+
+    def test_config_discovery_mixed_file_types(self, runner: CliRunner) -> None:
+        """Test configuration discovery with mixed file types in different locations."""
+        with runner.isolated_filesystem():
+            # Create config files of different types in different locations
+            home_dir = Path('fake_home')
+            home_dir.mkdir()
+
+            # Create TOML in home (lower precedence)
+            home_config = home_dir / '.mover-status.toml'
+            _ = home_config.write_text('[test]\nvalue = "home_toml"')
+
+            # Create JSON in current directory (higher precedence)
+            current_config = Path('config.json')
+            _ = current_config.write_text('{"test": {"value": "current_json"}}')
+
+            with patch('pathlib.Path.home', return_value=home_dir):
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    result = runner.invoke(cli, [])
+
+                    assert result.exit_code == 0
+                    mock_runner.assert_called_once()
+                    call_args = mock_runner.call_args
+                    assert call_args is not None
+                    # Should prefer current directory JSON over home directory TOML
+                    assert call_args.kwargs['config_path'] == current_config

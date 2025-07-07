@@ -10,6 +10,70 @@ if TYPE_CHECKING:
     pass
 
 
+# Configuration file discovery paths in order of precedence
+# 1. Current directory
+CURRENT_DIR_CONFIG_FILES = [
+    'config.yaml',
+    'config.yml',
+    'config.json',
+    'config.toml',
+]
+
+# 2. User home directory
+HOME_CONFIG_FILES = [
+    '.mover-status.yaml',
+    '.mover-status.yml',
+    '.mover-status.json',
+    '.mover-status.toml',
+]
+
+# 3. System configuration directories
+SYSTEM_CONFIG_PATHS = [
+    Path('/etc/mover-status/config.yaml'),
+    Path('/etc/mover-status.yaml'),
+    Path('/usr/local/etc/mover-status/config.yaml'),
+    Path('/usr/local/etc/mover-status.yaml'),
+]
+
+
+def discover_config_file() -> Path:
+    """Discover configuration file in standard locations.
+
+    Searches for configuration files in the following order of precedence:
+    1. Current directory (config.yaml, config.yml, config.json, config.toml)
+    2. User home directory (~/.mover-status.yaml, etc.)
+    3. System directories (/etc/mover-status/, etc.)
+
+    Returns:
+        Path to the first configuration file found, or default 'config.yaml'
+        if no configuration file is discovered.
+    """
+    # 1. Check current directory
+    for config_file in CURRENT_DIR_CONFIG_FILES:
+        config_path = Path(config_file)
+        if config_path.exists() and config_path.is_file():
+            return config_path
+
+    # 2. Check user home directory
+    try:
+        home_dir = Path.home()
+        for config_file in HOME_CONFIG_FILES:
+            config_path = home_dir / config_file
+            if config_path.exists() and config_path.is_file():
+                return config_path
+    except (OSError, RuntimeError):
+        # Path.home() can fail in some environments
+        pass
+
+    # 3. Check system directories
+    for config_path in SYSTEM_CONFIG_PATHS:
+        if config_path.exists() and config_path.is_file():
+            return config_path
+
+    # Default fallback
+    return Path('config.yaml')
+
+
 def validate_config_path(
     ctx: click.Context,  # pyright: ignore[reportUnusedParameter] # required by Click callback signature
     param: click.Parameter,  # pyright: ignore[reportUnusedParameter] # required by Click callback signature
@@ -108,9 +172,9 @@ except ImportError:
 @click.option(
     '--config', '-c',
     type=click.Path(path_type=Path),
-    default=Path('config.yaml'),
+    default=None,
     callback=validate_config_path,
-    help='Configuration file path (supports .yaml, .yml, .json, .toml)'
+    help='Configuration file path (supports .yaml, .yml, .json, .toml). If not specified, searches for config files in standard locations.'
 )
 @click.option(
     '--dry-run', '-d',
@@ -131,7 +195,7 @@ except ImportError:
 )
 @click.version_option(version=__version__, prog_name='Mover Status Monitor')
 def cli(
-    config: Path,
+    config: Path | None,
     dry_run: bool,
     log_level: str,
     once: bool,
@@ -160,11 +224,14 @@ def cli(
         mover-status --log-level DEBUG
     """
     from mover_status.app.runner import ApplicationRunner
-    
+
+    # Discover configuration file if not explicitly provided
+    config_path = config if config is not None else discover_config_file()
+
     # Create application runner with provided options
     # log_level is already normalized by the validation callback
     runner = ApplicationRunner(
-        config_path=config,
+        config_path=config_path,
         dry_run=dry_run,
         log_level=log_level,
         run_once=once
