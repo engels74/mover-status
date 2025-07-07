@@ -648,5 +648,293 @@ class TestCLIConfigurationFileSupport:
                     assert call_args.kwargs['config_path'] == current_config
 
 
+class TestCLIUtilityFunctions:
+    """Test CLI utility functions."""
+
+    def test_sanitize_string_input_none_value(self) -> None:
+        """Test sanitize_string_input with None value."""
+        from mover_status.app.cli import sanitize_string_input
+        
+        result = sanitize_string_input(None)
+        assert result is None
+
+    def test_sanitize_string_input_empty_string(self) -> None:
+        """Test sanitize_string_input with empty string."""
+        from mover_status.app.cli import sanitize_string_input
+        
+        result = sanitize_string_input("")
+        assert result is None
+
+    def test_sanitize_string_input_whitespace_only(self) -> None:
+        """Test sanitize_string_input with whitespace-only string."""
+        from mover_status.app.cli import sanitize_string_input
+        
+        result = sanitize_string_input("   \t  \n  ")
+        assert result is None
+
+    def test_sanitize_string_input_valid_string(self) -> None:
+        """Test sanitize_string_input with valid string."""
+        from mover_status.app.cli import sanitize_string_input
+        
+        result = sanitize_string_input("  hello world  ")
+        assert result == "hello world"
+
+    def test_sanitize_string_input_no_trimming_needed(self) -> None:
+        """Test sanitize_string_input with string that doesn't need trimming."""
+        from mover_status.app.cli import sanitize_string_input
+        
+        result = sanitize_string_input("hello world")
+        assert result == "hello world"
+
+    def test_validate_log_level_none_value(self) -> None:
+        """Test validate_log_level with None value."""
+        from mover_status.app.cli import validate_log_level
+        import click
+        
+        # Create mock context and parameter
+        ctx = click.Context(click.Command('test'))
+        param = click.Option(['--log-level'])
+        
+        result = validate_log_level(ctx, param, None)
+        assert result is None
+
+    def test_validate_config_path_none_value(self) -> None:
+        """Test validate_config_path with None value."""
+        from mover_status.app.cli import validate_config_path
+        import click
+        
+        # Create mock context and parameter
+        ctx = click.Context(click.Command('test'))
+        param = click.Option(['--config'])
+        
+        result = validate_config_path(ctx, param, None)
+        assert result is None
+
+
+class TestCLIVersionHandling:
+    """Test CLI version handling and error cases."""
+
+    def test_version_import_error_handling(self) -> None:
+        """Test version import error handling."""
+        # Test the exception handling by patching importlib.metadata.version
+        with patch('importlib.metadata.version', side_effect=ImportError("Module not found")):
+            # Import a fresh copy of the CLI module to trigger the error handling
+            import sys
+            if 'mover_status.app.cli' in sys.modules:
+                del sys.modules['mover_status.app.cli']
+            
+            # Now import it again to trigger the ImportError handling
+            import mover_status.app.cli
+            
+            # Check that the version falls back to "unknown"
+            assert mover_status.app.cli.__version__ == "unknown"
+
+
+class TestCLIIntegrationWorkflows:
+    """Test complete CLI integration workflows."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    def test_complete_monitoring_workflow(self, runner: CliRunner) -> None:
+        """Test complete monitoring workflow from start to finish."""
+        with runner.isolated_filesystem():
+            # Create a complete config file
+            config_content = """
+monitoring:
+  interval: 30
+  mover_check_interval: 10
+  
+notifications:
+  discord:
+    webhook_url: "https://discord.com/api/webhooks/test"
+    enabled: true
+"""
+            config_path = Path('config.yaml')
+            _ = config_path.write_text(config_content)
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                # Test the complete workflow
+                result = runner.invoke(cli, [
+                    '--config', str(config_path),
+                    '--log-level', 'DEBUG',
+                    '--dry-run'
+                ])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                assert call_args.kwargs['config_path'] == config_path
+                assert call_args.kwargs['log_level'] == 'DEBUG'
+                assert call_args.kwargs['dry_run'] is True
+                assert call_args.kwargs['run_once'] is False
+                mock_instance.run.assert_called_once()  # pyright: ignore[reportAny]
+
+    def test_one_shot_monitoring_workflow(self, runner: CliRunner) -> None:
+        """Test one-shot monitoring workflow."""
+        with runner.isolated_filesystem():
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                # Test one-shot execution
+                result = runner.invoke(cli, ['--once', '--log-level', 'WARNING'])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                assert call_args.kwargs['run_once'] is True
+                assert call_args.kwargs['log_level'] == 'WARNING'
+                mock_instance.run.assert_called_once()  # pyright: ignore[reportAny]
+
+    def test_config_discovery_with_various_scenarios(self, runner: CliRunner) -> None:
+        """Test configuration discovery in various realistic scenarios."""
+        with runner.isolated_filesystem():
+            # Scenario 1: Multiple config files exist, should pick the first one
+            config_files = [
+                ('config.yaml', 'primary: config'),
+                ('config.json', '{"secondary": "config"}'),
+                ('config.toml', '[tertiary]\nvalue = "config"')
+            ]
+            
+            for filename, content in config_files:
+                _ = Path(filename).write_text(content)
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                result = runner.invoke(cli, ['--dry-run'])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should pick the first one in precedence order (config.yaml)
+                assert call_args.kwargs['config_path'] == Path('config.yaml')
+
+    def test_error_propagation_workflow(self, runner: CliRunner) -> None:
+        """Test error propagation in complete workflow."""
+        with runner.isolated_filesystem():
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                # Test that ValueError is properly converted to ClickException
+                test_error = ValueError("Configuration validation failed")
+                mock_instance.run.side_effect = test_error  # pyright: ignore[reportAny]
+                
+                result = runner.invoke(cli, ['--config', 'test.yaml'])
+                
+                assert result.exit_code != 0
+                assert "Configuration validation failed" in result.output
+                mock_runner.assert_called_once()
+
+
+class TestCLIEdgeCases:
+    """Test CLI edge cases and boundary conditions."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    def test_config_validation_with_special_characters(self, runner: CliRunner) -> None:
+        """Test config path validation with special characters."""
+        with runner.isolated_filesystem():
+            # Test with special characters in filename
+            special_config = Path('config-with-special_chars.yaml')
+            _ = special_config.write_text('test: config')
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                result = runner.invoke(cli, ['--config', str(special_config)])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+
+    def test_config_validation_with_unicode_filename(self, runner: CliRunner) -> None:
+        """Test config path validation with unicode characters."""
+        with runner.isolated_filesystem():
+            # Test with unicode characters in filename
+            unicode_config = Path('配置文件.yaml')
+            _ = unicode_config.write_text('test: config')
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                result = runner.invoke(cli, ['--config', str(unicode_config)])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+
+    def test_log_level_validation_empty_string(self, runner: CliRunner) -> None:
+        """Test log level validation with empty string."""
+        result = runner.invoke(cli, ['--log-level', ''])
+        
+        assert result.exit_code != 0
+        assert 'Invalid log level' in result.output
+
+    def test_multiple_config_extensions_precedence(self, runner: CliRunner) -> None:
+        """Test that .yaml takes precedence over .yml when both exist."""
+        with runner.isolated_filesystem():
+            # Create both .yaml and .yml files
+            _ = Path('config.yml').write_text('format: yml')
+            _ = Path('config.yaml').write_text('format: yaml')
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                result = runner.invoke(cli, [])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should prefer .yaml over .yml
+                assert call_args.kwargs['config_path'] == Path('config.yaml')
+
+    def test_config_path_with_relative_paths(self, runner: CliRunner) -> None:
+        """Test config path handling with relative paths."""
+        with runner.isolated_filesystem():
+            # Create nested directory structure
+            nested_dir = Path('configs')
+            nested_dir.mkdir()
+            nested_config = nested_dir / 'nested.yaml'
+            _ = nested_config.write_text('nested: config')
+            
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+                
+                result = runner.invoke(cli, ['--config', 'configs/nested.yaml'])
+                
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                assert call_args.kwargs['config_path'] == Path('configs/nested.yaml')
+
+    def test_discover_config_file_direct_call(self) -> None:
+        """Test discover_config_file function directly."""
+        from mover_status.app.cli import discover_config_file
+        
+        # Test the function directly to ensure it returns the expected default
+        with patch('pathlib.Path.exists', return_value=False):
+            result = discover_config_file()
+            assert result == Path('config.yaml')
+
+
 # Shell completion and documentation generation test classes removed
 # These features are not needed for containerized Docker environment
