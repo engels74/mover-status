@@ -611,9 +611,9 @@ class TestEventPublisher:
         )
         
         mock_bus = Mock()
-        publisher.event_bus = mock_bus  # type: ignore
+        publisher.event_bus = mock_bus
         publisher.publish(event)
-        mock_bus.publish_event.assert_called_once_with(event)  # type: ignore
+        mock_bus.publish_event.assert_called_once_with(event)  # pyright: ignore[reportAny]
 
 
 class TestDeadLetterQueue:
