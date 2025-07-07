@@ -283,10 +283,10 @@ class TestNotificationBridge:
     def test_subscribes_to_event_bus(
         self, 
         mock_event_bus: MagicMock, 
-        notification_bridge: NotificationBridge
+        notification_bridge: NotificationBridge  # pyright: ignore[reportUnusedParameter]
     ) -> None:
         """Test that bridge subscribes to event bus."""
-        mock_event_bus.register_subscriber.assert_called_once()
+        mock_event_bus.register_subscriber.assert_called_once()  # pyright: ignore[reportAny]
     
     @pytest.mark.asyncio
     async def test_handle_process_detected_event(
@@ -307,10 +307,10 @@ class TestNotificationBridge:
             priority=EventPriority.HIGH
         )
         
-        await notification_bridge._handle_event(event)
+        await notification_bridge._handle_event(event)  # pyright: ignore[reportPrivateUsage]
         
         # Verify dispatcher was called
-        notification_bridge.dispatcher.dispatch_message.assert_called_once()
+        notification_bridge.dispatcher.dispatch_message.assert_called_once()  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
     
     @pytest.mark.asyncio
     async def test_handle_unmatched_event(
@@ -324,10 +324,10 @@ class TestNotificationBridge:
             priority=EventPriority.NORMAL
         )
         
-        await notification_bridge._handle_event(event)
+        await notification_bridge._handle_event(event)  # pyright: ignore[reportPrivateUsage]
         
         # Verify dispatcher was not called
-        notification_bridge.dispatcher.dispatch_message.assert_not_called()
+        notification_bridge.dispatcher.dispatch_message.assert_not_called()  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
     
     def test_add_rule(self, notification_bridge: NotificationBridge) -> None:
         """Test adding notification rule."""
@@ -403,7 +403,7 @@ class TestNotificationBridge:
         )
         
         rule = notification_bridge.rules[0]  # Use first rule
-        message = notification_bridge._format_message(event, rule)
+        message = notification_bridge._format_message(event, rule)  # pyright: ignore[reportPrivateUsage]
         
         assert "test_process" in message.title or "test_process" in message.content
         assert "12345" in message.content
@@ -425,7 +425,7 @@ class TestNotificationBridge:
         rule = next((r for r in notification_bridge.rules if "error" in r.event_pattern), None)
         assert rule is not None
         
-        message = notification_bridge._format_message(event, rule)
+        message = notification_bridge._format_message(event, rule)  # pyright: ignore[reportPrivateUsage]
         
         assert "Test error" in message.content
         assert "RuntimeError" in message.content
@@ -442,7 +442,7 @@ class TestNotificationBridge:
         )
         
         rule = notification_bridge.rules[0]  # Use first rule
-        message = notification_bridge._format_message(event, rule)
+        message = notification_bridge._format_message(event, rule)  # pyright: ignore[reportPrivateUsage]
         
         # Should fallback to basic message
         assert "Event:" in message.title
