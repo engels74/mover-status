@@ -212,3 +212,4 @@ __marimo__/
 # OS specific
 .DS_Store
 .cursor/mcp.json
+.mover_status_state.json
