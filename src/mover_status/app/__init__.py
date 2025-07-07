@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from mover_status.app.cli import cli
+from mover_status.app.runner import ApplicationRunner
+
 __all__ = [
-    # TODO: Add application classes when implemented
-    # "Application",
+    "cli",
+    "ApplicationRunner",
 ]
