@@ -121,7 +121,7 @@ class TestServiceHealth:
         result = health_monitor.check_component_health(component)
         
         assert result is True
-        component.health_check.assert_called_once()  # pyright: ignore[reportAny]
+        cast(Mock, component.health_check).assert_called_once()
     
     def test_health_check_failure(self) -> None:
         """Test health check failure."""
@@ -136,7 +136,7 @@ class TestServiceHealth:
         result = health_monitor.check_component_health(component)
         
         assert result is False
-        component.health_check.assert_called_once()  # pyright: ignore[reportAny]
+        cast(Mock, component.health_check).assert_called_once()
     
     def test_overall_health_assessment(self) -> None:
         """Test overall system health assessment."""
@@ -182,7 +182,7 @@ class TestWorkflowEngine:
         
         assert result.status == WorkflowStatus.COMPLETED
         assert result.step == step
-        step.execute.assert_called_once()
+        cast(Mock, step.execute).assert_called_once()
     
     def test_workflow_dependency_resolution(self) -> None:
         """Test resolving workflow step dependencies."""
@@ -267,7 +267,7 @@ class TestResourceAllocator:
         
         assert result.status == AllocationStatus.INSUFFICIENT
         assert result.allocated_amount == 0
-        assert resource.available == 30  # Unchanged  # pyright: ignore[reportAny]
+        assert resource.available == 30  # pyright: ignore[reportAny] # Unchanged
     
     def test_resource_deallocation(self) -> None:
         """Test resource deallocation."""
@@ -284,8 +284,8 @@ class TestResourceAllocator:
         
         # Deallocate resource
         allocator.deallocate("test_resource", 20)
-        
-        assert resource.available == 70
+
+        assert resource.available == 70  # pyright: ignore[reportAny]
 
 
 class TestMonitorOrchestrator:
@@ -409,15 +409,15 @@ class TestMonitorOrchestrator:
         await orchestrator.run_detection_cycle()
         
         # Verify detection was called
-        detector.detect_mover.assert_called_once()
-        
+        cast(Mock, detector.detect_mover).assert_called_once()
+
         # Verify state transitions (DETECTING -> MONITORING when process found)
-        assert state_machine.transition_to.call_count == 2
-        state_machine.transition_to.assert_any_call(MonitorState.DETECTING)
-        state_machine.transition_to.assert_called_with(MonitorState.MONITORING)
-        
+        assert cast(Mock, state_machine.transition_to).call_count == 2
+        cast(Mock, state_machine.transition_to).assert_any_call(MonitorState.DETECTING)
+        cast(Mock, state_machine.transition_to).assert_called_with(MonitorState.MONITORING)
+
         # Verify event was published
-        event_bus.publish_event.assert_called()
+        cast(Mock, event_bus.publish_event).assert_called()
     
     @pytest.mark.asyncio
     async def test_orchestrator_monitoring_workflow(self) -> None:
@@ -460,10 +460,10 @@ class TestMonitorOrchestrator:
         await orchestrator.run_monitoring_cycle()
         
         # Verify progress calculation
-        calculator.calculate_progress.assert_called_once()
-        
+        cast(AsyncMock, calculator.calculate_progress).assert_called_once()
+
         # Verify event was published
-        event_bus.publish_event.assert_called()
+        cast(Mock, event_bus.publish_event).assert_called()
     
     @pytest.mark.asyncio
     async def test_orchestrator_error_handling(self) -> None:
@@ -497,10 +497,10 @@ class TestMonitorOrchestrator:
         await orchestrator.run_detection_cycle()
         
         # Verify error state transition
-        state_machine.transition_to.assert_called_with(MonitorState.ERROR)
-        
+        cast(Mock, state_machine.transition_to).assert_called_with(MonitorState.ERROR)
+
         # Verify error event was published
-        event_bus.publish_event.assert_called()
+        cast(Mock, event_bus.publish_event).assert_called()
         
         # Check that error was logged
         assert orchestrator.last_error is not None
