@@ -6,7 +6,8 @@ import asyncio
 import logging
 import re
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
+from enum import Enum
 
 from telegram import Bot
 from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
@@ -16,6 +17,37 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
+
+
+class ChatType(Enum):
+    """Telegram chat types."""
+    USER = "user"
+    GROUP = "group"
+    SUPERGROUP = "supergroup"
+    CHANNEL = "channel"
+
+
+class ChatInfo:
+    """Information about a Telegram chat."""
+
+    def __init__(self, chat_id: str, chat_type: ChatType, title: str | None = None) -> None:
+        """Initialize chat info.
+
+        Args:
+            chat_id: Telegram chat ID
+            chat_type: Type of the chat
+            title: Chat title (for groups/channels)
+        """
+        self.chat_id: str = chat_id
+        self.chat_type: ChatType = chat_type
+        self.title: str | None = title
+
+    @override
+    def __repr__(self) -> str:
+        """String representation of chat info."""
+        if self.title:
+            return f"ChatInfo(id={self.chat_id}, type={self.chat_type.value}, title='{self.title}')"
+        return f"ChatInfo(id={self.chat_id}, type={self.chat_type.value})"
 
 
 class TelegramBotClient:
@@ -192,7 +224,240 @@ class TelegramBotClient:
         except Exception as e:
             logger.error(f"Unexpected error getting bot info: {e}")
             return None
-    
+
+    def classify_chat_type(self, chat_id: str) -> ChatType:
+        """Classify chat type based on chat ID format.
+
+        Args:
+            chat_id: Telegram chat ID
+
+        Returns:
+            ChatType enum value
+        """
+        if not chat_id.startswith("-"):
+            return ChatType.USER
+        elif chat_id.startswith("-100"):
+            # Both supergroups and channels use -100 prefix
+            # We'll default to supergroup, but this can be refined with API calls
+            return ChatType.SUPERGROUP
+        else:
+            # Legacy group format (rare)
+            return ChatType.GROUP
+
+    def categorize_chats(self, chat_ids: Sequence[str]) -> dict[ChatType, list[str]]:
+        """Categorize chat IDs by their type.
+
+        Args:
+            chat_ids: List of chat IDs to categorize
+
+        Returns:
+            Dictionary mapping chat types to lists of chat IDs
+        """
+        categorized: dict[ChatType, list[str]] = {
+            ChatType.USER: [],
+            ChatType.GROUP: [],
+            ChatType.SUPERGROUP: [],
+            ChatType.CHANNEL: []
+        }
+
+        for chat_id in chat_ids:
+            chat_type = self.classify_chat_type(chat_id)
+            categorized[chat_type].append(chat_id)
+
+        return categorized
+
+    async def send_message_by_chat_type(
+        self,
+        chat_ids: Sequence[str],
+        text: str,
+        parse_mode: str = ParseMode.HTML,
+        disable_web_page_preview: bool = True,
+        prioritize_users: bool = True
+    ) -> dict[str, bool]:
+        """Send messages with chat type prioritization.
+
+        Args:
+            chat_ids: List of chat IDs
+            text: Message text
+            parse_mode: Parse mode for formatting
+            disable_web_page_preview: Whether to disable link previews
+            prioritize_users: Whether to send to users first
+
+        Returns:
+            Dictionary mapping chat IDs to success status
+        """
+        if not chat_ids:
+            logger.warning("No chat IDs provided")
+            return {}
+
+        categorized = self.categorize_chats(chat_ids)
+        results: dict[str, bool] = {}
+
+        # Define sending order based on priority
+        if prioritize_users:
+            send_order = [ChatType.USER, ChatType.SUPERGROUP, ChatType.GROUP, ChatType.CHANNEL]
+        else:
+            send_order = [ChatType.CHANNEL, ChatType.SUPERGROUP, ChatType.GROUP, ChatType.USER]
+
+        for chat_type in send_order:
+            type_chat_ids = categorized[chat_type]
+            if not type_chat_ids:
+                continue
+
+            logger.info(f"Sending to {len(type_chat_ids)} {chat_type.value} chats")
+
+            # Send to all chats of this type concurrently
+            tasks = [
+                self.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode=parse_mode,
+                    disable_web_page_preview=disable_web_page_preview
+                )
+                for chat_id in type_chat_ids
+            ]
+
+            type_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Process results for this chat type
+            for i, result in enumerate(type_results):
+                chat_id = type_chat_ids[i]
+                if isinstance(result, Exception):
+                    logger.error(f"Exception sending to {chat_type.value} chat {chat_id}: {result}")
+                    results[chat_id] = False
+                else:
+                    results[chat_id] = bool(result)
+
+        return results
+
+    async def validate_chat_permissions(self, chat_ids: Sequence[str]) -> dict[str, bool]:
+        """Validate bot permissions for each chat.
+
+        Args:
+            chat_ids: List of chat IDs to validate
+
+        Returns:
+            Dictionary mapping chat IDs to permission status
+        """
+        if not chat_ids:
+            return {}
+
+        results: dict[str, bool] = {}
+
+        # Test permissions by attempting to get chat info
+        for chat_id in chat_ids:
+            try:
+                chat = await self.bot.get_chat(chat_id)
+                # If we can get chat info, we have basic permissions
+                results[chat_id] = True
+                logger.debug(f"Validated permissions for chat {chat_id} ({chat.type})")
+            except TelegramError as e:
+                logger.warning(f"Permission validation failed for chat {chat_id}: {e}")
+                results[chat_id] = False
+            except Exception as e:
+                logger.error(f"Unexpected error validating chat {chat_id}: {e}")
+                results[chat_id] = False
+
+        return results
+
+    async def get_chat_info(self, chat_ids: Sequence[str]) -> dict[str, ChatInfo | None]:
+        """Get detailed information about chats.
+
+        Args:
+            chat_ids: List of chat IDs
+
+        Returns:
+            Dictionary mapping chat IDs to ChatInfo objects or None if failed
+        """
+        if not chat_ids:
+            return {}
+
+        results: dict[str, ChatInfo | None] = {}
+
+        for chat_id in chat_ids:
+            try:
+                chat = await self.bot.get_chat(chat_id)
+
+                # Map Telegram chat type to our ChatType enum
+                if chat.type == "private":
+                    chat_type = ChatType.USER
+                elif chat.type == "group":
+                    chat_type = ChatType.GROUP
+                elif chat.type == "supergroup":
+                    chat_type = ChatType.SUPERGROUP
+                elif chat.type == "channel":
+                    chat_type = ChatType.CHANNEL
+                else:
+                    # Default fallback
+                    chat_type = self.classify_chat_type(chat_id)
+
+                results[chat_id] = ChatInfo(
+                    chat_id=chat_id,
+                    chat_type=chat_type,
+                    title=chat.title
+                )
+
+            except TelegramError as e:
+                logger.warning(f"Failed to get info for chat {chat_id}: {e}")
+                results[chat_id] = None
+            except Exception as e:
+                logger.error(f"Unexpected error getting info for chat {chat_id}: {e}")
+                results[chat_id] = None
+
+        return results
+
+    async def send_message_with_fallback(
+        self,
+        primary_chat_ids: Sequence[str],
+        fallback_chat_ids: Sequence[str],
+        text: str,
+        parse_mode: str = ParseMode.HTML,
+        disable_web_page_preview: bool = True
+    ) -> bool:
+        """Send message with fallback chats if primary chats fail.
+
+        Args:
+            primary_chat_ids: Primary chat IDs to try first
+            fallback_chat_ids: Fallback chat IDs if primary fails
+            text: Message text
+            parse_mode: Parse mode for formatting
+            disable_web_page_preview: Whether to disable link previews
+
+        Returns:
+            True if message was sent to at least one chat, False otherwise
+        """
+        # Try primary chats first
+        if primary_chat_ids:
+            primary_success = await self.send_message_to_multiple_chats(
+                chat_ids=primary_chat_ids,
+                text=text,
+                parse_mode=parse_mode,
+                disable_web_page_preview=disable_web_page_preview
+            )
+
+            if primary_success:
+                logger.info(f"Message sent successfully to {len(primary_chat_ids)} primary chats")
+                return True
+            else:
+                logger.warning("Primary chats failed, trying fallback chats")
+
+        # Try fallback chats if primary failed or was empty
+        if fallback_chat_ids:
+            fallback_success = await self.send_message_to_multiple_chats(
+                chat_ids=fallback_chat_ids,
+                text=text,
+                parse_mode=parse_mode,
+                disable_web_page_preview=disable_web_page_preview
+            )
+
+            if fallback_success:
+                logger.info(f"Message sent successfully to {len(fallback_chat_ids)} fallback chats")
+                return True
+            else:
+                logger.error("Both primary and fallback chats failed")
+
+        return False
+
     def _is_valid_bot_token(self, token: str) -> bool:
         """Validate bot token format.
         

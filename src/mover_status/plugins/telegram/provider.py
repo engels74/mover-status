@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 from mover_status.notifications.base import NotificationProvider
 from mover_status.plugins.telegram.bot import TelegramBotClient
+from mover_status.plugins.telegram.bot.client import ChatInfo
 from mover_status.plugins.telegram.formatting import HTMLFormatter, MarkdownFormatter, MarkdownV2Formatter, MessageFormatter
 
 if TYPE_CHECKING:
@@ -147,8 +148,81 @@ class TelegramProvider(NotificationProvider):
             The provider name
         """
         return "telegram"
-    
-    
+
+    async def get_chat_statistics(self) -> dict[str, int | dict[str, int] | list[str]]:
+        """Get statistics about configured chats.
+
+        Returns:
+            Dictionary with chat statistics
+        """
+        categorized = self.bot_client.categorize_chats(self.chat_ids)
+
+        stats = {
+            "total_chats": len(self.chat_ids),
+            "chat_types": {
+                chat_type.value: len(chat_ids)
+                for chat_type, chat_ids in categorized.items()
+                if chat_ids  # Only include types with chats
+            },
+            "chat_ids": list(self.chat_ids)
+        }
+
+        return stats
+
+    async def validate_all_chats(self) -> dict[str, bool]:
+        """Validate permissions for all configured chats.
+
+        Returns:
+            Dictionary mapping chat IDs to validation status
+        """
+        return await self.bot_client.validate_chat_permissions(self.chat_ids)
+
+    async def get_all_chat_info(self) -> dict[str, ChatInfo | None]:
+        """Get detailed information about all configured chats.
+
+        Returns:
+            Dictionary mapping chat IDs to ChatInfo objects
+        """
+        return await self.bot_client.get_chat_info(self.chat_ids)
+
+    async def send_notification_by_priority(
+        self,
+        message: Message,
+        prioritize_users: bool = True
+    ) -> dict[str, bool]:
+        """Send notification with chat type prioritization.
+
+        Args:
+            message: The notification message to send
+            prioritize_users: Whether to prioritize user chats over groups/channels
+
+        Returns:
+            Dictionary mapping chat IDs to success status
+        """
+        # Format message text using the appropriate formatter
+        text = self.formatter.format_message(message)
+
+        # Send with prioritization
+        results = await self.bot_client.send_message_by_chat_type(
+            chat_ids=self.chat_ids,
+            text=text,
+            parse_mode=self.parse_mode,
+            disable_web_page_preview=self.disable_web_page_preview,
+            prioritize_users=prioritize_users
+        )
+
+        successful_chats = sum(1 for success in results.values() if success)
+        total_chats = len(results)
+
+        if successful_chats == total_chats:
+            logger.info(f"Telegram notification sent successfully to all {total_chats} chats")
+        elif successful_chats > 0:
+            logger.warning(f"Telegram notification sent to {successful_chats}/{total_chats} chats")
+        else:
+            logger.error("Failed to send Telegram notification to any chats")
+
+        return results
+
     def _is_valid_bot_token(self, token: str) -> bool:
         """Validate bot token format.
         
