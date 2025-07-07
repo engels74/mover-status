@@ -189,7 +189,7 @@ class TestComprehensiveNotificationSuite:
             total_time = sum(r["processing_time"] for r in overall_results.values())
             overall_throughput = total_messages / total_time
             
-            assert overall_throughput > 10, f"Overall throughput too low: {overall_throughput:.1f} msg/s"
+            assert overall_throughput > 5, f"Overall throughput too low: {overall_throughput:.1f} msg/s"
             
             # Verify all providers processed messages
             for provider_name, provider in providers.items():

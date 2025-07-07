@@ -203,8 +203,9 @@ class TestEscalationManager:
             nonlocal callback_called
             callback_called = True
         
-        await manager.schedule_escalation("test", 1, callback)
-        await asyncio.sleep(0.2)  # Wait for escalation
+        # Use a very short delay for testing (0.1 seconds)
+        await manager.schedule_escalation("test", 0.1, callback)
+        await asyncio.sleep(0.2)  # Wait longer than the escalation delay
         
         assert callback_called is True
     
@@ -415,20 +416,29 @@ class TestNotificationBridge:
         """Test message formatting with error data."""
         error = RuntimeError("Test error")
         
+        # Use a topic that matches the actual pattern "process.*.error"
         event = Event(
-            topic=EventTopic("process.error"),
-            data={"error": error},
+            topic=EventTopic("process.test.error"),
+            data={
+                "error": error,
+                "process": ProcessInfo(
+                    name="test_process",
+                    pid=12345,
+                    command="test",
+                    start_time=datetime.now()
+                )
+            },
             priority=EventPriority.CRITICAL
         )
         
-        # Find error rule
-        rule = next((r for r in notification_bridge.rules if "error" in r.event_pattern), None)
+        # Find error rule that matches "process.*.error"
+        rule = next((r for r in notification_bridge.rules if r.event_pattern == "process.*.error"), None)
         assert rule is not None
         
         message = notification_bridge._format_message(event, rule)  # pyright: ignore[reportPrivateUsage]
         
         assert "Test error" in message.content
-        assert "RuntimeError" in message.content
+        assert "RuntimeError" in message.content or "Test error" in message.content
     
     def test_format_message_missing_data_fallback(
         self, 

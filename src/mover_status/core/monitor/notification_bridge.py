@@ -185,7 +185,7 @@ class EscalationManager:
     async def schedule_escalation(
         self, 
         key: str, 
-        delay_seconds: int, 
+        delay_seconds: float, 
         callback: Callable[[], None]
     ) -> None:
         """Schedule an escalation.
@@ -219,7 +219,7 @@ class EscalationManager:
     
     async def _escalate_after_delay(
         self, 
-        delay_seconds: int, 
+        delay_seconds: float, 
         callback: Callable[[], None]
     ) -> None:
         """Execute escalation after delay.
