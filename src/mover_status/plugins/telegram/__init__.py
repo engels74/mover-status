@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from .provider import TelegramProvider
+from .bot import TelegramBotClient
+
 __all__ = [
-    # TODO: Add Telegram provider classes when implemented
-    # "TelegramProvider",
-    # "TelegramBot",
+    "TelegramProvider",
+    "TelegramBotClient",
 ]

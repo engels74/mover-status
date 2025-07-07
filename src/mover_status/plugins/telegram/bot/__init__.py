@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from .client import TelegramBotClient
+
 __all__ = [
-    # TODO: Add bot classes when implemented
-    # "TelegramBot",
-    # "BotClient",
+    "TelegramBotClient",
 ]
