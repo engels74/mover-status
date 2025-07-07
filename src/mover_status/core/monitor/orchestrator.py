@@ -279,8 +279,8 @@ class ServiceHealth:
             Health assessment report
         """
         components = registry.get_all_components()
-        healthy_components = []
-        unhealthy_components = []
+        healthy_components: list[str] = []
+        unhealthy_components: list[str] = []
         
         for component in components:
             if self.check_component_health(component):

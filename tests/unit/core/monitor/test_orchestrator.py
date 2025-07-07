@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
+from unittest.mock import Mock, AsyncMock
 from typing import cast
 
 from mover_status.core.monitor.orchestrator import (
@@ -17,20 +16,14 @@ from mover_status.core.monitor.orchestrator import (
     ComponentType,
     ComponentStatus,
     WorkflowStep,
-    WorkflowResult,
     WorkflowStatus,
     Resource,
     ResourceType,
-    AllocationResult,
     AllocationStatus,
-    OrchestratorError,
     ComponentRegistrationError,
-    WorkflowExecutionError,
-    ResourceAllocationError,
-    HealthCheckError,
 )
 from mover_status.core.monitor.state_machine import MonitorState, StateMachine
-from mover_status.core.monitor.event_bus import EventBus, Event, EventPriority
+from mover_status.core.monitor.event_bus import EventBus
 from mover_status.core.process import ProcessDetector, ProcessInfo, ProcessStatus
 from mover_status.core.progress import ProgressCalculator, ProgressMetrics
 from mover_status.notifications.manager import AsyncDispatcher
@@ -128,7 +121,7 @@ class TestServiceHealth:
         result = health_monitor.check_component_health(component)
         
         assert result is True
-        component.health_check.assert_called_once()
+        component.health_check.assert_called_once()  # pyright: ignore[reportAny]
     
     def test_health_check_failure(self) -> None:
         """Test health check failure."""
@@ -143,7 +136,7 @@ class TestServiceHealth:
         result = health_monitor.check_component_health(component)
         
         assert result is False
-        component.health_check.assert_called_once()
+        component.health_check.assert_called_once()  # pyright: ignore[reportAny]
     
     def test_overall_health_assessment(self) -> None:
         """Test overall system health assessment."""
@@ -206,7 +199,7 @@ class TestWorkflowEngine:
         step2.dependencies = ["step1"]
         step2.execute = Mock(return_value=True)
         
-        steps = [step2, step1]  # Intentionally out of order
+        steps = cast(list[WorkflowStep], [step2, step1])  # Intentionally out of order
         
         # Resolve dependencies
         ordered_steps = engine.resolve_dependencies(steps)
@@ -254,7 +247,7 @@ class TestResourceAllocator:
         
         assert result.status == AllocationStatus.ALLOCATED
         assert result.allocated_amount == 50
-        assert resource.available == 50
+        assert resource.available == 50  # pyright: ignore[reportAny]
     
     def test_resource_allocation_insufficient(self) -> None:
         """Test resource allocation when insufficient resources."""
@@ -274,7 +267,7 @@ class TestResourceAllocator:
         
         assert result.status == AllocationStatus.INSUFFICIENT
         assert result.allocated_amount == 0
-        assert resource.available == 30  # Unchanged
+        assert resource.available == 30  # Unchanged  # pyright: ignore[reportAny]
     
     def test_resource_deallocation(self) -> None:
         """Test resource deallocation."""
