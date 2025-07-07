@@ -139,8 +139,8 @@ class TestDiscordIntegration:
             # Verify rate limiter was used (timing would show delays)
             stats = provider.webhook_client.get_rate_limit_stats()
             assert isinstance(stats, dict)
-            assert "requests_made" in stats
-            assert stats["requests_made"] == len(messages)
+            assert "requests_in_window" in stats
+            assert stats["requests_in_window"] == len(messages)
     
     @pytest.mark.asyncio
     async def test_error_handling_integration(

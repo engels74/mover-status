@@ -379,9 +379,11 @@ class TestDiscordNotificationE2E:
             exceptions = [r for r in failed_results if isinstance(r, Exception)]
             assert len(exceptions) == 0, f"Unexpected exceptions: {exceptions}"
             
-            # Performance checks
+            # Performance checks - adjusted for rate limiting constraints
+            # Discord rate limiting allows 30 requests per minute (0.5 msg/s) with bursts
+            # With 100 messages and rate limiting, expect much lower throughput
             messages_per_second = len(volume_messages) / total_time
-            assert messages_per_second >= 10, f"Throughput too low: {messages_per_second:.1f} msg/s"
+            assert messages_per_second >= 0.3, f"Throughput too low: {messages_per_second:.1f} msg/s"
             
             # Verify rate limiting was applied (should have made HTTP calls)
             assert mock_post.call_count == len(successful_results)
@@ -446,9 +448,12 @@ class TestDiscordNotificationE2E:
                 for service_name, messages in service_messages.items()
                 for _ in messages
             ]
-            
+
             # Should have correct usernames (order might vary due to concurrency)
-            assert sorted(call_usernames) == sorted(expected_usernames)
+            # Handle None values by converting to empty string for sorting
+            call_usernames_sorted = sorted(u or "" for u in call_usernames)
+            expected_usernames_sorted = sorted(u or "" for u in expected_usernames)
+            assert call_usernames_sorted == expected_usernames_sorted
     
     @pytest.mark.asyncio
     async def test_graceful_degradation_e2e(

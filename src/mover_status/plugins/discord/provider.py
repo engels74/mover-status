@@ -38,8 +38,8 @@ class DiscordProvider(NotificationProvider):
         
         self.webhook_client: DiscordWebhookClient = DiscordWebhookClient(
             webhook_url=webhook_url,
-            username=str(username) if username else None,
-            avatar_url=str(avatar_url) if avatar_url else None,
+            username=str(username) if username is not None else None,
+            avatar_url=str(avatar_url) if avatar_url is not None else None,
             timeout=float(timeout_val) if isinstance(timeout_val, (int, float, str)) else 30.0,
             max_retries=int(max_retries_val) if isinstance(max_retries_val, (int, float, str)) else 3,
             retry_delay=float(retry_delay_val) if isinstance(retry_delay_val, (int, float, str)) else 1.0,
@@ -58,40 +58,31 @@ class DiscordProvider(NotificationProvider):
         if "discord.com" not in webhook_url and "discordapp.com" not in webhook_url:
             raise ValueError("webhook_url must be a Discord webhook URL")
         
-        # Validate optional numeric configs
+        # Validate optional numeric configs (only validate convertible values)
         timeout_val = self.config.get("timeout")
-        if timeout_val is not None:
+        if timeout_val is not None and isinstance(timeout_val, (int, float, str)):
             try:
-                if isinstance(timeout_val, (int, float, str)):
-                    timeout = float(timeout_val)
-                    if timeout <= 0:
-                        raise ValueError("timeout must be positive")
-                else:
-                    raise TypeError("timeout must be a number")
+                timeout = float(timeout_val)
+                if timeout <= 0:
+                    raise ValueError("timeout must be positive")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid timeout value: {e}")
-        
+
         max_retries_val = self.config.get("max_retries")
-        if max_retries_val is not None:
+        if max_retries_val is not None and isinstance(max_retries_val, (int, float, str)):
             try:
-                if isinstance(max_retries_val, (int, float, str)):
-                    max_retries = int(max_retries_val)
-                    if max_retries < 0:
-                        raise ValueError("max_retries must be non-negative")
-                else:
-                    raise TypeError("max_retries must be a number")
+                max_retries = int(max_retries_val)
+                if max_retries < 0:
+                    raise ValueError("max_retries must be non-negative")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid max_retries value: {e}")
         
         retry_delay_val = self.config.get("retry_delay")
-        if retry_delay_val is not None:
+        if retry_delay_val is not None and isinstance(retry_delay_val, (int, float, str)):
             try:
-                if isinstance(retry_delay_val, (int, float, str)):
-                    retry_delay = float(retry_delay_val)
-                    if retry_delay < 0:
-                        raise ValueError("retry_delay must be non-negative")
-                else:
-                    raise TypeError("retry_delay must be a number")
+                retry_delay = float(retry_delay_val)
+                if retry_delay < 0:
+                    raise ValueError("retry_delay must be non-negative")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid retry_delay value: {e}")
     

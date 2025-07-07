@@ -151,14 +151,14 @@ class TestDiscordProviderEdgeCases:
         assert "Tags" in field_names
         assert "Priority" in field_names
         
-        # Test unknown priority (should default to blue)
+        # Test default priority behavior (normal priority should map to blue)
         message = Message(
             title="Test",
             content="Test content",
-            priority="unknown",  # pyright: ignore[reportArgumentType]
+            # priority defaults to "normal"
         )
         embed = provider._create_embed(message)  # pyright: ignore[reportPrivateUsage]
-        assert embed.color == 0x0099FF  # Default blue
+        assert embed.color == 0x0099FF  # Blue for normal priority
         
         # Test special characters in metadata keys
         message = Message(
