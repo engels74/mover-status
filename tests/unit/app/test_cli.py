@@ -199,6 +199,149 @@ class TestCLIBasicFunctionality:
                 assert call_args.kwargs['run_once'] is True
 
 
+class TestCLIArgumentValidation:
+    """Test CLI argument parsing and validation."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a Click test runner."""
+        return CliRunner()
+
+    def test_config_path_validation_valid_extension(self, runner: CliRunner) -> None:
+        """Test config path validation accepts valid file extensions."""
+        with runner.isolated_filesystem():
+            # Test valid extensions
+            valid_extensions = ['config.yaml', 'config.yml', 'config.json', 'config.toml']
+
+            for config_file in valid_extensions:
+                _ = Path(config_file).write_text('test: config')
+
+                with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                    mock_instance = MagicMock()
+                    mock_runner.return_value = mock_instance
+
+                    result = runner.invoke(cli, ['--config', config_file])
+
+                    assert result.exit_code == 0, f"Failed for {config_file}"
+                    mock_runner.assert_called_once()
+
+    def test_config_path_validation_invalid_extension(self, runner: CliRunner) -> None:
+        """Test config path validation rejects invalid file extensions."""
+        with runner.isolated_filesystem():
+            # Test invalid extensions
+            invalid_config = 'config.txt'
+            _ = Path(invalid_config).write_text('test: config')
+
+            result = runner.invoke(cli, ['--config', invalid_config])
+
+            # Should fail validation
+            assert result.exit_code != 0
+            assert 'Invalid configuration file extension' in result.output
+
+    def test_config_path_validation_directory_provided(self, runner: CliRunner) -> None:
+        """Test config path validation rejects directories."""
+        with runner.isolated_filesystem():
+            # Create a directory instead of file
+            Path('config_dir').mkdir()
+
+            result = runner.invoke(cli, ['--config', 'config_dir'])
+
+            # Should fail validation
+            assert result.exit_code != 0
+            assert 'Configuration path must be a file' in result.output
+
+    def test_log_level_case_insensitive(self, runner: CliRunner) -> None:
+        """Test log level accepts case-insensitive values."""
+        with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+            mock_instance = MagicMock()
+            mock_runner.return_value = mock_instance
+
+            # Test various case combinations
+            test_cases = ['debug', 'DEBUG', 'Debug', 'info', 'INFO', 'Info']
+
+            for log_level in test_cases:
+                result = runner.invoke(cli, ['--log-level', log_level])
+
+                assert result.exit_code == 0, f"Failed for log level: {log_level}"
+                mock_runner.assert_called_once()
+                call_args = mock_runner.call_args
+                assert call_args is not None
+                # Should be normalized to uppercase
+                assert call_args.kwargs['log_level'] == log_level.upper()
+                mock_runner.reset_mock()
+
+    def test_mutually_exclusive_options_validation(self, runner: CliRunner) -> None:
+        """Test validation of mutually exclusive options."""
+        # For now, we don't have mutually exclusive options, but this test
+        # is prepared for future enhancements
+        with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+            mock_instance = MagicMock()
+            mock_runner.return_value = mock_instance
+
+            # Test that dry-run and once can be used together (they're not mutually exclusive)
+            result = runner.invoke(cli, ['--dry-run', '--once'])
+
+            assert result.exit_code == 0
+            mock_runner.assert_called_once()
+            call_args = mock_runner.call_args
+            assert call_args is not None
+            assert call_args.kwargs['dry_run'] is True
+            assert call_args.kwargs['run_once'] is True
+
+    def test_log_level_validation_with_whitespace(self, runner: CliRunner) -> None:
+        """Test log level validation handles whitespace correctly."""
+        with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+            mock_instance = MagicMock()
+            mock_runner.return_value = mock_instance
+
+            # Test with leading/trailing whitespace
+            result = runner.invoke(cli, ['--log-level', '  DEBUG  '])
+
+            assert result.exit_code == 0
+            mock_runner.assert_called_once()
+            call_args = mock_runner.call_args
+            assert call_args is not None
+            # Should be normalized to uppercase and trimmed
+            assert call_args.kwargs['log_level'] == 'DEBUG'
+
+    def test_log_level_validation_invalid_value(self, runner: CliRunner) -> None:
+        """Test log level validation rejects invalid values."""
+        result = runner.invoke(cli, ['--log-level', 'INVALID'])
+
+        assert result.exit_code != 0
+        assert 'Invalid log level' in result.output
+        assert 'Valid options:' in result.output
+
+    def test_config_path_validation_empty_extension(self, runner: CliRunner) -> None:
+        """Test config path validation handles files without extensions."""
+        with runner.isolated_filesystem():
+            # Create a file without extension
+            config_file = Path('config')
+            _ = config_file.write_text('test: config')
+
+            result = runner.invoke(cli, ['--config', str(config_file)])
+
+            # Should fail validation due to missing extension
+            assert result.exit_code != 0
+            assert 'Invalid configuration file extension' in result.output
+
+    def test_config_path_validation_case_insensitive_extension(self, runner: CliRunner) -> None:
+        """Test config path validation handles case-insensitive extensions."""
+        with runner.isolated_filesystem():
+            # Test uppercase extension
+            config_file = Path('config.YAML')
+            _ = config_file.write_text('test: config')
+
+            with patch('mover_status.app.runner.ApplicationRunner') as mock_runner:
+                mock_instance = MagicMock()
+                mock_runner.return_value = mock_instance
+
+                result = runner.invoke(cli, ['--config', str(config_file)])
+
+                assert result.exit_code == 0
+                mock_runner.assert_called_once()
+
+
 class TestCLIErrorHandling:
     """Test CLI error handling."""
 
@@ -210,7 +353,7 @@ class TestCLIErrorHandling:
     def test_cli_invalid_log_level(self, runner: CliRunner) -> None:
         """Test CLI with invalid log level."""
         result = runner.invoke(cli, ['--log-level', 'INVALID'])
-        
+
         assert result.exit_code != 0
         assert 'Invalid value' in result.output
 
