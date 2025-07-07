@@ -145,13 +145,14 @@ class TestDiscordProvider:
             # Verify embed creation
             call_args = mock_send.call_args
             assert call_args is not None
-            assert call_args[1]["embeds"] is not None
-            assert len(call_args[1]["embeds"]) == 1
+            embeds_arg = call_args[1]["embeds"]  # pyright: ignore[reportAny]
+            assert embeds_arg is not None
+            assert len(embeds_arg) == 1  # pyright: ignore[reportAny]
             
-            embed = call_args[1]["embeds"][0]
-            assert embed.title == sample_message.title
-            assert embed.description == sample_message.content
-            assert embed.color == 0x0099FF  # Blue for normal priority
+            embed = embeds_arg[0]  # pyright: ignore[reportAny]
+            assert embed.title == sample_message.title  # pyright: ignore[reportAny]
+            assert embed.description == sample_message.content  # pyright: ignore[reportAny]
+            assert embed.color == 0x0099FF  # Blue for normal priority  # pyright: ignore[reportAny]
 
     @pytest.mark.asyncio
     async def test_send_notification_failure(

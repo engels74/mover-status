@@ -186,8 +186,8 @@ class DiscordWebhookClient:
                         return True
                     elif response.status_code == 429:
                         # Rate limited by Discord
-                        retry_after_str = response.headers.get("Retry-After", "1")
-                        retry_after = float(retry_after_str)
+                        retry_after_str = response.headers.get("Retry-After", "1")  # pyright: ignore[reportAny]
+                        retry_after = float(retry_after_str)  # pyright: ignore[reportAny]
                         logger.warning(
                             f"Discord webhook rate limited. Retrying after {retry_after} seconds"
                         )
@@ -203,9 +203,9 @@ class DiscordWebhookClient:
                             return False
                         
                         if attempt < self.max_retries:
-                            wait_time = float(self.retry_delay * (2 ** attempt))
+                            wait_time = self.retry_delay * (2 ** attempt)  # pyright: ignore[reportAny]
                             logger.debug(f"Retrying in {wait_time} seconds...")
-                            await asyncio.sleep(wait_time)
+                            await asyncio.sleep(wait_time)  # pyright: ignore[reportAny]
                         else:
                             return False
                             
@@ -213,9 +213,9 @@ class DiscordWebhookClient:
                 logger.error(f"Discord webhook connection error: {e}")
                 
                 if attempt < self.max_retries:
-                    wait_time = float(self.retry_delay * (2 ** attempt))
-                    logger.debug(f"Retrying in {wait_time} seconds...")
-                    await asyncio.sleep(wait_time)
+                    wait_time_conn = self.retry_delay * (2 ** attempt)  # pyright: ignore[reportAny]
+                    logger.debug(f"Retrying in {wait_time_conn} seconds...")
+                    await asyncio.sleep(wait_time_conn)  # pyright: ignore[reportAny]
                 else:
                     return False
             

@@ -211,9 +211,9 @@ class TestDiscordWebhookClient:
             # Check payload structure
             call_args = mock_post.call_args
             assert call_args is not None
-            payload = call_args[1]["json"]
+            payload = call_args[1]["json"]  # pyright: ignore[reportAny]
             assert "embeds" in payload
-            assert len(payload["embeds"]) == 1
+            assert len(payload["embeds"]) == 1  # pyright: ignore[reportAny]
             assert payload["embeds"][0]["title"] == "Test Embed"
 
     @pytest.mark.asyncio
@@ -235,7 +235,7 @@ class TestDiscordWebhookClient:
             # Check payload includes custom parameters
             call_args = mock_post.call_args
             assert call_args is not None
-            payload = call_args[1]["json"]
+            payload = call_args[1]["json"]  # pyright: ignore[reportAny]
             assert payload["username"] == "Custom Bot"
             assert payload["avatar_url"] == "https://example.com/custom.png"
 
