@@ -24,10 +24,11 @@ from mover_status.core.monitor.orchestrator import (
     ComponentStatus,
     WorkflowStep,
     WorkflowStatus,
+    WorkflowResult,
     AllocationStatus,
 )
 from mover_status.core.monitor.state_machine import MonitorState, StateMachine
-from mover_status.core.monitor.event_bus import EventBus, EventPriority
+from mover_status.core.monitor.event_bus import EventBus, EventPriority, Event
 from mover_status.core.process import ProcessDetector, ProcessInfo, ProcessStatus
 from mover_status.core.progress import ProgressCalculator, ProgressMetrics
 from mover_status.notifications.manager import AsyncDispatcher
@@ -242,7 +243,7 @@ class TestStateTransitionBehaviors(TestOrchestratorTDD):
         # Verify event was called with some event
         call_args = cast(Mock, orchestrator.event_bus.publish_event).call_args
         assert call_args is not None
-        event = call_args[0][0]
+        event = cast(Event, call_args[0][0])
         assert event.priority == EventPriority.HIGH
     
     @pytest.mark.asyncio
@@ -260,7 +261,7 @@ class TestStateTransitionBehaviors(TestOrchestratorTDD):
         # Verify event was called
         call_args = cast(Mock, orchestrator.event_bus.publish_event).call_args
         assert call_args is not None
-        event = call_args[0][0]
+        event = cast(Event, call_args[0][0])
         assert event.priority == EventPriority.CRITICAL
     
     @pytest.mark.asyncio
@@ -280,7 +281,7 @@ class TestStateTransitionBehaviors(TestOrchestratorTDD):
         # Verify event was called
         call_args = cast(Mock, orchestrator.event_bus.publish_event).call_args
         assert call_args is not None
-        event = call_args[0][0]
+        event = cast(Event, call_args[0][0])
         assert event.priority == EventPriority.NORMAL
 
 
@@ -588,7 +589,7 @@ class TestPerformanceAndLoadTesting(TestOrchestratorTDD):
         
         # Measure initial memory
         process = psutil.Process(os.getpid())
-        initial_memory: int = process.memory_info().rss
+        initial_memory = int(cast(int, process.memory_info().rss))
         
         # Execute load test
         for _ in range(100):
@@ -596,7 +597,7 @@ class TestPerformanceAndLoadTesting(TestOrchestratorTDD):
             await orchestrator.run_monitoring_cycle()
         
         # Measure final memory
-        final_memory: int = process.memory_info().rss
+        final_memory = int(cast(int, process.memory_info().rss))
         memory_increase: int = final_memory - initial_memory
         
         # Verify memory usage is reasonable (less than 50MB increase)
@@ -824,7 +825,7 @@ class TestComplexScenarios(TestOrchestratorTDD):
         
         # Execute workflow
         workflow_steps = orchestrator.workflow_engine.workflows["full_monitoring"]
-        results = []
+        results: list[WorkflowResult] = []
         
         for step in workflow_steps:
             result = orchestrator.workflow_engine.execute_step(step)
@@ -835,6 +836,6 @@ class TestComplexScenarios(TestOrchestratorTDD):
         assert all(result.status == WorkflowStatus.COMPLETED for result in results)
         
         # Verify execution order
-        step_names = [result.step.name for result in results]
+        step_names: list[str] = [result.step.name for result in results]
         expected_order = ["detect_process", "validate_process", "start_monitoring", "calculate_progress", "send_notification"]
         assert step_names == expected_order
