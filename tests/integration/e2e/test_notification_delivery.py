@@ -343,6 +343,8 @@ class TestNotificationDeliveryE2E:
         finally:
             await dispatcher.stop()
     
+    @pytest.mark.slow
+    @pytest.mark.shutdown
     @pytest.mark.asyncio
     async def test_graceful_shutdown_e2e(self) -> None:
         """Test graceful system shutdown under load."""

@@ -350,6 +350,8 @@ class TestDiscordNotificationE2E:
             # Note: Allowing for some variance in timing
             assert end_time - start_time >= 0.1  # At least some delay occurred
     
+    @pytest.mark.slow
+    @pytest.mark.stress
     @pytest.mark.asyncio
     async def test_high_volume_stress_e2e(
         self,
