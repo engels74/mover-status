@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     pass
 
 
-class TestScenario(TypedDict):
+class NotificationScenario(TypedDict):
     """Type definition for test scenarios."""
     name: str
     messages: list[Message]
@@ -108,8 +108,8 @@ class TestComprehensiveNotificationSuite:
         
         try:
             # Step 5: Multi-scenario testing
-            test_scenarios: list[TestScenario] = [
-                TestScenario(
+            test_scenarios: list[NotificationScenario] = [
+                NotificationScenario(
                     name="high_priority_alerts",
                     messages=[
                         Message(title="Critical Alert", content="System failure detected", priority="high"),
@@ -119,13 +119,13 @@ class TestComprehensiveNotificationSuite:
                     providers=["reliable", "fast"],
                     expected_success_rate=99.0
                 ),
-                TestScenario(
+                NotificationScenario(
                     name="bulk_notifications",
                     messages=NotificationTestUtils.create_test_messages(50, "Bulk"),
                     providers=["reliable", "unreliable", "fast"],
                     expected_success_rate=80.0  # More realistic with unreliable provider
                 ),
-                TestScenario(
+                NotificationScenario(
                     name="mixed_load_test",
                     messages=NotificationTestUtils.create_test_messages(20, "Mixed"),
                     providers=["reliable", "unreliable", "slow", "fast"],
