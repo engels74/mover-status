@@ -46,6 +46,11 @@ target-version = "py313"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=src/mover_status --cov-report=term-missing --cov-fail-under=100"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "shutdown: marks tests that test graceful shutdown behavior",
+    "stress: marks tests that perform stress testing under high load",
+]
 
 [tool.coverage.run]
 source = ["src/mover_status"]
