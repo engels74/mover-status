@@ -47,13 +47,30 @@ from .orchestrator import (
     ResourceAllocationError,
     HealthCheckError,
 )
+from .lifecycle import (
+    LifecycleManager,
+    ComponentLifecycle,
+    LifecycleState,
+    LifecycleEvent,
+    LifecycleHook,
+    LifecycleError,
+    StartupError,
+    ShutdownError,
+    ConfigReloadError,
+    HealthCheckManager,
+    ConfigHotReloader,
+    ResourceCleanupManager,
+    DependencyOrderer,
+    VersionManager,
+    LifecycleEventBus,
+)
 
 __all__ = [
     # Event Bus Components
     "Event",
     "EventBus",
     "EventFilter",
-    "EventHandler", 
+    "EventHandler",
     "EventPriority",
     "EventPublisher",
     "EventSubscriber",
@@ -91,4 +108,20 @@ __all__ = [
     "WorkflowExecutionError",
     "ResourceAllocationError",
     "HealthCheckError",
+    # Lifecycle Management Components
+    "LifecycleManager",
+    "ComponentLifecycle",
+    "LifecycleState",
+    "LifecycleEvent",
+    "LifecycleHook",
+    "LifecycleError",
+    "StartupError",
+    "ShutdownError",
+    "ConfigReloadError",
+    "HealthCheckManager",
+    "ConfigHotReloader",
+    "ResourceCleanupManager",
+    "DependencyOrderer",
+    "VersionManager",
+    "LifecycleEventBus",
 ]
