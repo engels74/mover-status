@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import pytest
+from datetime import timedelta
 
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import TYPE_CHECKING
@@ -12,6 +14,9 @@ from mover_status.plugins.telegram.bot.client import TelegramBotClient, ChatType
 
 if TYPE_CHECKING:
     pass
+
+# Set environment variable to opt into new timedelta behavior for python-telegram-bot
+os.environ["PTB_TIMEDELTA"] = "true"
 
 
 class TestTelegramBotClient:
@@ -190,7 +195,7 @@ class TestTelegramBotClient:
             # Verify user chat IDs format
             call_args_list = mock_send.call_args_list
             for call in call_args_list:
-                chat_id: str = str(call[1]["chat_id"])
+                chat_id: str = str(call[1]["chat_id"])  # pyright: ignore[reportAny] # mock call args are untyped
                 assert chat_id in user_chat_ids
                 assert not chat_id.startswith("-")  # User IDs are positive
     
@@ -214,7 +219,7 @@ class TestTelegramBotClient:
             # Verify group chat IDs format
             call_args_list = mock_send.call_args_list
             for call in call_args_list:
-                chat_id: str = str(call[1]["chat_id"])
+                chat_id: str = str(call[1]["chat_id"])  # pyright: ignore[reportAny] # mock call args are untyped
                 assert chat_id in group_chat_ids
                 assert chat_id.startswith("-100")  # Group IDs start with -100
     
@@ -238,7 +243,7 @@ class TestTelegramBotClient:
             # Verify channel chat IDs format
             call_args_list = mock_send.call_args_list
             for call in call_args_list:
-                chat_id: str = str(call[1]["chat_id"])
+                chat_id: str = str(call[1]["chat_id"])  # pyright: ignore[reportAny] # mock call args are untyped
                 assert chat_id in channel_chat_ids
                 assert chat_id.startswith("-100")  # Channel IDs also start with -100
     
@@ -248,23 +253,24 @@ class TestTelegramBotClient:
     ) -> None:
         """Test handling of rate limiting across multiple chats."""
         call_count = 0
-        
+
         def side_effect(**_kwargs: object) -> AsyncMock | None:
             nonlocal call_count
             call_count += 1
-            
+
             if call_count <= 2:  # First two calls get rate limited
                 from telegram.error import RetryAfter
-                raise RetryAfter(retry_after=1)  # Short delay for testing (int)
+                # Use timedelta for new PTB behavior
+                raise RetryAfter(retry_after=timedelta(seconds=1))
             else:
                 return AsyncMock()
-        
+
         with patch('telegram.Bot.send_message', side_effect=side_effect):
             result = await client.send_message_to_multiple_chats(
                 chat_ids=mixed_chat_ids[:3],  # Test with 3 chats
                 text="Test message"
             )
-            
+
             assert result is True
             # Should have more calls due to retries
             assert call_count > 3
