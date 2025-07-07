@@ -459,7 +459,7 @@ class TestResourceCleanupManager:
         """Test cleaning up all resources."""
         manager = ResourceCleanupManager()
 
-        cleanup_called = []
+        cleanup_called: list[str] = []
 
         async def cleanup_a() -> None:
             cleanup_called.append("a")
@@ -481,7 +481,7 @@ class TestResourceCleanupManager:
         """Test cleaning up specific resources."""
         manager = ResourceCleanupManager()
 
-        cleanup_called = []
+        cleanup_called: list[str] = []
 
         async def cleanup_a() -> None:
             cleanup_called.append("a")
@@ -559,8 +559,9 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_startup(self) -> None:
         """Test lifecycle manager startup process."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
-        orchestrator.registry.get_all_components.return_value = []
+        registry_mock = Mock(spec=ComponentRegistry)
+        registry_mock.get_all_components.return_value = []  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
 
@@ -572,8 +573,9 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_shutdown(self) -> None:
         """Test lifecycle manager shutdown process."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
-        orchestrator.registry.get_all_components.return_value = []
+        registry_mock = Mock(spec=ComponentRegistry)
+        registry_mock.get_all_components.return_value = []  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
         manager.state = LifecycleState.RUNNING
@@ -586,7 +588,7 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_with_components(self) -> None:
         """Test lifecycle manager with actual components."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
+        registry_mock = Mock(spec=ComponentRegistry)
 
         # Create mock components
         component_a = Mock(spec=Component)
@@ -599,7 +601,8 @@ class TestLifecycleManager:
         component_b.type = ComponentType.CALCULATOR
         component_b.status = ComponentStatus.ACTIVE
 
-        orchestrator.registry.get_all_components.return_value = [component_a, component_b]
+        registry_mock.get_all_components.return_value = [component_a, component_b]  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
 
@@ -615,8 +618,9 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_error_handling(self) -> None:
         """Test lifecycle manager error handling."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
-        orchestrator.registry.get_all_components.side_effect = RuntimeError("Registry error")
+        registry_mock = Mock(spec=ComponentRegistry)
+        registry_mock.get_all_components.side_effect = RuntimeError("Registry error")  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
 
@@ -629,8 +633,9 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_config_reload(self) -> None:
         """Test lifecycle manager configuration reload."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
-        orchestrator.registry.get_all_components.return_value = []
+        registry_mock = Mock(spec=ComponentRegistry)
+        registry_mock.get_all_components.return_value = []  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
         manager.state = LifecycleState.RUNNING
@@ -647,8 +652,9 @@ class TestLifecycleManager:
     async def test_lifecycle_manager_health_checks(self) -> None:
         """Test lifecycle manager health check integration."""
         orchestrator = Mock(spec=MonitorOrchestrator)
-        orchestrator.registry = Mock(spec=ComponentRegistry)
-        orchestrator.registry.get_all_components.return_value = []
+        registry_mock = Mock(spec=ComponentRegistry)
+        registry_mock.get_all_components.return_value = []  # pyright: ignore[reportAny] # Mock limitation
+        orchestrator.registry = registry_mock
 
         manager = LifecycleManager(orchestrator)
         manager.state = LifecycleState.RUNNING
