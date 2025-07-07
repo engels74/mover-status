@@ -6,12 +6,11 @@ import asyncio
 import time
 import pytest
 from typing import TYPE_CHECKING, override
-from collections.abc import Mapping
-from unittest.mock import MagicMock
+from collections.abc import Mapping, Coroutine
 
 from mover_status.notifications.base.provider import NotificationProvider
 from mover_status.notifications.base.registry import ProviderRegistry, ProviderMetadata
-from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus
+from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus, DispatchResult
 from mover_status.notifications.models.message import Message
 
 if TYPE_CHECKING:
@@ -25,7 +24,8 @@ class PerformanceMockProvider(NotificationProvider):
         super().__init__(config)
         self.name: str = name
         self.send_calls: list[Message] = []
-        self.processing_time: float = config.get("processing_time", 0.001)
+        processing_time_val = config.get("processing_time", 0.001)
+        self.processing_time: float = float(processing_time_val) if isinstance(processing_time_val, (int, float)) else 0.001
         self.call_count: int = 0
         
     @override
@@ -67,7 +67,7 @@ class TestNotificationPerformance:
             worker_count = scenario["workers"]
             
             # Setup providers
-            providers = []
+            providers: list[PerformanceMockProvider] = []
             for i in range(provider_count):
                 provider = PerformanceMockProvider(
                     {"processing_time": 0.001}, 
@@ -88,7 +88,7 @@ class TestNotificationPerformance:
             
             try:
                 # Generate messages
-                messages = []
+                messages: list[Message] = []
                 for i in range(message_count):
                     message = Message(
                         title=f"Perf Test {i}",
@@ -101,7 +101,7 @@ class TestNotificationPerformance:
                 start_time = time.time()
                 
                 # Dispatch all messages concurrently
-                tasks = []
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
                 provider_names = [f"perf_provider_{i}" for i in range(provider_count)]
                 
                 for message in messages:
@@ -141,7 +141,7 @@ class TestNotificationPerformance:
                     assert len(provider.send_calls) == message_count
                     
                 print(f"Scenario {scenario}: {messages_per_second:.1f} msg/s, "
-                      f"{deliveries_per_second:.1f} del/s, {total_time:.3f}s total")
+                      + f"{deliveries_per_second:.1f} del/s, {total_time:.3f}s total")
                 
             finally:
                 await dispatcher.stop()
@@ -198,7 +198,7 @@ class TestNotificationPerformance:
         # Test provider creation performance
         start_time = time.time()
         
-        created_providers = []
+        created_providers: list[NotificationProvider] = []
         for i in range(min(100, provider_count)):  # Test subset for creation
             provider = registry.create_provider(f"provider_{i}", {"processing_time": 0.001})
             created_providers.append(provider)
@@ -212,7 +212,7 @@ class TestNotificationPerformance:
         )
         
         print(f"Registry performance: {registrations_per_second:.0f} reg/s, "
-              f"{lookups_per_second:.0f} lookups/s, {creations_per_second:.0f} creations/s")
+              + f"{lookups_per_second:.0f} lookups/s, {creations_per_second:.0f} creations/s")
     
     @pytest.mark.asyncio
     async def test_message_processing_performance(self) -> None:
@@ -233,7 +233,7 @@ class TestNotificationPerformance:
             
             # Create messages
             message_count = 100
-            messages = []
+            messages: list[Message] = []
             
             for i in range(message_count):
                 message = Message(
@@ -248,7 +248,7 @@ class TestNotificationPerformance:
             start_time = time.time()
             
             for message in messages:
-                await provider.send_notification(message)
+                _ = await provider.send_notification(message)
             
             processing_time = time.time() - start_time
             
@@ -266,7 +266,7 @@ class TestNotificationPerformance:
             )
             
             print(f"Message size {size_config}: {messages_per_second:.0f} msg/s, "
-                  f"{bytes_per_second / 1024:.1f} KB/s")
+                  + f"{bytes_per_second / 1024:.1f} KB/s")
     
     @pytest.mark.asyncio
     async def test_concurrent_dispatcher_performance(self) -> None:
@@ -275,12 +275,12 @@ class TestNotificationPerformance:
         messages_per_dispatcher = 200
         
         # Setup multiple dispatchers
-        dispatchers = []
-        all_providers = []
+        dispatchers: list[tuple[AsyncDispatcher, list[PerformanceMockProvider]]] = []
+        all_providers: list[PerformanceMockProvider] = []
         
         for d in range(dispatcher_count):
             # Create providers for this dispatcher
-            providers = []
+            providers: list[PerformanceMockProvider] = []
             for p in range(2):
                 provider = PerformanceMockProvider(
                     {"processing_time": 0.001}, 
@@ -306,7 +306,7 @@ class TestNotificationPerformance:
             start_time = time.time()
             
             # Create dispatch tasks for all dispatchers
-            all_tasks = []
+            all_tasks: list[Coroutine[object, object, DispatchResult]] = []
             
             for d, (dispatcher, providers) in enumerate(dispatchers):
                 provider_names = [f"dispatcher_{d}_provider_{i}" for i in range(len(providers))]
@@ -357,7 +357,7 @@ class TestNotificationPerformance:
                 assert len(provider.send_calls) == messages_per_dispatcher
             
             print(f"Concurrent performance: {messages_per_second:.1f} msg/s, "
-                  f"{deliveries_per_second:.1f} del/s with {dispatcher_count} dispatchers")
+                  + f"{deliveries_per_second:.1f} del/s with {dispatcher_count} dispatchers")
             
         finally:
             # Stop all dispatchers
@@ -368,10 +368,9 @@ class TestNotificationPerformance:
     async def test_memory_usage_performance(self) -> None:
         """Test memory usage under high load."""
         import gc
-        import sys
         
         # Force garbage collection before test
-        gc.collect()
+        _ = gc.collect()
         initial_objects = len(gc.get_objects())
         
         # Setup high-capacity system
@@ -388,7 +387,7 @@ class TestNotificationPerformance:
             
             for batch in range(message_count // batch_size):
                 # Create batch of messages
-                messages = []
+                messages: list[Message] = []
                 for i in range(batch_size):
                     message_id = batch * batch_size + i
                     message = Message(
@@ -400,7 +399,7 @@ class TestNotificationPerformance:
                     messages.append(message)
                 
                 # Dispatch batch
-                tasks = []
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
                 for message in messages:
                     task = dispatcher.dispatch_message(message, ["memory_test_provider"])
                     tasks.append(task)
@@ -413,10 +412,10 @@ class TestNotificationPerformance:
                 
                 # Force garbage collection periodically
                 if batch % 5 == 0:
-                    gc.collect()
+                    _ = gc.collect()
             
             # Final garbage collection
-            gc.collect()
+            _ = gc.collect()
             final_objects = len(gc.get_objects())
             
             # Memory usage assertion - be more realistic for async systems
@@ -435,4 +434,4 @@ class TestNotificationPerformance:
             
         finally:
             await dispatcher.stop()
-            gc.collect()  # Final cleanup
+            _ = gc.collect()  # Final cleanup

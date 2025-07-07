@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import pytest
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 from collections.abc import Coroutine
 
 from mover_status.notifications.base.registry import (
@@ -17,7 +17,6 @@ from mover_status.notifications.manager.dispatcher import AsyncDispatcher, Dispa
 from mover_status.notifications.models.message import Message
 from mover_status.notifications.base.config_validator import ConfigValidator
 from tests.fixtures.notification_mocks import (
-    EnhancedMockProvider,
     ReliableMockProvider,
     UnreliableMockProvider,
     SlowMockProvider,
@@ -27,6 +26,27 @@ from tests.fixtures.notification_mocks import (
 
 if TYPE_CHECKING:
     pass
+
+
+class TestScenario(TypedDict):
+    """Type definition for test scenarios."""
+    name: str
+    messages: list[Message]
+    providers: list[str]
+    expected_success_rate: float
+
+
+class _ErrorScenarioBase(TypedDict):
+    """Base for error scenarios."""
+    name: str
+    messages: list[Message]
+    providers: list[str]
+
+
+class ErrorScenario(_ErrorScenarioBase, total=False):
+    """Type definition for error test scenarios."""
+    expected_partial_results: bool
+    expected_failures: bool
 
 
 class TestComprehensiveNotificationSuite:
@@ -48,7 +68,7 @@ class TestComprehensiveNotificationSuite:
         
         # Step 2: Provider creation and registration
         registry = get_global_registry()
-        providers: dict[str, EnhancedMockProvider] = {
+        providers: dict[str, ReliableMockProvider | UnreliableMockProvider | SlowMockProvider | FastMockProvider] = {
             "reliable": ReliableMockProvider(configs["reliable"], "reliable"),
             "unreliable": UnreliableMockProvider(configs["unreliable"], "unreliable"),
             "slow": SlowMockProvider(configs["slow"], "slow"),
@@ -88,32 +108,32 @@ class TestComprehensiveNotificationSuite:
         
         try:
             # Step 5: Multi-scenario testing
-            test_scenarios = [
-                {
-                    "name": "high_priority_alerts",
-                    "messages": [
+            test_scenarios: list[TestScenario] = [
+                TestScenario(
+                    name="high_priority_alerts",
+                    messages=[
                         Message(title="Critical Alert", content="System failure detected", priority="high"),
                         Message(title="Security Alert", content="Unauthorized access", priority="high"),
                         Message(title="Performance Alert", content="High CPU usage", priority="high")
                     ],
-                    "providers": ["reliable", "fast"],
-                    "expected_success_rate": 99.0
-                },
-                {
-                    "name": "bulk_notifications",
-                    "messages": NotificationTestUtils.create_test_messages(50, "Bulk"),
-                    "providers": ["reliable", "unreliable", "fast"],
-                    "expected_success_rate": 80.0  # More realistic with unreliable provider
-                },
-                {
-                    "name": "mixed_load_test",
-                    "messages": NotificationTestUtils.create_test_messages(20, "Mixed"),
-                    "providers": ["reliable", "unreliable", "slow", "fast"],
-                    "expected_success_rate": 60.0  # More realistic with unreliable and slow providers
-                }
+                    providers=["reliable", "fast"],
+                    expected_success_rate=99.0
+                ),
+                TestScenario(
+                    name="bulk_notifications",
+                    messages=NotificationTestUtils.create_test_messages(50, "Bulk"),
+                    providers=["reliable", "unreliable", "fast"],
+                    expected_success_rate=80.0  # More realistic with unreliable provider
+                ),
+                TestScenario(
+                    name="mixed_load_test",
+                    messages=NotificationTestUtils.create_test_messages(20, "Mixed"),
+                    providers=["reliable", "unreliable", "slow", "fast"],
+                    expected_success_rate=60.0  # More realistic with unreliable and slow providers
+                )
             ]
             
-            overall_results = {}
+            overall_results: dict[str, dict[str, float]] = {}
             
             for scenario in test_scenarios:
                 print(f"\nExecuting scenario: {scenario['name']}")
@@ -126,8 +146,8 @@ class TestComprehensiveNotificationSuite:
                 
                 # Dispatch all messages in scenario
                 tasks: list[Coroutine[object, object, DispatchResult]] = []
-                for message in scenario["messages"]:  # pyright: ignore[reportUnknownVariableType]
-                    task = dispatcher.dispatch_message(message, scenario["providers"])  # pyright: ignore[reportUnknownArgumentType,reportArgumentType]
+                for message in scenario["messages"]:
+                    task = dispatcher.dispatch_message(message, scenario["providers"])
                     tasks.append(task)
                 
                 results = await asyncio.gather(*tasks)
@@ -140,25 +160,32 @@ class TestComprehensiveNotificationSuite:
                 success_rate = (successful_dispatches / total_dispatches) * 100
                 
                 # Verify scenario expectations
-                assert success_rate >= scenario["expected_success_rate"], (
+                expected_rate = scenario["expected_success_rate"]
+                assert isinstance(expected_rate, (int, float)), f"Expected success rate should be numeric, got {type(expected_rate)}"
+                assert success_rate >= expected_rate, (
                     f"Scenario {scenario['name']} success rate {success_rate:.1f}% "
-                    f"below expected {scenario['expected_success_rate']}%"
+                    f"below expected {expected_rate}%"
                 )
                 
                 # Store results for overall analysis
+                scenario_messages = scenario["messages"]
+                scenario_providers = scenario["providers"]
+                message_count = len(scenario_messages)
+                provider_count = len(scenario_providers)
+                
                 overall_results[scenario["name"]] = {
                     "success_rate": success_rate,
                     "processing_time": processing_time,
-                    "message_count": len(scenario["messages"]),
-                    "provider_count": len(scenario["providers"])
+                    "message_count": float(message_count),
+                    "provider_count": float(provider_count)
                 }
                 
                 print(f"  Success rate: {success_rate:.1f}%")
                 print(f"  Processing time: {processing_time:.2f}s")
-                print(f"  Messages/second: {len(scenario['messages']) / processing_time:.1f}")
+                print(f"  Messages/second: {message_count / processing_time:.1f}")
             
             # Step 6: Overall system validation
-            total_messages = sum(r["message_count"] for r in overall_results.values())
+            total_messages = sum(int(r["message_count"]) for r in overall_results.values())
             total_time = sum(r["processing_time"] for r in overall_results.values())
             overall_throughput = total_messages / total_time
             
@@ -168,7 +195,7 @@ class TestComprehensiveNotificationSuite:
             for provider_name, provider in providers.items():
                 assert provider.stats.send_count > 0, f"Provider {provider_name} processed no messages"
                 print(f"  {provider_name}: {provider.stats.send_count} messages, "
-                      f"{provider.stats.success_rate:.1f}% success rate")
+                      + f"{provider.stats.success_rate:.1f}% success rate")
             
         finally:
             # Step 7: Cleanup
@@ -199,22 +226,22 @@ class TestComprehensiveNotificationSuite:
         
         try:
             # Test various error scenarios
-            error_scenarios = [
-                {
-                    "name": "partial_failures",
-                    "messages": NotificationTestUtils.create_test_messages(20, "PartialFail"),
-                    "providers": ["reliable", "unreliable"],
-                    "expected_partial_results": True
-                },
-                {
-                    "name": "timeout_handling",
-                    "messages": [
+            error_scenarios: list[ErrorScenario] = [
+                ErrorScenario(
+                    name="partial_failures",
+                    messages=NotificationTestUtils.create_test_messages(20, "PartialFail"),
+                    providers=["reliable", "unreliable"],
+                    expected_partial_results=True
+                ),
+                ErrorScenario(
+                    name="timeout_handling",
+                    messages=[
                         Message(title="Timeout test", content="This may timeout", priority="normal")
                         for _ in range(10)
                     ],
-                    "providers": ["unreliable"],
-                    "expected_failures": True
-                }
+                    providers=["unreliable"],
+                    expected_failures=True
+                )
             ]
             
             for scenario in error_scenarios:
@@ -226,8 +253,8 @@ class TestComprehensiveNotificationSuite:
                 
                 # Execute scenario
                 tasks: list[Coroutine[object, object, DispatchResult]] = []
-                for message in scenario["messages"]:  # pyright: ignore[reportUnknownVariableType]
-                    task = dispatcher.dispatch_message(message, scenario["providers"])  # pyright: ignore[reportUnknownArgumentType,reportArgumentType]
+                for message in scenario["messages"]:
+                    task = dispatcher.dispatch_message(message, scenario["providers"])
                     tasks.append(task)
                 
                 results = await asyncio.gather(*tasks)
@@ -351,9 +378,7 @@ class TestComprehensiveNotificationSuite:
         
         # Verify mock utilities are available
         from tests.fixtures.notification_mocks import (
-            EnhancedMockProvider,
             ReliableMockProvider,
-            UnreliableMockProvider,
             NotificationTestUtils
         )
         

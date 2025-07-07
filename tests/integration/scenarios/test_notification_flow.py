@@ -6,21 +6,17 @@ import asyncio
 import time
 import pytest
 from typing import TYPE_CHECKING, override
-from collections.abc import Mapping
+from collections.abc import Mapping, Coroutine
 from unittest.mock import AsyncMock
 
 from mover_status.notifications.base.provider import NotificationProvider
 from mover_status.notifications.base.registry import ProviderRegistry, ProviderMetadata
-from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus
+from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus, DispatchResult
 from mover_status.notifications.models.message import Message
 from tests.fixtures.notification_mocks import (
-    EnhancedMockProvider,
     ReliableMockProvider,
     UnreliableMockProvider,
-    SlowMockProvider,
-    FastMockProvider,
-    NotificationTestUtils,
-    TestScenario
+    NotificationTestUtils
 )
 
 if TYPE_CHECKING:
@@ -183,7 +179,7 @@ class TestNotificationFlowIntegration:
     async def test_high_volume_scenario(self) -> None:
         """Test high-volume message processing."""
         # Setup multiple providers
-        providers = []
+        providers: list[IntegrationMockProvider] = []
         for i in range(3):
             provider = IntegrationMockProvider({"enabled": True}, f"provider_{i}")
             provider.delay = 0.01  # Small delay to simulate real work
@@ -198,8 +194,8 @@ class TestNotificationFlowIntegration:
         
         try:
             # Send multiple messages concurrently
-            messages = []
-            tasks = []
+            messages: list[Message] = []
+            tasks: list[Coroutine[object, object, DispatchResult]] = []
             
             for i in range(20):
                 message = Message(
@@ -291,7 +287,7 @@ class TestNotificationFlowIntegration:
             "retry_attempts": 3
         }
 
-        provider = IntegrationMockProvider(valid_config, "config_test_provider")
+        _ = IntegrationMockProvider(valid_config, "config_test_provider")
 
         # Validate configuration
         result = validator.validate_provider_config("config_test_provider", valid_config)
@@ -335,14 +331,14 @@ class TestNotificationFlowIntegration:
                 start_time = time.time()
 
                 # Dispatch messages
-                tasks = []
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
                 provider_names = list(scenario.providers.keys())
 
                 for message in messages:
                     task = dispatcher.dispatch_message(message, provider_names)
                     tasks.append(task)
 
-                results = await asyncio.gather(*tasks)
+                _ = await asyncio.gather(*tasks)
 
                 processing_time = time.time() - start_time
 
@@ -358,10 +354,13 @@ class TestNotificationFlowIntegration:
                     f"(max: {scenario.max_processing_time}s)"
                 )
 
-                assert analysis["overall_success_rate"] >= scenario.expected_success_rate, (
+                success_rate = analysis["overall_success_rate"]
+                expected_rate = scenario.expected_success_rate
+                assert isinstance(success_rate, (int, float)), f"Success rate should be numeric, got {type(success_rate)}"
+                assert isinstance(expected_rate, (int, float)), f"Expected rate should be numeric, got {type(expected_rate)}"
+                assert success_rate >= expected_rate, (
                     f"Scenario {scenario.name} success rate too low: "
-                    f"{analysis['overall_success_rate']:.1f}% "
-                    f"(expected: {scenario.expected_success_rate}%)"
+                    f"{success_rate:.1f}% (expected: {expected_rate}%)"
                 )
 
                 # Verify all messages were processed
@@ -400,7 +399,7 @@ class TestNotificationFlowIntegration:
                 Message(title="Success story", content="This should work fine", priority="normal"),
             ]
 
-            results = []
+            results: list[DispatchResult] = []
             for message in failure_messages:
                 result = await dispatcher.dispatch_message(
                     message,
