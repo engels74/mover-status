@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from .provider import DiscordProvider
+
 __all__ = [
-    # TODO: Add Discord provider classes when implemented
-    # "DiscordProvider",
-    # "DiscordWebhook",
+    "DiscordProvider",
 ]

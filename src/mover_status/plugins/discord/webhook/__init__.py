@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from .client import DiscordWebhookClient, DiscordEmbed
+
 __all__ = [
-    # TODO: Add webhook classes when implemented
-    # "WebhookClient",
-    # "WebhookManager",
+    "DiscordWebhookClient",
+    "DiscordEmbed",
 ]
