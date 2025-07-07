@@ -356,7 +356,7 @@ class ConfigValidator:
         import asyncio
         try:
             # Try to get the current event loop
-            loop = asyncio.get_running_loop()
+            _ = asyncio.get_running_loop()
             # If we're in an async context, do basic synchronous validation
             issues: list[ValidationIssue] = []
 
@@ -391,11 +391,11 @@ class ConfigValidator:
             # No event loop running, safe to use asyncio.run
             return asyncio.run(self.validate(config))
 
-    def validate_provider_config(self, provider_name: str, config: Mapping[str, object]) -> ValidationResult:
+    def validate_provider_config(self, _provider_name: str, config: Mapping[str, object]) -> ValidationResult:
         """Validate provider configuration (backward compatibility method).
 
         Args:
-            provider_name: Name of the provider (ignored, uses instance provider_name)
+            _provider_name: Name of the provider (ignored, uses instance provider_name)
             config: Configuration to validate
 
         Returns:

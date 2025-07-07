@@ -288,7 +288,7 @@ class NotificationTestUtils:
     @staticmethod
     def create_test_messages(count: int, prefix: str = "Test") -> list[Message]:
         """Create a list of test messages."""
-        messages = []
+        messages: list[Message] = []
         priorities = ["low", "normal", "high"]
         
         for i in range(count):

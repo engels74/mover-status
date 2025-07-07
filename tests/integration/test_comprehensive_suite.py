@@ -6,17 +6,18 @@ import asyncio
 import time
 import pytest
 from typing import TYPE_CHECKING
+from collections.abc import Coroutine
 
 from mover_status.notifications.base.registry import (
-    ProviderRegistry, 
     ProviderMetadata,
     ProviderLifecycleManager,
     get_global_registry
 )
-from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus
+from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus, DispatchResult
 from mover_status.notifications.models.message import Message
 from mover_status.notifications.base.config_validator import ConfigValidator
 from tests.fixtures.notification_mocks import (
+    EnhancedMockProvider,
     ReliableMockProvider,
     UnreliableMockProvider,
     SlowMockProvider,
@@ -47,7 +48,7 @@ class TestComprehensiveNotificationSuite:
         
         # Step 2: Provider creation and registration
         registry = get_global_registry()
-        providers = {
+        providers: dict[str, EnhancedMockProvider] = {
             "reliable": ReliableMockProvider(configs["reliable"], "reliable"),
             "unreliable": UnreliableMockProvider(configs["unreliable"], "unreliable"),
             "slow": SlowMockProvider(configs["slow"], "slow"),
@@ -124,9 +125,9 @@ class TestComprehensiveNotificationSuite:
                 start_time = time.time()
                 
                 # Dispatch all messages in scenario
-                tasks = []
-                for message in scenario["messages"]:
-                    task = dispatcher.dispatch_message(message, scenario["providers"])
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
+                for message in scenario["messages"]:  # pyright: ignore[reportUnknownVariableType]
+                    task = dispatcher.dispatch_message(message, scenario["providers"])  # pyright: ignore[reportUnknownArgumentType,reportArgumentType]
                     tasks.append(task)
                 
                 results = await asyncio.gather(*tasks)
@@ -224,9 +225,9 @@ class TestComprehensiveNotificationSuite:
                     provider.reset_stats()
                 
                 # Execute scenario
-                tasks = []
-                for message in scenario["messages"]:
-                    task = dispatcher.dispatch_message(message, scenario["providers"])
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
+                for message in scenario["messages"]:  # pyright: ignore[reportUnknownVariableType]
+                    task = dispatcher.dispatch_message(message, scenario["providers"])  # pyright: ignore[reportUnknownArgumentType,reportArgumentType]
                     tasks.append(task)
                 
                 results = await asyncio.gather(*tasks)
@@ -260,7 +261,7 @@ class TestComprehensiveNotificationSuite:
         configs = NotificationTestUtils.create_provider_configs()
         
         # Create high-performance setup
-        fast_providers = {}
+        fast_providers: dict[str, FastMockProvider] = {}
         for i in range(3):
             provider = FastMockProvider(configs["fast"], f"fast_{i}")
             fast_providers[f"fast_{i}"] = provider
@@ -289,15 +290,15 @@ class TestComprehensiveNotificationSuite:
                 
                 # Create messages
                 messages = NotificationTestUtils.create_test_messages(
-                    benchmark["message_count"], 
+                    int(benchmark["message_count"]), 
                     "Benchmark"
                 )
                 
                 # Measure performance
                 start_time = time.time()
                 
-                tasks = []
-                provider_names = list(fast_providers.keys())
+                tasks: list[Coroutine[object, object, DispatchResult]] = []
+                provider_names: list[str] = list(fast_providers.keys())
                 
                 for message in messages:
                     task = dispatcher.dispatch_message(message, provider_names)

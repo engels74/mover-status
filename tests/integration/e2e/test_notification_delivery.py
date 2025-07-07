@@ -5,17 +5,15 @@ from __future__ import annotations
 import asyncio
 import pytest
 from typing import TYPE_CHECKING, override
+from collections.abc import Coroutine
 from collections.abc import Mapping
-from unittest.mock import AsyncMock, MagicMock, patch
-
 from mover_status.notifications.base.provider import NotificationProvider
 from mover_status.notifications.base.registry import (
-    ProviderRegistry, 
     ProviderMetadata,
     ProviderLifecycleManager,
     get_global_registry
 )
-from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus
+from mover_status.notifications.manager.dispatcher import AsyncDispatcher, DispatchStatus, DispatchResult
 from mover_status.notifications.models.message import Message
 from mover_status.notifications.base.config_validator import ConfigValidator
 
@@ -30,8 +28,10 @@ class E2EMockProvider(NotificationProvider):
         super().__init__(config)
         self.name: str = name
         self.send_calls: list[Message] = []
-        self.network_delay: float = config.get("network_delay", 0.1)
-        self.failure_rate: float = config.get("failure_rate", 0.0)
+        network_delay_value = config.get("network_delay", 0.1)
+        failure_rate_value = config.get("failure_rate", 0.0)
+        self.network_delay: float = float(network_delay_value) if isinstance(network_delay_value, (int, float, str)) else 0.1
+        self.failure_rate: float = float(failure_rate_value) if isinstance(failure_rate_value, (int, float, str)) else 0.0
         self.call_count: int = 0
         
     @override
@@ -76,7 +76,7 @@ class TestNotificationDeliveryE2E:
         get_global_registry().reset()
         
         # Setup configuration
-        provider_configs = {
+        provider_configs: dict[str, dict[str, object]] = {
             "email_provider": {
                 "enabled": True,
                 "api_key": "test_email_key",
@@ -108,7 +108,7 @@ class TestNotificationDeliveryE2E:
         
         # Step 2: Provider registration
         registry = get_global_registry()
-        providers = {}
+        providers: dict[str, E2EMockProvider] = {}
         
         for provider_name, config in provider_configs.items():
             provider = E2EMockProvider(config, provider_name)
@@ -164,7 +164,7 @@ class TestNotificationDeliveryE2E:
             ]
             
             # Dispatch messages to all providers
-            results = []
+            results: list[DispatchResult] = []
             for message in messages:
                 result = await dispatcher.dispatch_message(
                     message, 
@@ -230,7 +230,7 @@ class TestNotificationDeliveryE2E:
         
         try:
             # Send multiple messages to test failure recovery
-            messages = []
+            messages: list[Message] = []
             for i in range(10):
                 message = Message(
                     title=f"Recovery Test {i}",
@@ -240,7 +240,7 @@ class TestNotificationDeliveryE2E:
                 messages.append(message)
             
             # Dispatch all messages
-            results = []
+            results: list[DispatchResult] = []
             for message in messages:
                 result = await dispatcher.dispatch_message(
                     message,
@@ -274,7 +274,7 @@ class TestNotificationDeliveryE2E:
         import time
         
         # Setup multiple fast providers
-        providers = {}
+        providers: dict[str, E2EMockProvider] = {}
         for i in range(5):
             config = {
                 "enabled": True,
@@ -297,7 +297,7 @@ class TestNotificationDeliveryE2E:
         try:
             # Generate high volume of messages
             message_count = 100
-            messages = []
+            messages: list[Message] = []
             
             for i in range(message_count):
                 message = Message(
@@ -311,7 +311,7 @@ class TestNotificationDeliveryE2E:
             start_time = time.time()
             
             # Dispatch all messages concurrently
-            tasks = []
+            tasks: list[Coroutine[object, object, DispatchResult]] = []
             for message in messages:
                 task = dispatcher.dispatch_message(message, list(providers.keys()))
                 tasks.append(task)
@@ -361,7 +361,7 @@ class TestNotificationDeliveryE2E:
         await dispatcher.start()
         
         # Start dispatching messages
-        tasks = []
+        tasks: list[Coroutine[object, object, DispatchResult]] = []
         for i in range(10):
             message = Message(
                 title=f"Shutdown Test {i}",
@@ -378,14 +378,18 @@ class TestNotificationDeliveryE2E:
         shutdown_task = asyncio.create_task(dispatcher.stop())
         
         # Wait for both shutdown and message processing
-        results, _ = await asyncio.gather(
+        task_results, _ = await asyncio.gather(
             asyncio.gather(*tasks, return_exceptions=True),
             shutdown_task,
             return_exceptions=True
         )
         
         # Verify that messages were processed or properly cancelled
-        successful_results = [r for r in results if isinstance(r, object) and hasattr(r, 'status')]
+        # task_results is the list from gather(*tasks, return_exceptions=True)
+        if isinstance(task_results, list):
+            successful_results = [r for r in task_results if hasattr(r, 'status') and not isinstance(r, BaseException)]
+        else:
+            successful_results = []
         
         # Should have processed some messages successfully or at least attempted to
         # In a graceful shutdown, some messages might be cancelled
