@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 from mover_status.notifications.base import NotificationProvider
 from mover_status.plugins.telegram.bot import TelegramBotClient
+from mover_status.plugins.telegram.formatting import HTMLFormatter, MarkdownFormatter, MarkdownV2Formatter, MessageFormatter
 
 if TYPE_CHECKING:
     from mover_status.notifications.models.message import Message
@@ -61,6 +62,18 @@ class TelegramProvider(NotificationProvider):
             max_retries=self.max_retries,
             retry_delay=self.retry_delay
         )
+        
+        # Initialize formatter based on parse mode
+        self.formatter: MessageFormatter
+        if self.parse_mode == "HTML":
+            self.formatter = HTMLFormatter()
+        elif self.parse_mode == "Markdown":
+            self.formatter = MarkdownFormatter()
+        elif self.parse_mode == "MarkdownV2":
+            self.formatter = MarkdownV2Formatter()
+        else:
+            # Default to HTML formatter
+            self.formatter = HTMLFormatter()
     
     @override
     def validate_config(self) -> None:
@@ -108,8 +121,8 @@ class TelegramProvider(NotificationProvider):
         Returns:
             True if the notification was sent successfully to all chats, False otherwise
         """
-        # Format message text
-        text = self._format_message(message)
+        # Format message text using the appropriate formatter
+        text = self.formatter.format_message(message)
         
         # Send message to all configured chats
         success = await self.bot_client.send_message_to_multiple_chats(
@@ -135,116 +148,6 @@ class TelegramProvider(NotificationProvider):
         """
         return "telegram"
     
-    def _format_message(self, message: Message) -> str:
-        """Format message for Telegram.
-        
-        Args:
-            message: Message to format
-            
-        Returns:
-            Formatted message text
-        """
-        if self.parse_mode == "HTML":
-            return self._format_html(message)
-        elif self.parse_mode in ["Markdown", "MarkdownV2"]:
-            return self._format_markdown(message)
-        else:
-            # Fallback to plain text
-            return self._format_plain_text(message)
-    
-    def _format_html(self, message: Message) -> str:
-        """Format message using HTML markup.
-        
-        Args:
-            message: Message to format
-            
-        Returns:
-            HTML-formatted message text
-        """
-        lines = [f"<b>{self._escape_html(message.title)}</b>"]
-        
-        if message.content:
-            lines.append(self._escape_html(message.content))
-        
-        # Add tags if available
-        if message.tags:
-            tags_str = ", ".join(message.tags)
-            lines.append(f"<i>Tags: {self._escape_html(tags_str)}</i>")
-        
-        return "\n".join(lines)
-    
-    def _format_markdown(self, message: Message) -> str:
-        """Format message using Markdown markup.
-        
-        Args:
-            message: Message to format
-            
-        Returns:
-            Markdown-formatted message text
-        """
-        lines = [f"**{self._escape_markdown(message.title)}**"]
-        
-        if message.content:
-            lines.append(self._escape_markdown(message.content))
-        
-        # Add tags if available
-        if message.tags:
-            tags_str = ", ".join(message.tags)
-            lines.append(f"_Tags: {self._escape_markdown(tags_str)}_")
-        
-        return "\n".join(lines)
-    
-    def _format_plain_text(self, message: Message) -> str:
-        """Format message as plain text.
-        
-        Args:
-            message: Message to format
-            
-        Returns:
-            Plain text message
-        """
-        lines = [message.title]
-        
-        if message.content:
-            lines.append(message.content)
-        
-        # Add tags if available
-        if message.tags:
-            tags_str = ", ".join(message.tags)
-            lines.append(f"Tags: {tags_str}")
-        
-        return "\n".join(lines)
-    
-    def _escape_html(self, text: str) -> str:
-        """Escape HTML special characters.
-        
-        Args:
-            text: Text to escape
-            
-        Returns:
-            HTML-escaped text
-        """
-        return (text
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace('"', "&quot;")
-                .replace("'", "&#x27;"))
-    
-    def _escape_markdown(self, text: str) -> str:
-        """Escape Markdown special characters.
-        
-        Args:
-            text: Text to escape
-            
-        Returns:
-            Markdown-escaped text
-        """
-        # Escape common Markdown characters
-        chars_to_escape = r"_*[]()~`>#+-=|{}.!"
-        for char in chars_to_escape:
-            text = text.replace(char, f"\\{char}")
-        return text
     
     def _is_valid_bot_token(self, token: str) -> bool:
         """Validate bot token format.
