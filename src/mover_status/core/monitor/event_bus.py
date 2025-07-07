@@ -84,17 +84,18 @@ class EventTopic:
     
     def matches(self, pattern: str) -> bool:
         """Check if topic matches a pattern.
-        
+
         Args:
             pattern: Pattern to match against (supports * wildcard)
-            
+
         Returns:
             True if topic matches pattern
         """
         # Convert wildcard pattern to regex
-        regex_pattern = pattern.replace('*', '.*').replace('.', r'\.')
+        # First escape dots, then replace wildcards
+        regex_pattern = pattern.replace('.', r'\.').replace('*', '.*')
         regex_pattern = f'^{regex_pattern}$'
-        
+
         return bool(re.match(regex_pattern, self.name))
     
     @override
