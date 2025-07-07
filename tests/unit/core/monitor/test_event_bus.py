@@ -27,8 +27,8 @@ from mover_status.core.monitor.event_bus import (
 
 
 @dataclass
-class TestEventData:
-    """Test event for testing purposes."""
+class MockEventData:
+    """Mock event data for testing purposes."""
     name: str
     data: dict[str, object] = field(default_factory=dict)
 

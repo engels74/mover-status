@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 from typing import cast
 
 from mover_status.core.monitor.orchestrator import (
@@ -395,7 +395,7 @@ class TestMonitorOrchestrator:
         state_machine.transition_to = Mock(return_value=True)
         
         # Mock event bus
-        event_bus.publish = Mock()
+        event_bus.publish_event = Mock()
         
         orchestrator = MonitorOrchestrator(
             detector=detector,
@@ -435,13 +435,13 @@ class TestMonitorOrchestrator:
         progress_metrics.transfer_rate = 10.5
         progress_metrics.eta_seconds = 300
         
-        calculator.calculate_progress = AsyncMock(return_value=progress_metrics)
+        calculator.calculate_progress = Mock(return_value=progress_metrics)
         
         # Mock state machine
         state_machine.get_current_state = Mock(return_value=MonitorState.MONITORING)
         
         # Mock event bus
-        event_bus.publish = Mock()
+        event_bus.publish_event = Mock()
         
         orchestrator = MonitorOrchestrator(
             detector=detector,
@@ -460,7 +460,7 @@ class TestMonitorOrchestrator:
         await orchestrator.run_monitoring_cycle()
         
         # Verify progress calculation
-        cast(AsyncMock, calculator.calculate_progress).assert_called_once()
+        cast(Mock, calculator.calculate_progress).assert_called_once()
 
         # Verify event was published
         cast(Mock, event_bus.publish_event).assert_called()
@@ -483,7 +483,7 @@ class TestMonitorOrchestrator:
         state_machine.transition_to = Mock(return_value=True)
         
         # Mock event bus
-        event_bus.publish = Mock()
+        event_bus.publish_event = Mock()
         
         orchestrator = MonitorOrchestrator(
             detector=detector,
