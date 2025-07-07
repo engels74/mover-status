@@ -64,6 +64,27 @@ from .lifecycle import (
     VersionManager,
     LifecycleEventBus,
 )
+from .error_recovery import (
+    ErrorClassifier,
+    ErrorSeverity,
+    ErrorCategory,
+    ErrorEscalationManager,
+    CircuitBreakerManager,
+    RetryManager,
+    RollbackManager,
+    CompensationManager,
+    ErrorRecoveryOrchestrator,
+    ErrorRecord,
+    RecoveryAction,
+    RecoveryStrategy,
+    RecoveryResult,
+    RecoveryStatus,
+    ErrorRecoveryError,
+    CircuitBreakerError,
+    RetryExhaustedException,
+    RollbackError,
+    CompensationError,
+)
 
 __all__ = [
     # Event Bus Components
@@ -124,4 +145,24 @@ __all__ = [
     "DependencyOrderer",
     "VersionManager",
     "LifecycleEventBus",
+    # Error Recovery Components
+    "ErrorClassifier",
+    "ErrorSeverity",
+    "ErrorCategory",
+    "ErrorEscalationManager",
+    "CircuitBreakerManager",
+    "RetryManager",
+    "RollbackManager",
+    "CompensationManager",
+    "ErrorRecoveryOrchestrator",
+    "ErrorRecord",
+    "RecoveryAction",
+    "RecoveryStrategy",
+    "RecoveryResult",
+    "RecoveryStatus",
+    "ErrorRecoveryError",
+    "CircuitBreakerError",
+    "RetryExhaustedException",
+    "RollbackError",
+    "CompensationError",
 ]
