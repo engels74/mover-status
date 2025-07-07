@@ -42,8 +42,8 @@ class StateTransitionError(Exception):
             to_state: Target state of failed transition
         """
         super().__init__(message)
-        self.from_state = from_state
-        self.to_state = to_state
+        self.from_state: MonitorState | None = from_state
+        self.to_state: MonitorState | None = to_state
 
 
 @dataclass
@@ -113,6 +113,16 @@ class StateContext:
             key: Data key to remove
         """
         _ = self.data.pop(key, None)
+    
+    def restore_state_history(self, state_names: list[str]) -> None:
+        """Restore state history from a list of state names.
+        
+        Args:
+            state_names: List of state names to restore
+        """
+        self._state_history.clear()
+        for state_name in state_names:
+            self._state_history.append(MonitorState[state_name])
 
 
 class StateTransition:
@@ -340,9 +350,12 @@ class StateMachine:
             # Restore state history
             state_history = state_data.get('state_history')
             if state_history and isinstance(state_history, list):
-                self.context._state_history = [
-                    MonitorState[s] for s in state_history if isinstance(s, str)
-                ]
+                # Filter to only string values and restore
+                state_names: list[str] = []
+                for item in cast(list[object], state_history):
+                    if isinstance(item, str):
+                        state_names.append(item)
+                self.context.restore_state_history(state_names)
 
 
 class StatePersistence:
