@@ -153,7 +153,9 @@ class TestProviderConfigFileManager:
             
             # Content should be unchanged
             with open(telegram_config_path, 'r') as f:
-                preserved_config: dict[str, object] = yaml.safe_load(f)  # type: ignore[assignment] # yaml.safe_load returns Any but we know it's a dict from our test setup
+                yaml_content: object = yaml.safe_load(f)  # pyright: ignore[reportAny] # yaml.safe_load returns Any
+                assert isinstance(yaml_content, dict), "Expected dict from YAML file"
+                preserved_config: dict[str, object] = yaml_content  # pyright: ignore[reportUnknownVariableType] # Type narrowed by isinstance check
             assert preserved_config["bot_token"] == "123456:EXISTING-TOKEN"
 
     def test_merge_main_and_provider_configs(self) -> None:
@@ -248,7 +250,7 @@ class TestProviderConfigIntegration:
             config_dir = Path(temp_dir)
             
             # Create main config
-            main_config = {
+            main_config: dict[str, object] = {
                 "process": {
                     "name": "mover",
                     "paths": ["/usr/bin/mover"],

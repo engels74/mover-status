@@ -270,7 +270,7 @@ class TestFullCycleScenarios:
                 
                 # Clear progress history from previous scenario
                 if integration_env.database:
-                    integration_env.database.cursor.execute("DELETE FROM test_progress")
+                    _ = integration_env.database.cursor.execute("DELETE FROM test_progress")
                     integration_env.database.connection.commit()
                 
                 # Run monitoring scenario

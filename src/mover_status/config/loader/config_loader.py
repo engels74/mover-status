@@ -66,21 +66,21 @@ class ConfigLoader:
         
         # Load enabled provider configs
         enabled_providers = self._get_enabled_providers(main_config)
-        
+
         for provider in enabled_providers:
             provider_config = self.provider_manager.load_provider_config(provider)
             if provider_config is None:
                 # Auto-create default config if missing
                 provider_config = self.provider_manager.ensure_provider_config(provider)
-            
+
             # Merge provider config into main config
             if provider not in providers_section:
                 providers_section[provider] = {}
-            
-            provider_section = providers_section[provider]
+
+            provider_section: object = providers_section[provider]  # pyright: ignore[reportUnknownVariableType] # Dynamic config data
             if isinstance(provider_section, dict):
-                # Merge with existing provider section
-                provider_section.update(provider_config)
+                # Merge with existing provider section - provider_config is guaranteed to be dict[str, object]
+                provider_section.update(provider_config)  # pyright: ignore[reportUnknownMemberType] # Dict update after isinstance check
             else:
                 # Replace with provider config
                 providers_section[provider] = provider_config
@@ -105,23 +105,27 @@ class ConfigLoader:
         enabled: list[Literal["telegram", "discord"]] = []
         
         # Check notifications.enabled_providers (primary source)
-        notifications = config.get("notifications", {})
+        notifications: object = config.get("notifications", {})
         if isinstance(notifications, dict):
-            enabled_providers = notifications.get("enabled_providers", [])
+            enabled_providers: object = notifications.get("enabled_providers", [])  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType] # Dynamic config data
             if isinstance(enabled_providers, list):
-                for provider in enabled_providers:
-                    if provider in ["telegram", "discord"]:
-                        enabled.append(provider)  # type: ignore[arg-type]
+                for provider in enabled_providers:  # pyright: ignore[reportUnknownVariableType] # List iteration after isinstance check
+                    if provider == "telegram":
+                        enabled.append("telegram")
+                    elif provider == "discord":
+                        enabled.append("discord")
         
         # Also check providers section for enabled flags
-        providers = config.get("providers", {})
+        providers: object = config.get("providers", {})
         if isinstance(providers, dict):
             for provider_name in ["telegram", "discord"]:
-                provider_config = providers.get(provider_name, {})
-                if isinstance(provider_config, dict) and provider_config.get("enabled", False):
-                    if provider_name == "telegram" and "telegram" not in enabled:
-                        enabled.append("telegram")
-                    elif provider_name == "discord" and "discord" not in enabled:
-                        enabled.append("discord")
+                provider_config: object = providers.get(provider_name, {})  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType] # Dynamic config data
+                if isinstance(provider_config, dict):
+                    enabled_value: object = provider_config.get("enabled", False)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType] # Dynamic config data
+                    if enabled_value:
+                        if provider_name == "telegram" and "telegram" not in enabled:
+                            enabled.append("telegram")
+                        elif provider_name == "discord" and "discord" not in enabled:
+                            enabled.append("discord")
         
         return enabled 
