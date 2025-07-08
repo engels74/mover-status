@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from .config_merger import ConfigMerger
+from .provider_config_manager import ProviderConfigManager
 from ..exceptions import ConfigMergeError
 
 __all__ = [
     "ConfigMerger",
     "ConfigMergeError",
+    "ProviderConfigManager",
 ]
