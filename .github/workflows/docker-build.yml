@@ -34,7 +34,7 @@ jobs:
           tags: mover-status:latest
           cache-from: type=gha,scope=mover-status
           cache-to: type=gha,mode=min,scope=mover-status
-          outputs: type=docker,dest=/tmp/mover-status.tar
+          outputs: type=oci,dest=/tmp/mover-status.tar
 
       - name: Build and export (development)
         uses: docker/build-push-action@v6
@@ -45,7 +45,7 @@ jobs:
           tags: mover-status:dev
           cache-from: type=gha,scope=mover-status-dev
           cache-to: type=gha,mode=min,scope=mover-status-dev
-          outputs: type=docker,dest=/tmp/mover-status-dev.tar
+          outputs: type=oci,dest=/tmp/mover-status-dev.tar
 
       - name: Upload artifact (production)
         uses: actions/upload-artifact@v4
@@ -78,10 +78,15 @@ jobs:
           name: mover-status-dev
           path: /tmp
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Load images
         run: |
-          docker load --input /tmp/mover-status.tar
-          docker load --input /tmp/mover-status-dev.tar
+          docker buildx imagetools create --tag mover-status:latest \
+            oci-archive:/tmp/mover-status.tar
+          docker buildx imagetools create --tag mover-status:dev \
+            oci-archive:/tmp/mover-status-dev.tar
           docker image ls -a
 
       - name: Test basic functionality
