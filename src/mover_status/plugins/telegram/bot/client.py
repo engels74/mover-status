@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING, override
 from enum import Enum
 
 from telegram import Bot
-from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut
+from telegram.error import TelegramError, NetworkError, RetryAfter, TimedOut, Forbidden, BadRequest
 from telegram.constants import ParseMode
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from mover_status.plugins.telegram.rate_limiting import AdvancedRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,8 @@ class TelegramBotClient:
         bot_token: str,
         timeout: float = 30.0,
         max_retries: int = 3,
-        retry_delay: float = 1.0
+        retry_delay: float = 1.0,
+        rate_limiter: AdvancedRateLimiter | None = None
     ) -> None:
         """Initialize Telegram bot client.
         
@@ -67,11 +69,13 @@ class TelegramBotClient:
             timeout: Request timeout in seconds
             max_retries: Maximum number of retry attempts
             retry_delay: Base delay between retries in seconds
+            rate_limiter: Optional advanced rate limiter
         """
         self.bot_token: str = bot_token
         self.timeout: float = timeout
         self.max_retries: int = max_retries
         self.retry_delay: float = retry_delay
+        self.rate_limiter: AdvancedRateLimiter | None = rate_limiter
         
         # Validate bot token format
         if not self._is_valid_bot_token(bot_token):
@@ -102,6 +106,13 @@ class TelegramBotClient:
             logger.error(f"Invalid chat ID format: {chat_id}")
             return False
         
+        # Apply rate limiting if available
+        if self.rate_limiter:
+            wait_time = await self.rate_limiter.acquire(chat_id)
+            if wait_time > 0:
+                logger.debug(f"Rate limiting: waiting {wait_time:.2f}s for chat {chat_id}")
+                await asyncio.sleep(wait_time)
+        
         for attempt in range(self.max_retries + 1):
             try:
                 _ = await self.bot.send_message(
@@ -124,7 +135,7 @@ class TelegramBotClient:
                     wait_time = retry_after.total_seconds()
                 else:
                     wait_time = float(retry_after)
-                logger.warning(f"Rate limited, waiting {wait_time} seconds before retry")
+                logger.warning(f"Rate limited by Telegram API, waiting {wait_time} seconds before retry")
                 await asyncio.sleep(wait_time)
                 continue
                 
@@ -135,13 +146,21 @@ class TelegramBotClient:
                     await asyncio.sleep(wait_time)
                     continue
                     
+            except Forbidden as e:
+                logger.error(f"Bot blocked or no permissions for chat {chat_id}: {e}")
+                return False
+                
+            except BadRequest as e:
+                logger.error(f"Invalid request for chat {chat_id}: {e}")
+                return False
+                
             except NetworkError as e:
                 logger.warning(f"Network error for chat {chat_id} (attempt {attempt + 1}): {e}")
                 if attempt < self.max_retries:
                     wait_time = self.retry_delay * (2.0 ** attempt)
                     await asyncio.sleep(wait_time)
                     continue
-                    
+                
             except TelegramError as e:
                 logger.error(f"Telegram API error for chat {chat_id}: {e}")
                 return False
@@ -485,3 +504,63 @@ class TelegramBotClient:
         # - Negative integer for groups/channels (e.g., "-100123456789")
         pattern = r"^-?\d+$"
         return bool(re.match(pattern, chat_id))
+    
+    def get_rate_limiting_statistics(self) -> dict[str, int | float | dict[str, int]] | None:
+        """Get rate limiting statistics if rate limiter is enabled.
+        
+        Returns:
+            Rate limiting statistics or None if not enabled
+        """
+        if self.rate_limiter:
+            return self.rate_limiter.get_statistics()
+        return None
+    
+    async def test_bot_authentication(self) -> dict[str, object]:
+        """Test bot authentication and return detailed status.
+        
+        Returns:
+            Dictionary with authentication status and bot information
+        """
+        try:
+            bot_info = await self.bot.get_me()
+            return {
+                "authenticated": True,
+                "bot_info": {
+                    "id": bot_info.id,
+                    "username": bot_info.username,
+                    "first_name": bot_info.first_name,
+                    "is_bot": bot_info.is_bot,
+                    "can_join_groups": bot_info.can_join_groups,
+                    "can_read_all_group_messages": bot_info.can_read_all_group_messages,
+                    "supports_inline_queries": bot_info.supports_inline_queries
+                },
+                "error": None
+            }
+        except Forbidden as e:
+            logger.error(f"Bot authentication forbidden: {e}")
+            return {
+                "authenticated": False,
+                "bot_info": None,
+                "error": {"type": "forbidden", "message": str(e)}
+            }
+        except BadRequest as e:
+            logger.error(f"Bad request during authentication: {e}")
+            return {
+                "authenticated": False,
+                "bot_info": None,
+                "error": {"type": "bad_request", "message": str(e)}
+            }
+        except TelegramError as e:
+            logger.error(f"Telegram error during authentication: {e}")
+            return {
+                "authenticated": False,
+                "bot_info": None,
+                "error": {"type": "telegram_error", "message": str(e)}
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error during authentication: {e}")
+            return {
+                "authenticated": False,
+                "bot_info": None,
+                "error": {"type": "unexpected", "message": str(e)}
+            }

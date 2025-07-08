@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import TYPE_CHECKING, override, cast
@@ -12,6 +13,7 @@ from mover_status.notifications.base import NotificationProvider
 from mover_status.plugins.telegram.bot import TelegramBotClient
 from mover_status.plugins.telegram.bot.client import ChatInfo
 from mover_status.plugins.telegram.formatting import HTMLFormatter, MarkdownFormatter, MarkdownV2Formatter, MessageFormatter
+from mover_status.plugins.telegram.rate_limiting import AdvancedRateLimiter, RateLimitConfig
 
 if TYPE_CHECKING:
     from mover_status.notifications.models.message import Message
@@ -56,12 +58,29 @@ class TelegramProvider(NotificationProvider):
         retry_delay_config = config.get("retry_delay", 1.0)
         self.retry_delay: float = float(retry_delay_config) if isinstance(retry_delay_config, (int, float, str)) else 1.0
         
+        # Rate limiting configuration (optional)
+        rate_limiting_config = config.get("rate_limiting", {})
+        rate_limiter: AdvancedRateLimiter | None = None
+        if isinstance(rate_limiting_config, dict) and rate_limiting_config.get("enabled", False):
+            rate_limit_config = RateLimitConfig(
+                global_limit=int(rate_limiting_config.get("global_limit", 30)),
+                global_burst_limit=int(rate_limiting_config.get("global_burst_limit", 100)),
+                chat_limit=int(rate_limiting_config.get("chat_limit", 20)),
+                chat_burst_limit=int(rate_limiting_config.get("chat_burst_limit", 50)),
+                group_limit=int(rate_limiting_config.get("group_limit", 20)),
+                group_burst_limit=int(rate_limiting_config.get("group_burst_limit", 50)),
+                hourly_quota=int(rate_limiting_config.get("hourly_quota", 1000)),
+                hourly_quota_enabled=bool(rate_limiting_config.get("hourly_quota_enabled", True))
+            )
+            rate_limiter = AdvancedRateLimiter(rate_limit_config)
+        
         # Initialize bot client
         self.bot_client: TelegramBotClient = TelegramBotClient(
             bot_token=self.bot_token,
             timeout=self.timeout,
             max_retries=self.max_retries,
-            retry_delay=self.retry_delay
+            retry_delay=self.retry_delay,
+            rate_limiter=rate_limiter
         )
         
         # Initialize formatter based on parse mode
@@ -222,6 +241,153 @@ class TelegramProvider(NotificationProvider):
             logger.error("Failed to send Telegram notification to any chats")
 
         return results
+    
+    async def get_comprehensive_status(self) -> dict[str, object]:
+        """Get comprehensive status including authentication, permissions, and rate limiting.
+        
+        Returns:
+            Comprehensive status dictionary
+        """
+        status: dict[str, object] = {
+            "provider_name": self.get_provider_name(),
+            "configuration": {
+                "chat_count": len(self.chat_ids),
+                "parse_mode": self.parse_mode,
+                "timeout": self.timeout,
+                "max_retries": self.max_retries,
+                "retry_delay": self.retry_delay,
+                "rate_limiting_enabled": self.bot_client.rate_limiter is not None
+            }
+        }
+        
+        # Test authentication
+        auth_status = await self.bot_client.test_bot_authentication()
+        status["authentication"] = auth_status
+        
+        # Get chat statistics
+        chat_stats = await self.get_chat_statistics()
+        status["chat_statistics"] = chat_stats
+        
+        # Get rate limiting statistics if available
+        rate_stats = self.bot_client.get_rate_limiting_statistics()
+        if rate_stats:
+            status["rate_limiting"] = rate_stats
+        
+        # Validate chat permissions
+        try:
+            permissions = await self.validate_all_chats()
+            status["chat_permissions"] = {
+                "total_chats": len(permissions),
+                "accessible_chats": sum(1 for accessible in permissions.values() if accessible),
+                "blocked_chats": sum(1 for accessible in permissions.values() if not accessible),
+                "details": permissions
+            }
+        except Exception as e:
+            logger.warning(f"Failed to validate chat permissions: {e}")
+            status["chat_permissions"] = {"error": str(e)}
+        
+        return status
+    
+    async def send_notification_with_fallback_and_monitoring(
+        self,
+        message: Message,
+        fallback_enabled: bool = True
+    ) -> dict[str, object]:
+        """Send notification with comprehensive monitoring and fallback handling.
+        
+        Args:
+            message: The notification message to send
+            fallback_enabled: Whether to use fallback strategies on failures
+            
+        Returns:
+            Detailed result dictionary with success status and metrics
+        """
+        start_time = asyncio.get_event_loop().time()
+        
+        # Initial attempt
+        result = await self.send_notification_by_priority(message, prioritize_users=True)
+        
+        success_count = sum(1 for success in result.values() if success)
+        total_chats = len(result)
+        
+        response: dict[str, object] = {
+            "success": success_count == total_chats,
+            "partial_success": success_count > 0,
+            "metrics": {
+                "successful_chats": success_count,
+                "total_chats": total_chats,
+                "success_rate": success_count / total_chats if total_chats > 0 else 0,
+                "execution_time": asyncio.get_event_loop().time() - start_time
+            },
+            "details": result
+        }
+        
+        # If fallback is enabled and we had failures, try alternative strategies
+        if fallback_enabled and success_count < total_chats:
+            failed_chats = [chat_id for chat_id, success in result.items() if not success]
+            
+            if failed_chats:
+                logger.info(f"Attempting fallback for {len(failed_chats)} failed chats")
+                
+                # Try with different settings (e.g., without web preview)
+                fallback_result = await self._attempt_fallback_delivery(message, failed_chats)
+                
+                # Update metrics
+                additional_success = sum(1 for success in fallback_result.values() if success)
+                metrics = cast(dict[str, object], response["metrics"])
+                metrics["fallback_successful"] = additional_success
+                metrics["final_successful_chats"] = success_count + additional_success
+                response["fallback_details"] = fallback_result
+                
+                if additional_success > 0:
+                    response["partial_success"] = True
+                    response["success"] = (success_count + additional_success) == total_chats
+        
+        metrics = cast(dict[str, object], response["metrics"])
+        metrics["final_execution_time"] = asyncio.get_event_loop().time() - start_time
+        
+        return response
+    
+    async def _attempt_fallback_delivery(
+        self,
+        message: Message,
+        failed_chat_ids: list[str]
+    ) -> dict[str, bool]:
+        """Attempt fallback delivery strategies for failed chats.
+        
+        Args:
+            message: The notification message to send
+            failed_chat_ids: List of chat IDs that failed initial delivery
+            
+        Returns:
+            Dictionary mapping chat IDs to success status
+        """
+        # Format message with plain text as fallback
+        fallback_text = f"{message.title}\n\n{message.content}"
+        
+        fallback_results: dict[str, bool] = {}
+        
+        for chat_id in failed_chat_ids:
+            try:
+                # Try with plain text and no formatting
+                success = await self.bot_client.send_message(
+                    chat_id=chat_id,
+                    text=fallback_text,
+                    parse_mode="",  # No parsing
+                    disable_web_page_preview=True
+                )
+                fallback_results[chat_id] = success
+                
+                if success:
+                    logger.info(f"Fallback delivery successful for chat {chat_id}")
+                else:
+                    logger.warning(f"Fallback delivery failed for chat {chat_id}")
+                    
+            except Exception as e:
+                logger.error(f"Fallback delivery exception for chat {chat_id}: {e}")
+                fallback_results[chat_id] = False
+        
+        return fallback_results
 
     def _is_valid_bot_token(self, token: str) -> bool:
         """Validate bot token format.
