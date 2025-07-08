@@ -17,8 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy uv binary from official image (supports multi-platform)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv using the installer script for proper cross-platform support
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
 
 # Create app directory
 WORKDIR /app
@@ -28,8 +29,10 @@ COPY pyproject.toml uv.lock ./
 
 # Install dependencies in a separate layer for better caching
 # Use --no-install-project to cache dependencies separately
+# Enable bytecode compilation via environment variable
+ENV UV_COMPILE_BYTECODE=1
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --compile-bytecode
+    uv sync --locked --no-install-project
 
 # Copy source code
 COPY src/ ./src/
@@ -37,7 +40,7 @@ COPY README.md LICENSE ./
 
 # Install the project itself
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --compile-bytecode
+    uv sync --locked
 
 # Stage 2: Runtime image
 FROM --platform=$TARGETPLATFORM python:3.13-slim-bookworm AS runtime
@@ -52,8 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy uv for runtime use
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv for runtime use
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
 
 # Create non-root user for security
 RUN groupadd --gid 1000 app && \
@@ -81,6 +85,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Set Python environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV UV_COMPILE_BYTECODE=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -93,7 +98,8 @@ CMD ["python", "-m", "mover_status", "--help"]
 FROM runtime AS development
 
 # Install development dependencies
-RUN uv sync --locked --group dev --compile-bytecode
+ENV UV_COMPILE_BYTECODE=1
+RUN uv sync --locked --group dev
 
 # Expose common development ports
 EXPOSE 8000
