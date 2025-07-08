@@ -38,10 +38,10 @@ class MockProviderStats:
     
     @property
     def success_rate(self) -> float:
-        """Calculate success rate as percentage (0.0 to 100.0)."""
+        """Calculate success rate as decimal (0.0 to 1.0)."""
         if self.send_count == 0:
             return 0.0
-        return (self.success_count / self.send_count) * 100
+        return self.success_count / self.send_count
     
     @property
     def throughput(self) -> float:
@@ -346,7 +346,7 @@ class NotificationTestUtils:
                 name="single_reliable",
                 providers={"reliable": ReliableMockProvider(configs["reliable"], "reliable")},
                 message_count=10,
-                expected_success_rate=99.0,
+                expected_success_rate=0.99,
                 description="Single reliable provider with small message load"
             ),
             TestScenario(
@@ -356,7 +356,7 @@ class NotificationTestUtils:
                     "unreliable": UnreliableMockProvider(configs["unreliable"], "unreliable")
                 },
                 message_count=50,
-                expected_success_rate=80.0,  # More realistic with 15% failure rate
+                expected_success_rate=0.80,  # More realistic with 15% failure rate
                 description="Mixed reliable and unreliable providers"
             ),
             TestScenario(
@@ -368,7 +368,7 @@ class NotificationTestUtils:
                 },
                 message_count=200,
                 concurrent_dispatches=5,
-                expected_success_rate=99.0,
+                expected_success_rate=0.99,
                 max_processing_time=5.0,
                 description="High volume with multiple fast providers"
             ),
@@ -382,7 +382,7 @@ class NotificationTestUtils:
                 },
                 message_count=100,
                 concurrent_dispatches=3,
-                expected_success_rate=80.0,
+                expected_success_rate=0.80,
                 max_processing_time=15.0,
                 description="Stress test with all provider types"
             )
@@ -415,7 +415,7 @@ class NotificationTestUtils:
             "total_messages": total_messages,
             "total_successes": total_successes,
             "total_failures": total_failures,
-            "overall_success_rate": (total_successes / total_messages * 100) if total_messages > 0 else 0,
+            "overall_success_rate": (total_successes / total_messages) if total_messages > 0 else 0,
             "total_processing_time": processing_time,
             "messages_per_second": total_messages / processing_time if processing_time > 0 else 0,
             "provider_stats": provider_stats

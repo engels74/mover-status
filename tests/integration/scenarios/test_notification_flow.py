@@ -360,7 +360,7 @@ class TestNotificationFlowIntegration:
                 assert isinstance(expected_rate, (int, float)), f"Expected rate should be numeric, got {type(expected_rate)}"
                 assert success_rate >= expected_rate, (
                     f"Scenario {scenario.name} success rate too low: "
-                    f"{success_rate:.1f}% (expected: {expected_rate}%)"
+                    f"{success_rate:.1%} (expected: {expected_rate:.1%})"
                 )
 
                 # Verify all messages were processed
