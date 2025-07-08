@@ -1,136 +1,90 @@
-# Mover Status Monitor Configuration Example - Telegram Provider
-# Copy this file to config.yaml and customize for your setup
+# Mover Status Monitor - Telegram Provider Configuration
+# This file should be saved as config_telegram.yaml in the same directory as config.yaml
+# This configuration is loaded automatically when "telegram" is enabled in config.yaml
 
-# Core monitoring settings
-monitoring:
-  # Interval between checks in seconds
-  interval: 30
+# Telegram provider configuration
+telegram:
+  # Bot token from @BotFather (required)
+  # Get this by creating a new bot: https://t.me/BotFather
+  bot_token: "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk"
   
-  # Maximum time to wait for process detection
-  detection_timeout: 60
+  # Chat IDs to send notifications to (required, at least one)
+  # Group chat IDs are negative, user chat IDs are positive
+  # To find chat ID: Add bot to chat/group and send /chatid command
+  chat_ids:
+    - -1001234567890  # Group chat ID (negative for groups)
+    - 123456789       # User chat ID (positive for users)
   
-  # Enable dry run mode (no actual notifications)
-  dry_run: false
-
-# Process detection settings (REQUIRED)
-process:
-  # Name of the process to monitor
-  name: "mover"
-  
-  # Path patterns to match for process detection
-  paths:
-    - "/usr/local/sbin/mover"
-    - "/usr/bin/mover"
-
-# Progress tracking settings
-progress:
-  # Minimum progress change to trigger notification (percentage)
-  min_change_threshold: 5.0
-  
-  # Window size for ETC calculation (number of samples)
-  estimation_window: 10
-  
-  # Paths to exclude from size calculations
-  exclusions:
-    - "/.Trash-*"
-    - "/lost+found"
-    - "/tmp"
-    - "/var/tmp"
-
-# Notification settings
-notifications:
-  # List of enabled providers
-  enabled_providers:
-    - "telegram"
-  
-  # Events that trigger notifications
-  events:
-    - "started"
-    - "progress"
-    - "completed"
-    - "failed"
-  
-  # Notification frequency limits
-  rate_limits:
-    progress: 300  # seconds between progress notifications
-    status: 60     # seconds between status notifications
-
-# Logging configuration
-logging:
-  level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: null  # Set to a file path to enable file logging
-
-# Provider-specific configurations
-providers:
-  # Telegram provider configuration
-  telegram:
-    # Bot token from @BotFather (required)
-    bot_token: "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk"
+  # Message formatting options
+  format:
+    # Parse mode: "HTML", "Markdown", or "MarkdownV2"
+    parse_mode: "HTML"
     
-    # Chat IDs to send notifications to (required)
-    chat_ids:
-      - -1001234567890  # Group chat ID
-      - 123456789       # User chat ID
+    # Disable link previews in messages
+    disable_web_page_preview: true
     
-    # Message formatting
-    format:
-      # Parse mode: "HTML", "Markdown", or "MarkdownV2"
-      parse_mode: "HTML"
+    # Disable notification sound
+    disable_notification: false
+  
+  # Message templates for different events
+  # Available variables: {initial_size}, {source_path}, {destination_path}, 
+  # {start_time}, {progress_percent}, {transferred_size}, {total_size}, 
+  # {transfer_rate}, {etc}, {update_time}, {duration}, {avg_speed}, 
+  # {completion_time}, {error_message}, {failure_time}
+  templates:
+    started: |
+      🚀 <b>Mover Started</b>
       
-      # Disable link previews
-      disable_web_page_preview: true
+      📊 Initial data: {initial_size}
+      📁 Source: {source_path}
+      📁 Destination: {destination_path}
       
-      # Disable notification sound
-      disable_notification: false
+      <i>Started at {start_time}</i>
     
-    # Message templates
-    templates:
-      started: |
-        🚀 <b>Mover Started</b>
-        
-        📊 Initial data: {initial_size}
-        📁 Source: {source_path}
-        📁 Destination: {destination_path}
-        
-        <i>Started at {start_time}</i>
+    progress: |
+      📈 <b>Mover Progress</b>
       
-      progress: |
-        📈 <b>Mover Progress</b>
-        
-        ✅ Progress: {progress_percent}%
-        📊 Transferred: {transferred_size} / {total_size}
-        ⏱️ Speed: {transfer_rate}
-        🕐 ETC: {etc}
-        
-        <i>Updated at {update_time}</i>
+      ✅ Progress: {progress_percent}%
+      📊 Transferred: {transferred_size} / {total_size}
+      ⏱️ Speed: {transfer_rate}
+      🕐 ETC: {etc}
       
-      completed: |
-        ✅ <b>Mover Completed</b>
-        
-        📊 Total transferred: {total_size}
-        ⏱️ Duration: {duration}
-        💾 Average speed: {avg_speed}
-        
-        <i>Completed at {completion_time}</i>
-      
-      failed: |
-        ❌ <b>Mover Failed</b>
-        
-        🚨 Error: {error_message}
-        📊 Progress at failure: {progress_percent}%
-        
-        <i>Failed at {failure_time}</i>
+      <i>Updated at {update_time}</i>
     
-    # Notification settings
-    notifications:
-      # Rate limiting (seconds between notifications)
-      rate_limits:
-        progress: 300
-        status: 60
+    completed: |
+      ✅ <b>Mover Completed</b>
+      
+      📊 Total transferred: {total_size}
+      ⏱️ Duration: {duration}
+      💾 Average speed: {avg_speed}
+      
+      <i>Completed at {completion_time}</i>
     
-    # Retry settings
-    retry:
-      max_attempts: 3
-      backoff_factor: 2.0
-      timeout: 30
+    failed: |
+      ❌ <b>Mover Failed</b>
+      
+      🚨 Error: {error_message}
+      📊 Progress at failure: {progress_percent}%
+      
+      <i>Failed at {failure_time}</i>
+  
+  # Notification settings
+  notifications:
+    # Events to send notifications for (overrides main config if specified)
+    events: ["started", "progress", "completed", "failed"]
+    
+    # Rate limiting (seconds between notifications)
+    rate_limits:
+      progress: 300
+      status: 60
+  
+  # Retry settings for failed requests
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+    timeout: 30
+
+# Environment variable overrides:
+# MOVER_STATUS_TELEGRAM__BOT_TOKEN=your_bot_token
+# MOVER_STATUS_TELEGRAM__CHAT_IDS__0=-1001234567890
+# MOVER_STATUS_TELEGRAM__FORMAT__PARSE_MODE=HTML

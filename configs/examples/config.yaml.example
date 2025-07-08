@@ -1,0 +1,85 @@
+# Mover Status Monitor - Main Configuration Example
+# This is the main configuration file that should be saved as config.yaml
+# Provider-specific settings are now configured in separate files:
+# - config_telegram.yaml for Telegram notifications
+# - config_discord.yaml for Discord notifications
+
+# Core monitoring settings
+monitoring:
+  # Interval between checks in seconds (1-3600)
+  interval: 30
+  
+  # Maximum time to wait for process detection in seconds (1-3600)
+  detection_timeout: 60
+  
+  # Enable dry run mode (no actual notifications sent)
+  dry_run: false
+
+# Process detection settings (REQUIRED)
+process:
+  # Name of the process to monitor (required)
+  name: "mover"
+  
+  # Path patterns to match for process detection (required, at least one)
+  paths:
+    - "/usr/local/sbin/mover"
+    - "/usr/bin/mover"
+    - "/opt/mover/bin/mover"
+
+# Progress tracking settings
+progress:
+  # Minimum progress change to trigger notification (0.0-100.0)
+  min_change_threshold: 5.0
+  
+  # Window size for ETC calculation (1-100 samples)
+  estimation_window: 10
+  
+  # Paths to exclude from size calculations
+  exclusions:
+    - "/.Trash-*"
+    - "/lost+found"
+    - "/tmp"
+    - "/var/tmp"
+    - "/.cache"
+
+# Notification settings
+notifications:
+  # List of enabled providers (telegram, discord)
+  # Each enabled provider must have a corresponding config_{provider}.yaml file
+  enabled_providers:
+    - "telegram"
+    - "discord"
+  
+  # Events that trigger notifications
+  events:
+    - "started"
+    - "progress"
+    - "completed"
+    - "failed"
+  
+  # Global notification frequency limits (seconds)
+  rate_limits:
+    progress: 300  # seconds between progress notifications
+    status: 60     # seconds between status notifications
+
+# Logging configuration
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  level: "INFO"
+  
+  # Log format string
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log file path (null for console only)
+  file: null
+
+# NOTE: Provider-specific configurations have been moved to separate files:
+# - config_telegram.yaml: Telegram bot token, chat IDs, message templates
+# - config_discord.yaml: Discord webhook URL, embed settings, mentions
+# 
+# These files are automatically created with default values when a provider
+# is enabled but no configuration file exists. You can customize them as needed.
+#
+# Environment variables can override any setting using the format:
+# MOVER_STATUS_SECTION__SUBSECTION__SETTING
+# Example: MOVER_STATUS_NOTIFICATIONS__RATE_LIMITS__PROGRESS=600

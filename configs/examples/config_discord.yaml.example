@@ -1,112 +1,64 @@
-# Mover Status Monitor Configuration Example - Discord Provider
-# Copy this file to config.yaml and customize for your setup
+# Mover Status Monitor - Discord Provider Configuration
+# This file should be saved as config_discord.yaml in the same directory as config.yaml
+# This configuration is loaded automatically when "discord" is enabled in config.yaml
 
-# Core monitoring settings
-monitoring:
-  # Interval between checks in seconds
-  interval: 30
+# Discord provider configuration
+discord:
+  # Discord webhook URL (required)
+  # Get this from: Server Settings → Integrations → Webhooks → Create Webhook
+  webhook_url: "https://discord.com/api/webhooks/123456789012345678/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789012"
   
-  # Maximum time to wait for process detection
-  detection_timeout: 60
+  # Bot username override (optional)
+  username: "Mover Status Bot"
   
-  # Enable dry run mode (no actual notifications)
-  dry_run: false
-
-# Process detection settings (REQUIRED)
-process:
-  # Name of the process to monitor
-  name: "mover"
+  # Bot avatar URL (optional)
+  avatar_url: "https://example.com/bot-avatar.png"
   
-  # Path patterns to match for process detection
-  paths:
-    - "/usr/local/sbin/mover"
-    - "/usr/bin/mover"
-
-# Progress tracking settings
-progress:
-  # Minimum progress change to trigger notification (percentage)
-  min_change_threshold: 5.0
-  
-  # Window size for ETC calculation (number of samples)
-  estimation_window: 10
-  
-  # Paths to exclude from size calculations
-  exclusions:
-    - "/.Trash-*"
-    - "/lost+found"
-    - "/tmp"
-    - "/var/tmp"
-
-# Notification settings
-notifications:
-  # List of enabled providers
-  enabled_providers:
-    - "discord"
-  
-  # Events that trigger notifications
-  events:
-    - "started"
-    - "progress"
-    - "completed"
-    - "failed"
-  
-  # Notification frequency limits
-  rate_limits:
-    progress: 300  # seconds between progress notifications
-    status: 60     # seconds between status notifications
-
-# Logging configuration
-logging:
-  level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: null  # Set to a file path to enable file logging
-
-# Provider-specific configurations
-providers:
-  # Discord provider configuration
-  discord:
-    # Discord webhook URL (required)
-    webhook_url: "https://discord.com/api/webhooks/123456789012345678/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789012"
+  # Embed customization
+  embeds:
+    # Enable rich embeds (true) or simple messages (false)
+    enabled: true
     
-    # Bot username override (optional)
-    username: "Mover Status Bot"
+    # Color scheme for different states (hex values 0x000000-0xffffff)
+    colors:
+      started: 0x00ff00    # Green
+      progress: 0x0099ff   # Blue
+      completed: 0x00cc00  # Dark green
+      failed: 0xff0000     # Red
     
-    # Bot avatar URL (optional)
-    avatar_url: "https://example.com/bot-avatar.png"
+    # Include thumbnail image in embeds
+    thumbnail: true
     
-    # Embed customization
-    embeds:
-      # Enable rich embeds (true) or simple messages (false)
-      enabled: true
-      
-      # Color scheme for different states (hex values)
-      colors:
-        started: 0x00ff00    # Green
-        progress: 0x0099ff   # Blue
-        completed: 0x00cc00  # Dark green
-        failed: 0xff0000     # Red
-      
-      # Include thumbnail image
-      thumbnail: true
-      
-      # Include timestamp
-      timestamp: true
+    # Include timestamp in embeds
+    timestamp: true
+  
+  # Notification settings
+  notifications:
+    # Events to send notifications for (overrides main config if specified)
+    events: ["started", "progress", "completed", "failed"]
     
-    # Notification settings
-    notifications:
-      # Mention roles or users for critical events
-      mentions:
-        started: []
-        failed: ["@everyone"]
-        completed: []
-      
-      # Rate limiting (seconds between notifications)
-      rate_limits:
-        progress: 300
-        status: 60
+    # Mention roles or users for specific events
+    # Use "@everyone" for everyone, "@here" for online users
+    # Use "<@123456789>" for specific users, "<@&123456789>" for roles
+    mentions:
+      started: []
+      progress: []
+      completed: []
+      failed: ["@everyone"]
     
-    # Retry settings
-    retry:
-      max_attempts: 3
-      backoff_factor: 2.0
-      timeout: 30
+    # Rate limiting (seconds between notifications)
+    rate_limits:
+      progress: 300
+      status: 60
+  
+  # Retry settings for failed requests
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+    timeout: 30
+
+# Environment variable overrides:
+# MOVER_STATUS_DISCORD__WEBHOOK_URL=https://discord.com/api/webhooks/...
+# MOVER_STATUS_DISCORD__USERNAME=Custom Bot Name
+# MOVER_STATUS_DISCORD__EMBEDS__ENABLED=true
+# MOVER_STATUS_DISCORD__EMBEDS__COLORS__STARTED=0x00ff00
