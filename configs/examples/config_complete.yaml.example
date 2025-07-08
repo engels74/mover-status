@@ -1,33 +1,35 @@
-# Mover Status Monitor Configuration Example - Telegram Provider
+# Mover Status Monitor - Complete Configuration Example
+# This example shows all available configuration options
 # Copy this file to config.yaml and customize for your setup
 
 # Core monitoring settings
 monitoring:
-  # Interval between checks in seconds
+  # Interval between checks in seconds (1-3600)
   interval: 30
   
-  # Maximum time to wait for process detection
+  # Maximum time to wait for process detection in seconds (1-3600)
   detection_timeout: 60
   
-  # Enable dry run mode (no actual notifications)
+  # Enable dry run mode (no actual notifications sent)
   dry_run: false
 
 # Process detection settings (REQUIRED)
 process:
-  # Name of the process to monitor
+  # Name of the process to monitor (required)
   name: "mover"
   
-  # Path patterns to match for process detection
+  # Path patterns to match for process detection (required, at least one)
   paths:
     - "/usr/local/sbin/mover"
     - "/usr/bin/mover"
+    - "/opt/mover/bin/mover"
 
 # Progress tracking settings
 progress:
-  # Minimum progress change to trigger notification (percentage)
+  # Minimum progress change to trigger notification (0.0-100.0)
   min_change_threshold: 5.0
   
-  # Window size for ETC calculation (number of samples)
+  # Window size for ETC calculation (1-100 samples)
   estimation_window: 10
   
   # Paths to exclude from size calculations
@@ -36,12 +38,14 @@ progress:
     - "/lost+found"
     - "/tmp"
     - "/var/tmp"
+    - "/.cache"
 
 # Notification settings
 notifications:
-  # List of enabled providers
+  # List of enabled providers (telegram, discord)
   enabled_providers:
     - "telegram"
+    - "discord"
   
   # Events that trigger notifications
   events:
@@ -50,16 +54,21 @@ notifications:
     - "completed"
     - "failed"
   
-  # Notification frequency limits
+  # Global notification frequency limits (seconds)
   rate_limits:
     progress: 300  # seconds between progress notifications
     status: 60     # seconds between status notifications
 
 # Logging configuration
 logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
   level: "INFO"
+  
+  # Log format string
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: null  # Set to a file path to enable file logging
+  
+  # Log file path (null for console only)
+  file: null
 
 # Provider-specific configurations
 providers:
@@ -68,23 +77,23 @@ providers:
     # Bot token from @BotFather (required)
     bot_token: "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk"
     
-    # Chat IDs to send notifications to (required)
+    # Chat IDs to send notifications to (required, at least one)
     chat_ids:
-      - -1001234567890  # Group chat ID
-      - 123456789       # User chat ID
+      - -1001234567890  # Group chat ID (negative for groups)
+      - 123456789       # User chat ID (positive for users)
     
-    # Message formatting
+    # Message formatting options
     format:
       # Parse mode: "HTML", "Markdown", or "MarkdownV2"
       parse_mode: "HTML"
       
-      # Disable link previews
+      # Disable link previews in messages
       disable_web_page_preview: true
       
       # Disable notification sound
       disable_notification: false
     
-    # Message templates
+    # Message templates for different events
     templates:
       started: |
         🚀 <b>Mover Started</b>
@@ -129,7 +138,55 @@ providers:
         progress: 300
         status: 60
     
-    # Retry settings
+    # Retry settings for failed requests
+    retry:
+      max_attempts: 3
+      backoff_factor: 2.0
+      timeout: 30
+
+  # Discord provider configuration
+  discord:
+    # Discord webhook URL (required)
+    webhook_url: "https://discord.com/api/webhooks/123456789012345678/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789012"
+    
+    # Bot username override (optional)
+    username: "Mover Status Bot"
+    
+    # Bot avatar URL (optional)
+    avatar_url: "https://example.com/bot-avatar.png"
+    
+    # Embed customization
+    embeds:
+      # Enable rich embeds (true) or simple messages (false)
+      enabled: true
+      
+      # Color scheme for different states (hex values 0x000000-0xffffff)
+      colors:
+        started: 0x00ff00    # Green
+        progress: 0x0099ff   # Blue
+        completed: 0x00cc00  # Dark green
+        failed: 0xff0000     # Red
+      
+      # Include thumbnail image in embeds
+      thumbnail: true
+      
+      # Include timestamp in embeds
+      timestamp: true
+    
+    # Notification settings
+    notifications:
+      # Mention roles or users for specific events
+      mentions:
+        started: []
+        failed: ["@everyone"]
+        completed: []
+      
+      # Rate limiting (seconds between notifications)
+      rate_limits:
+        progress: 300
+        status: 60
+    
+    # Retry settings for failed requests
     retry:
       max_attempts: 3
       backoff_factor: 2.0

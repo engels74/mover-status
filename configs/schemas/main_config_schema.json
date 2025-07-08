@@ -120,6 +120,19 @@
         }
       },
       "required": ["level", "format", "file"]
+    },
+    "providers": {
+      "type": "object",
+      "properties": {
+        "telegram": {
+          "$ref": "provider_config_schema.json#/oneOf/1/properties/telegram"
+        },
+        "discord": {
+          "$ref": "provider_config_schema.json#/oneOf/0/properties/discord"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Provider-specific configurations"
     }
   },
   "required": ["monitoring", "process", "progress", "notifications", "logging"]
