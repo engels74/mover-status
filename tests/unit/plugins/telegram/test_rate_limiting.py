@@ -49,7 +49,7 @@ class TestTokenBucket:
         bucket.last_update = time.time() - 2.0  # 2 seconds ago
         
         # Try to consume - should trigger refill
-        bucket.consume(1)
+        _ = bucket.consume(1)
         
         # Should have refilled 10 tokens (5 per second * 2 seconds) but capped at capacity
         assert bucket.tokens == 9  # 10 (refilled) - 1 (consumed)
@@ -186,8 +186,8 @@ class TestAdvancedRateLimiter:
         assert wait_time == 0.0
         
         # Verify they use different buckets
-        user_bucket = rate_limiter._get_bucket_for_chat(user_chat)
-        group_bucket = rate_limiter._get_bucket_for_chat(group_chat)
+        user_bucket = rate_limiter._get_bucket_for_chat(user_chat)  # pyright: ignore[reportPrivateUsage] # testing internal behavior
+        group_bucket = rate_limiter._get_bucket_for_chat(group_chat)  # pyright: ignore[reportPrivateUsage] # testing internal behavior
         
         assert user_bucket is not group_bucket
     
@@ -259,13 +259,13 @@ class TestRateLimitingDecorator:
         config = RateLimitConfig(global_limit=1000)
         rate_limiter = AdvancedRateLimiter(config)
         
-        def extract_chat_id(args: tuple[object, ...], kwargs: dict[str, object]) -> str:
+        def extract_chat_id(_args: tuple[object, ...], kwargs: dict[str, object]) -> str:
             return str(kwargs.get("chat_id", "default"))
         
         call_count = 0
         
         @with_rate_limiting(rate_limiter, get_chat_id=extract_chat_id)
-        async def test_function(message: str, chat_id: str) -> str:
+        async def test_function(_message: str, chat_id: str) -> str:
             nonlocal call_count
             call_count += 1
             return f"sent to {chat_id}"
@@ -285,7 +285,7 @@ class TestRateLimitingDecorator:
         rate_limiter = AdvancedRateLimiter(config)
         
         # First exhaust the bucket
-        await rate_limiter.acquire("test", 1)
+        _ = await rate_limiter.acquire("test", 1)
         
         @with_rate_limiting(rate_limiter)
         async def test_function() -> str:
@@ -293,7 +293,7 @@ class TestRateLimitingDecorator:
         
         # This should be delayed due to rate limiting
         start_time = asyncio.get_event_loop().time()
-        await test_function()
+        _ = await test_function()
         end_time = asyncio.get_event_loop().time()
         
         # Should have waited some time (though we can't be too precise in tests)
@@ -305,7 +305,7 @@ class TestRateLimitingDecorator:
         config = RateLimitConfig(global_limit=1000)
         rate_limiter = AdvancedRateLimiter(config)
         
-        def failing_extract_chat_id(args: tuple[object, ...], kwargs: dict[str, object]) -> str:
+        def failing_extract_chat_id(_args: tuple[object, ...], _kwargs: dict[str, object]) -> str:
             raise ValueError("Failed to extract chat ID")
         
         call_count = 0

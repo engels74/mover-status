@@ -6,6 +6,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import timedelta
+from typing import cast
 
 from mover_status.plugins.telegram.bot.client import TelegramBotClient
 from mover_status.plugins.telegram.rate_limiting import AdvancedRateLimiter, RateLimitConfig
@@ -353,7 +354,9 @@ class TestProviderErrorHandling:
             
             assert result["partial_success"] is True
             assert "fallback_details" in result
-            assert result["metrics"]["final_successful_chats"] > 0
+            # Type-safe access to nested dictionary
+            metrics = cast(dict[str, object], result["metrics"])
+            assert cast(int, metrics["final_successful_chats"]) > 0
     
     @pytest.mark.asyncio
     async def test_send_notification_monitoring(self, provider: TelegramProvider) -> None:
@@ -462,7 +465,7 @@ class TestErrorHandlingEdgeCases:
             mock_send.return_value = AsyncMock()
             
             # Should still attempt to send message
-            result = await client.send_message(
+            _ = await client.send_message(
                 chat_id="123456",
                 text="Test message"
             )

@@ -61,18 +61,30 @@ class TelegramProvider(NotificationProvider):
         # Rate limiting configuration (optional)
         rate_limiting_config = config.get("rate_limiting", {})
         rate_limiter: AdvancedRateLimiter | None = None
-        if isinstance(rate_limiting_config, dict) and rate_limiting_config.get("enabled", False):
-            rate_limit_config = RateLimitConfig(
-                global_limit=int(rate_limiting_config.get("global_limit", 30)),
-                global_burst_limit=int(rate_limiting_config.get("global_burst_limit", 100)),
-                chat_limit=int(rate_limiting_config.get("chat_limit", 20)),
-                chat_burst_limit=int(rate_limiting_config.get("chat_burst_limit", 50)),
-                group_limit=int(rate_limiting_config.get("group_limit", 20)),
-                group_burst_limit=int(rate_limiting_config.get("group_burst_limit", 50)),
-                hourly_quota=int(rate_limiting_config.get("hourly_quota", 1000)),
-                hourly_quota_enabled=bool(rate_limiting_config.get("hourly_quota_enabled", True))
-            )
-            rate_limiter = AdvancedRateLimiter(rate_limit_config)
+        if isinstance(rate_limiting_config, dict):
+            # Type narrowing: rate_limiting_config is now known to be a dict
+            rl_config = cast(dict[str, object], rate_limiting_config)
+            if rl_config.get("enabled", False):
+                
+                def _get_int(key: str, default: int) -> int:
+                    value = rl_config.get(key, default)
+                    return int(value) if isinstance(value, (int, float, str)) else default
+                
+                def _get_bool(key: str, default: bool) -> bool:
+                    value = rl_config.get(key, default)
+                    return bool(value) if value is not None else default
+                
+                rate_limit_config = RateLimitConfig(
+                    global_limit=_get_int("global_limit", 30),
+                    global_burst_limit=_get_int("global_burst_limit", 100),
+                    chat_limit=_get_int("chat_limit", 20),
+                    chat_burst_limit=_get_int("chat_burst_limit", 50),
+                    group_limit=_get_int("group_limit", 20),
+                    group_burst_limit=_get_int("group_burst_limit", 50),
+                    hourly_quota=_get_int("hourly_quota", 1000),
+                    hourly_quota_enabled=_get_bool("hourly_quota_enabled", True)
+                )
+                rate_limiter = AdvancedRateLimiter(rate_limit_config)
         
         # Initialize bot client
         self.bot_client: TelegramBotClient = TelegramBotClient(
