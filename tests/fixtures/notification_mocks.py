@@ -38,10 +38,10 @@ class MockProviderStats:
     
     @property
     def success_rate(self) -> float:
-        """Calculate success rate as percentage."""
+        """Calculate success rate as decimal (0.0 to 1.0)."""
         if self.send_count == 0:
             return 0.0
-        return (self.success_count / self.send_count) * 100.0
+        return self.success_count / self.send_count
     
     @property
     def throughput(self) -> float:
@@ -415,7 +415,7 @@ class NotificationTestUtils:
             "total_messages": total_messages,
             "total_successes": total_successes,
             "total_failures": total_failures,
-            "overall_success_rate": (total_successes / total_messages * 100) if total_messages > 0 else 0,
+            "overall_success_rate": (total_successes / total_messages) if total_messages > 0 else 0,
             "total_processing_time": processing_time,
             "messages_per_second": total_messages / processing_time if processing_time > 0 else 0,
             "provider_stats": provider_stats

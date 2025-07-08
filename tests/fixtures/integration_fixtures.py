@@ -505,6 +505,11 @@ class IntegrationTestEnvironment:
             # Calculate percentage
             percentage = (point.bytes_transferred / point.total_size) * 100.0
             
+            # Update filesystem state
+            if self.filesystem_state:
+                self.filesystem_state.transferred_size = point.bytes_transferred
+                self.filesystem_state.total_size = point.total_size
+            
             # Check if notification should be sent
             if percentage - last_percentage >= notification_threshold:
                 message = Message(
