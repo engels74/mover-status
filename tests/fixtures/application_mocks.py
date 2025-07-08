@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import TYPE_CHECKING, NamedTuple
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from unittest.mock import AsyncMock
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,7 +90,7 @@ class MockFilesystemLayout:
             # Create actual file for more realistic testing
             file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(file_path, 'wb') as f:
-                f.write(b'0' * min(file_size, 1024))  # Write small amount to create file
+                _ = f.write(b'0' * min(file_size, 1024))  # Write small amount to create file
             
             layout.entries.append(MockFileSystemEntry(
                 path=str(file_path),
@@ -134,7 +134,7 @@ class MockProcessDetector:
             raise RuntimeError("Process detection failed")
         
         # Return processes matching the names
-        results = []
+        results: list[ProcessInfo] = []
         for process in self.processes.values():
             if process.name in process_names:
                 results.append(process)
@@ -147,7 +147,7 @@ class MockProcessDetector:
     
     def remove_process(self, pid: int) -> None:
         """Remove process."""
-        self.processes.pop(pid, None)
+        _ = self.processes.pop(pid, None)
     
     def clear_processes(self) -> None:
         """Clear all processes."""
@@ -158,14 +158,14 @@ class MockFilesystemScanner:
     """Mock filesystem scanner for integration testing."""
     
     def __init__(self, layout: MockFilesystemLayout) -> None:
-        self.layout = layout
+        self.layout: MockFilesystemLayout = layout
         self.scan_delay: float = 0.01  # Delay per file to simulate scanning
         self.failure_rate: float = 0.0
         self.scan_calls: int = 0
         self.bytes_scanned: int = 0
         self.files_scanned: int = 0
         
-    async def scan_directory(self, path: Path, recursive: bool = True) -> AsyncGenerator[MockFileSystemEntry, None]:
+    async def scan_directory(self, path: Path, _recursive: bool = True) -> AsyncGenerator[MockFileSystemEntry, None]:
         """Mock directory scanning."""
         self.scan_calls += 1
         
@@ -237,7 +237,7 @@ class MockMonitorOrchestrator:
         self.state.is_running = False
         
         if self._monitoring_task:
-            self._monitoring_task.cancel()
+            _ = self._monitoring_task.cancel()
             try:
                 await self._monitoring_task
             except asyncio.CancelledError:
@@ -333,19 +333,19 @@ class MockApplicationRunner:
     """Mock application runner for end-to-end testing."""
     
     def __init__(self, config_path: Path | None = None) -> None:
-        self.config_path = config_path
-        self.orchestrator = MockMonitorOrchestrator()
+        self.config_path: Path | None = config_path
+        self.orchestrator: MockMonitorOrchestrator = MockMonitorOrchestrator()
         self.dispatcher: AsyncDispatcher | None = None
-        self.is_running = False
-        self.run_count = 0
-        self.error_count = 0
+        self.is_running: bool = False
+        self.run_count: int = 0
+        self.error_count: int = 0
         
         # Test hooks
         self.on_startup: AsyncMock = AsyncMock()
         self.on_shutdown: AsyncMock = AsyncMock()
         self.on_cycle_complete: AsyncMock = AsyncMock()
     
-    async def run_once(self) -> dict[str, object]:
+    async def run_once(self) -> Mapping[str, object]:
         """Run application once and return results."""
         self.run_count += 1
         start_time = time.time()
@@ -396,7 +396,7 @@ class MockApplicationRunner:
             await self.on_cycle_complete(error_result)
             return error_result
     
-    async def run_continuous(self, duration: float) -> dict[str, object]:
+    async def run_continuous(self, duration: float) -> Mapping[str, object]:
         """Run application continuously for specified duration."""
         self.is_running = True
         start_time = time.time()
@@ -520,7 +520,7 @@ class IntegrationTestScenarioRunner:
             raise RuntimeError("Test scenario not set up")
             
         # Add process and run continuously
-        process = self.app_runner.add_mock_process("mover", 12345)
+        _ = self.app_runner.add_mock_process("mover", 12345)
         result = await self.app_runner.run_continuous(duration)
         
         state = self.app_runner.orchestrator.get_state()

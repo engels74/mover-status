@@ -10,7 +10,7 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
-from collections.abc import Generator, AsyncGenerator
+from collections.abc import Generator, AsyncGenerator, Mapping
 from dataclasses import dataclass, field
 from contextlib import asynccontextmanager, contextmanager
 import pytest
@@ -86,7 +86,7 @@ class IntegrationTestDatabase:
         cursor = conn.cursor()
         
         # Create test tables
-        cursor.execute("""
+        _ = cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_progress (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -97,7 +97,7 @@ class IntegrationTestDatabase:
             )
         """)
         
-        cursor.execute("""
+        _ = cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -109,7 +109,7 @@ class IntegrationTestDatabase:
             )
         """)
         
-        cursor.execute("""
+        _ = cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -157,13 +157,15 @@ class IntegrationTestDatabase:
         """Get all progress history."""
         _ = self.cursor.execute("SELECT * FROM test_progress ORDER BY timestamp")
         columns = [desc[0] for desc in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+        rows = self.cursor.fetchall()
+        return [dict(zip(columns, row, strict=False)) for row in rows]  # pyright: ignore[reportAny]
     
     def get_notification_history(self) -> list[dict[str, str | int | float]]:
         """Get all notification history."""
         _ = self.cursor.execute("SELECT * FROM test_notifications ORDER BY timestamp")
         columns = [desc[0] for desc in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+        rows = self.cursor.fetchall()
+        return [dict(zip(columns, row, strict=False)) for row in rows]  # pyright: ignore[reportAny]
     
     def close(self) -> None:
         """Close database connection."""
@@ -220,7 +222,7 @@ class MockWebhookService:
         """Get history of requests."""
         return list(self.request_history)
     
-    async def handle_request(self, endpoint: str, data: dict[str, str | int | float]) -> dict[str, str | int | float | bool]:
+    async def handle_request(self, endpoint: str, _data: dict[str, str | int | float]) -> dict[str, str | int | float | bool]:
         """Handle mock request."""
         # Record request
         self.request_history.append({
@@ -253,7 +255,7 @@ class MockProcessDetector:
             raise Exception("Process detection failed")
         
         # Return matching processes
-        results = []
+        results: list[ProcessInfo] = []
         for process in self.processes:
             if process.process_name in process_names:
                 results.append(process.to_process_info())
@@ -479,7 +481,7 @@ class IntegrationTestEnvironment:
             }
         }
     
-    async def simulate_progress_monitoring(self, data_points: list[ProgressDataPoint]) -> dict[str, object]:
+    async def simulate_progress_monitoring(self, data_points: list[ProgressDataPoint]) -> Mapping[str, object]:
         """Simulate progress monitoring scenario."""
         if not self.database or not self.progress_calculator:
             raise RuntimeError("Environment not properly initialized")
@@ -510,7 +512,7 @@ class IntegrationTestEnvironment:
                     priority="normal"
                 )
                 
-                await self.simulate_notification_flow(message)
+                _ = await self.simulate_notification_flow(message)
                 results["notifications_sent"] += 1
                 last_percentage = percentage
         
@@ -663,9 +665,9 @@ class IntegrationTestRunner:
     """Helper for running complex integration test scenarios."""
     
     def __init__(self, environment: IntegrationTestEnvironment) -> None:
-        self.env = environment
+        self.env: IntegrationTestEnvironment = environment
         
-    async def run_full_monitoring_cycle(self, duration: float = 60.0) -> dict[str, object]:
+    async def run_full_monitoring_cycle(self, _duration: float = 60.0) -> dict[str, object]:
         """Run complete monitoring cycle test."""
         # Add mock process
         process = self.env.add_mock_process("mover", 12345)
@@ -707,7 +709,7 @@ class IntegrationTestRunner:
         
         # Send multiple messages to test recovery
         messages = NotificationTestUtils.create_test_messages(10, "FailureTest")
-        results = []
+        results: list[dict[str, str | int | float | object]] = []
         
         for message in messages:
             result = await self.env.simulate_notification_flow(message)
