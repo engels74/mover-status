@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import time
 import pytest
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
+from collections.abc import Coroutine
 from pathlib import Path
 
 from mover_status.notifications.models.message import Message
@@ -48,14 +49,14 @@ class TestFullCycleScenarios:
         result = await runner.run_full_monitoring_cycle()
         
         # Verify startup notification was sent
-        start_result = cast(dict[str, Any], result["start_notification"])
+        start_result = cast(dict[str, object], result["start_notification"])
         assert isinstance(start_result, dict)
         assert "result" in start_result
         processing_time = cast(float, start_result["processing_time"])
         assert processing_time < 5.0
         
         # Verify progress monitoring occurred
-        progress_result = cast(dict[str, Any], result["progress_monitoring"])
+        progress_result = cast(dict[str, object], result["progress_monitoring"])
         assert isinstance(progress_result, dict)
         total_points = cast(int, progress_result["total_points"])
         notifications_sent = cast(int, progress_result["notifications_sent"])
@@ -65,26 +66,26 @@ class TestFullCycleScenarios:
         assert final_percentage >= 95.0  # Should complete
         
         # Verify completion notification was sent
-        completion_result = cast(dict[str, Any], result["completion_notification"])
+        completion_result = cast(dict[str, object], result["completion_notification"])
         assert isinstance(completion_result, dict)
         assert "result" in completion_result
         completion_processing_time = cast(float, completion_result["processing_time"])
         assert completion_processing_time < 5.0
         
         # Verify system summary
-        summary = cast(dict[str, Any], result["summary"])
+        summary = cast(dict[str, object], result["summary"])
         assert isinstance(summary, dict)
         assert "progress_history" in summary
         assert "notification_history" in summary
         assert "provider_stats" in summary
         
         # Verify all expected notifications were delivered
-        notification_history = cast(list[dict[str, Any]], summary["notification_history"])
+        notification_history = cast(list[dict[str, object]], summary["notification_history"])
         assert len(notification_history) >= 3  # Start, progress updates, completion
         
         # Verify provider performance
-        provider_stats = cast(dict[str, dict[str, Any]], summary["provider_stats"])
-        for provider_name, stats in provider_stats.items():
+        provider_stats = cast(dict[str, dict[str, object]], summary["provider_stats"])
+        for _provider_name, stats in provider_stats.items():
             assert isinstance(stats, dict)
             send_count = cast(int, stats["send_count"])
             success_rate = cast(float, stats["success_rate"])
@@ -164,7 +165,7 @@ class TestFullCycleScenarios:
         summary = integration_env.get_test_summary()
         assert isinstance(summary, dict)
         
-        notification_history = cast(list[dict[str, Any]], summary["notification_history"])
+        notification_history = cast(list[dict[str, object]], summary["notification_history"])
         assert len(notification_history) >= 4  # Startup + progress updates + completion
         
         # Verify notifications have proper sequence
@@ -187,7 +188,7 @@ class TestFullCycleScenarios:
         ]
         
         # Process messages sequentially to simulate real workflow
-        results = []
+        results: list[dict[str, object]] = []
         for i, message in enumerate(test_messages):
             # Add realistic delays between notifications
             if i > 0:
@@ -201,7 +202,7 @@ class TestFullCycleScenarios:
             processing_time = cast(float, result["processing_time"])
             assert processing_time < 3.0
             
-            provider_stats = cast(dict[str, dict[str, Any]], result["provider_stats"])
+            provider_stats = cast(dict[str, dict[str, object]], result["provider_stats"])
             assert isinstance(provider_stats, dict)
             
             # Verify at least one provider succeeded
@@ -213,7 +214,7 @@ class TestFullCycleScenarios:
         
         # Verify overall workflow integrity
         summary = integration_env.get_test_summary()
-        notification_history = cast(list[dict[str, Any]], summary["notification_history"])
+        notification_history = cast(list[dict[str, object]], summary["notification_history"])
         assert len(notification_history) >= len(test_messages)
         
         # Verify message ordering and content integrity
@@ -313,7 +314,7 @@ class TestFullCycleScenarios:
             integration_env.process_detector.failure_rate = 0.1  # 10% detection failure rate
         
         # Phase 1: Test process detection with failures
-        process = integration_env.add_mock_process("mover", 54321)
+        _process = integration_env.add_mock_process("mover", 54321)
         
         detection_attempts = 0
         detected = False
@@ -339,11 +340,20 @@ class TestFullCycleScenarios:
         assert message_count > 0
         
         # Verify some messages succeeded despite failures
-        results = cast(list[dict[str, Any]], failure_recovery_result["results"])
-        successful_dispatches = sum(
-            1 for result in results 
-            if cast(str, result["result"].status.value) in ["success", "partial"]
-        )
+        results = cast(list[dict[str, object]], failure_recovery_result["results"])
+        successful_dispatches = 0
+        for result in results:
+            try:
+                result_obj = result["result"]
+                # Use getattr with default to safely access nested attributes
+                status_obj = getattr(result_obj, "status", None)
+                if status_obj is not None:
+                    status_value = getattr(status_obj, "value", None)  # pyright: ignore[reportAny]
+                    if status_value is not None and str(status_value) in ["success", "partial"]:  # pyright: ignore[reportAny]
+                        successful_dispatches += 1
+            except (AttributeError, KeyError):
+                # Skip results that don't have the expected structure
+                continue
         assert successful_dispatches > 0, "Some notifications should succeed despite failures"
         
         # Phase 3: Test progress monitoring resilience
@@ -362,10 +372,10 @@ class TestFullCycleScenarios:
         summary = integration_env.get_test_summary()
         
         # Check that system maintained stability
-        notification_history = cast(list[dict[str, Any]], summary["notification_history"])
+        notification_history = cast(list[dict[str, object]], summary["notification_history"])
         assert len(notification_history) > 0
         
-        provider_stats = cast(dict[str, dict[str, Any]], summary["provider_stats"])
+        provider_stats = cast(dict[str, dict[str, object]], summary["provider_stats"])
         for _provider_name, stats in provider_stats.items():
             # Even with failures, should have some successful operations
             send_count = cast(int, stats["send_count"])
@@ -378,7 +388,7 @@ class TestFullCycleScenarios:
     async def test_concurrent_operations_workflow(self, integration_env: IntegrationTestEnvironment) -> None:
         """Test system behavior with concurrent operations and multiple processes."""
         # Set up multiple concurrent processes
-        processes = []
+        processes: list[MockProcessEnvironment] = []
         for i in range(3):
             process = MockProcessEnvironment(
                 process_name=f"mover_{i}",
@@ -392,8 +402,7 @@ class TestFullCycleScenarios:
                 integration_env.process_detector.add_process(process)
         
         # Create concurrent notification tasks
-        from collections.abc import Coroutine
-        notification_tasks: list[Coroutine[Any, Any, dict[str, Any]]] = []
+        notification_tasks: list[Coroutine[object, object, dict[str, object]]] = []
         for i, _process in enumerate(processes):
             messages = [
                 Message(
@@ -432,7 +441,7 @@ class TestFullCycleScenarios:
         
         # Verify system handled concurrency well
         summary = integration_env.get_test_summary()
-        notification_history = cast(list[dict[str, Any]], summary["notification_history"])
+        notification_history = cast(list[dict[str, object]], summary["notification_history"])
         
         # Should have notifications from all processes
         process_notifications = {f"Process {i}": 0 for i in range(3)}
@@ -447,7 +456,7 @@ class TestFullCycleScenarios:
             assert count >= 2, f"{process_name} generated too few notifications: {count}"
         
         # Verify provider performance under concurrent load
-        provider_stats = cast(dict[str, dict[str, Any]], summary["provider_stats"])
+        provider_stats = cast(dict[str, dict[str, object]], summary["provider_stats"])
         for _provider_name, stats in provider_stats.items():
             send_count = cast(int, stats["send_count"])
             success_rate = cast(float, stats["success_rate"])
@@ -462,13 +471,13 @@ class TestFullCycleScenarios:
         assert isinstance(initial_summary, dict)
         
         # Verify clean initial state
-        progress_history = cast(list[Any], initial_summary.get("progress_history", []))
-        notification_history = cast(list[Any], initial_summary.get("notification_history", []))
+        progress_history = cast(list[object], initial_summary.get("progress_history", []))
+        notification_history = cast(list[object], initial_summary.get("notification_history", []))
         assert len(progress_history) == 0
         assert len(notification_history) == 0
         
         # Phase 2: Execute operations and track state changes
-        operations: list[dict[str, Any]] = [
+        operations: list[dict[str, object]] = [
             {"action": "start_process", "data": {"name": "mover", "pid": 98765}},
             {"action": "send_notification", "data": {"title": "Process Started", "content": "System initiated"}},
             {"action": "update_progress", "data": {"percentage": 25.0}},
@@ -479,11 +488,11 @@ class TestFullCycleScenarios:
             {"action": "send_notification", "data": {"title": "Process Complete", "content": "Operation finished"}}
         ]
         
-        state_snapshots: list[dict[str, Any]] = []
+        state_snapshots: list[dict[str, object]] = []
         
         for i, operation in enumerate(operations):
             if operation["action"] == "start_process":
-                data = cast(dict[str, Any], operation["data"])
+                data = cast(dict[str, object], operation["data"])
                 process = integration_env.add_mock_process(
                     cast(str, data["name"]), 
                     cast(int, data["pid"])
@@ -491,7 +500,7 @@ class TestFullCycleScenarios:
                 assert process.pid == cast(int, data["pid"])
                 
             elif operation["action"] == "send_notification":
-                data = cast(dict[str, Any], operation["data"])
+                data = cast(dict[str, object], operation["data"])
                 message = Message(
                     title=cast(str, data["title"]),
                     content=cast(str, data["content"]),
@@ -502,7 +511,7 @@ class TestFullCycleScenarios:
                 
             elif operation["action"] == "update_progress":
                 if integration_env.filesystem_state:
-                    data = cast(dict[str, Any], operation["data"])
+                    data = cast(dict[str, object], operation["data"])
                     integration_env.filesystem_state.update_progress(cast(float, data["percentage"]))
                 
             elif operation["action"] == "complete_process":
@@ -520,11 +529,11 @@ class TestFullCycleScenarios:
         # Phase 3: Verify state consistency and progression
         # Verify progressive increase in notification count
         for i in range(1, len(state_snapshots)):
-            current_state = cast(dict[str, Any], state_snapshots[i]["state"])
-            previous_state = cast(dict[str, Any], state_snapshots[i-1]["state"])
-            current_notifications = cast(list[Any], current_state["notification_history"])
-            previous_notifications = cast(list[Any], previous_state["notification_history"])
-            current_operation = cast(dict[str, Any], state_snapshots[i]["operation"])
+            current_state = cast(dict[str, object], state_snapshots[i]["state"])
+            previous_state = cast(dict[str, object], state_snapshots[i-1]["state"])
+            current_notifications = cast(list[object], current_state["notification_history"])
+            previous_notifications = cast(list[object], previous_state["notification_history"])
+            current_operation = cast(dict[str, object], state_snapshots[i]["operation"])
             
             if current_operation["action"] == "send_notification":
                 assert len(current_notifications) >= len(previous_notifications), (
@@ -535,19 +544,19 @@ class TestFullCycleScenarios:
         final_summary = integration_env.get_test_summary()
         
         # Should have processed all notifications
-        final_notification_history = cast(list[Any], final_summary["notification_history"])
+        final_notification_history = cast(list[object], final_summary["notification_history"])
         notification_count = len([op for op in operations if op["action"] == "send_notification"])
         assert len(final_notification_history) >= notification_count
         
         # Verify filesystem state if available
         if "filesystem_state" in final_summary:
-            fs_state = cast(dict[str, Any], final_summary["filesystem_state"])
+            fs_state = cast(dict[str, object], final_summary["filesystem_state"])
             transferred_size = cast(int, fs_state["transferred_size"])
             total_size = cast(int, fs_state["total_size"])
             assert transferred_size >= total_size * 0.9  # Near completion
         
         # Verify all providers maintained consistency
-        provider_stats = cast(dict[str, dict[str, Any]], final_summary["provider_stats"])
+        provider_stats = cast(dict[str, dict[str, object]], final_summary["provider_stats"])
         for _provider_name, stats in provider_stats.items():
             send_count = cast(int, stats["send_count"])
             success_count = cast(int, stats["success_count"])
@@ -608,7 +617,7 @@ class TestFullCyclePerformance:
         start_time = time.time()
         
         # Send messages with minimal delay to test throughput
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         for message in messages:
             result = await integration_env.simulate_notification_flow(message)
             results.append(result)
@@ -623,7 +632,7 @@ class TestFullCyclePerformance:
         assert throughput > 7.0, f"Message throughput too low: {throughput:.1f} msg/s"
         
         # Verify all messages were processed
-        successful_results = [r for r in results if isinstance(r, dict)]
+        successful_results = results  # All results are already dicts
         success_rate = len(successful_results) / len(messages)
         assert success_rate > 0.95, f"Success rate too low: {success_rate:.1%}"
 
