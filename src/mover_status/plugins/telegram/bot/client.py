@@ -108,10 +108,13 @@ class TelegramBotClient:
         
         # Apply rate limiting if available
         if self.rate_limiter:
-            wait_time = await self.rate_limiter.acquire(chat_id)
-            if wait_time > 0:
-                logger.debug(f"Rate limiting: waiting {wait_time:.2f}s for chat {chat_id}")
-                await asyncio.sleep(wait_time)
+            try:
+                wait_time = await self.rate_limiter.acquire(chat_id)
+                if wait_time > 0:
+                    logger.debug(f"Rate limiting: waiting {wait_time:.2f}s for chat {chat_id}")
+                    await asyncio.sleep(wait_time)
+            except Exception as e:
+                logger.warning(f"Rate limiter error for chat {chat_id}: {e}. Proceeding without rate limiting.")
         
         for attempt in range(self.max_retries + 1):
             try:

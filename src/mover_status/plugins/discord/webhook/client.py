@@ -152,7 +152,10 @@ class DiscordWebhookClient:
         WebhookValidator.validate_embed_payload(payload)
         
         # Apply rate limiting
-        await self._rate_limiter.acquire()
+        try:
+            await self._rate_limiter.acquire()
+        except Exception as e:
+            logger.warning(f"Rate limiter error: {e}. Proceeding without rate limiting.")
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
