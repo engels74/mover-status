@@ -87,21 +87,6 @@ class TestBasicFunctionality:
         assert len(discord_content) > 0
         assert len(telegram_content) > 0
 
-    def test_schema_files_exist(self) -> None:
-        """Test that schema files exist."""
-        project_root = Path(__file__).parent.parent
-        
-        main_schema = project_root / "configs" / "schemas" / "main_config_schema.json"
-        provider_schema = project_root / "configs" / "schemas" / "provider_config_schema.json"
-        
-        assert main_schema.exists()
-        assert provider_schema.exists()
-        
-        # Check that they have content
-        main_content = main_schema.read_text()
-        provider_content = provider_schema.read_text()
-        assert len(main_content) > 0
-        assert len(provider_content) > 0
 
     def test_plugin_template_documentation(self) -> None:
         """Test that plugin template documentation exists."""

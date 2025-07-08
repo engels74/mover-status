@@ -111,7 +111,6 @@ class TestProjectStructure:
         expected_dirs = [
             "configs",
             "configs/examples",
-            "configs/schemas",
         ]
         
         for dir_path in expected_dirs:
@@ -157,8 +156,6 @@ class TestProjectStructure:
             "tests/conftest.py",
             "configs/examples/config_discord.yaml.example",
             "configs/examples/config_telegram.yaml.example",
-            "configs/schemas/main_config_schema.json",
-            "configs/schemas/provider_config_schema.json",
         ]
         
         for file_path in required_files:

@@ -9,9 +9,6 @@ from dataclasses import dataclass, field as dataclass_field
 from enum import Enum
 from typing import TYPE_CHECKING, override
 
-import jsonschema
-from jsonschema import ValidationError as JsonSchemaValidationError
-
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
@@ -93,63 +90,6 @@ class BaseValidator(ABC):
         ...
 
 
-class SchemaValidator(BaseValidator):
-    """JSON Schema-based configuration validator."""
-    
-    def __init__(self, schema: Mapping[str, object]) -> None:
-        """Initialize the schema validator.
-
-        Args:
-            schema: JSON schema for validation
-        """
-        self.schema: dict[str, object] = dict(schema)
-
-    @override
-    def validate(self, config: Mapping[str, object]) -> ValidationResult:
-        """Validate configuration against JSON schema.
-        
-        Args:
-            config: Configuration to validate
-            
-        Returns:
-            Validation result
-        """
-        issues: list[ValidationIssue] = []
-        
-        try:
-            jsonschema.validate(dict(config), self.schema)
-        except JsonSchemaValidationError as e:
-            # Convert JSON schema validation errors to our format
-            field_path = ".".join(str(part) for part in e.absolute_path) if e.absolute_path else "root"
-            
-            issue = ValidationIssue(
-                field=field_path,
-                message=e.message,
-                severity=ValidationSeverity.ERROR,
-                code="SCHEMA_VALIDATION_ERROR",
-                details={
-                    "schema_path": list(e.schema_path),
-                    "failed_value": e.instance,
-                }
-            )
-            issues.append(issue)
-            
-        except Exception as e:
-            # Handle other validation errors
-            issue = ValidationIssue(
-                field="root",
-                message=f"Schema validation failed: {e}",
-                severity=ValidationSeverity.ERROR,
-                code="SCHEMA_VALIDATION_EXCEPTION",
-                details={"exception_type": type(e).__name__}
-            )
-            issues.append(issue)
-        
-        return ValidationResult(
-            is_valid=len(issues) == 0,
-            issues=issues,
-            provider_name="schema"
-        )
 
 
 class CredentialValidator(BaseValidator):
@@ -269,17 +209,8 @@ class ConfigValidator:
             provider_name: Name of the provider being validated
         """
         self.provider_name: str = provider_name
-        self.schema_validators: list[SchemaValidator] = []
         self.credential_validators: list[CredentialValidator] = []
         self.environment_validators: list[EnvironmentValidator] = []
-        
-    def add_schema_validator(self, schema: Mapping[str, object]) -> None:
-        """Add a JSON schema validator.
-
-        Args:
-            schema: JSON schema for validation
-        """
-        self.schema_validators.append(SchemaValidator(schema))
         
     def add_credential_validator(
         self, 
@@ -311,11 +242,6 @@ class ConfigValidator:
         """
         all_issues: list[ValidationIssue] = []
         
-        # Run schema validators
-        for validator in self.schema_validators:
-            result = validator.validate(config)
-            all_issues.extend(result.issues)
-            
         # Run environment validators
         for validator in self.environment_validators:
             result = validator.validate(config)
