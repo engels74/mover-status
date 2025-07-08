@@ -429,7 +429,7 @@ class TestSystemPerformanceStress:
             }
 
             # Collect results
-            thread_results = []
+            thread_results: list[dict[str, int | float]] = []
             for future in as_completed(future_to_thread):
                 try:
                     result = future.result()
