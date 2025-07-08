@@ -8,7 +8,7 @@
   <a href="https://github.com/engels74/mover-status/releases"><img src="https://img.shields.io/github/v/tag/engels74/mover-status?sort=semver" alt="GitHub tag (SemVer)"></a>
   <a href="https://github.com/engels74/mover-status/blob/main/LICENSE"><img src="https://img.shields.io/github/license/engels74/mover-status" alt="License"></a>
   <a href="https://github.com/engels74/mover-status/stargazers"><img src="https://img.shields.io/github/stars/engels74/mover-status.svg" alt="GitHub Stars"></a>
-  <a href="https://deepwiki.com/engels74/tgraph-bot-source"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  <a href="https://deepwiki.com/engels74/mover-status"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
 ### PLACEHOLDER
