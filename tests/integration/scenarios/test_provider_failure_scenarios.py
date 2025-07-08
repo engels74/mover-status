@@ -610,28 +610,29 @@ class TestProviderFailureScenarios:
         assert provider.corruption_events > 0
 
         # Test with message that will trigger validation failure in provider
-        # Create a message with minimal content that will pass Message validation
-        # but trigger our custom validation in the provider
-        minimal_message = Message(title="x", content="x", priority="normal")
+        # Create a message and manually set invalid data to bypass Pydantic validation
+        # This simulates data corruption that occurs after message creation
+        from unittest.mock import Mock
+        
+        corrupted_message = Mock(spec=Message)
+        corrupted_message.title = ""  # Empty title should trigger validation failure
+        corrupted_message.content = ""  # Empty content should trigger validation failure
+        corrupted_message.priority = "normal"
+        corrupted_message.tags = []
+        corrupted_message.metadata = {}
 
-        # Temporarily modify the message after creation to trigger validation failure
-        # This simulates a corrupted message
-        original_title = minimal_message.title
-        original_content = minimal_message.content
-
-        # Clear the fields to trigger validation failure
-        minimal_message.__dict__["title"] = ""
-        minimal_message.__dict__["content"] = ""
-
+        # Temporarily reduce corruption rate to ensure we hit validation logic
+        original_rate = provider.corruption_rate
+        provider.corruption_rate = 0.0  # Disable random corruption
+        
         try:
-            _ = await provider.send_notification(minimal_message)
+            _ = await provider.send_notification(corrupted_message)
             assert False, "Should have failed validation"
         except ValueError:
             assert provider.validation_failures > 0
         finally:
-            # Restore original values
-            minimal_message.__dict__["title"] = original_title
-            minimal_message.__dict__["content"] = original_content
+            # Restore original corruption rate
+            provider.corruption_rate = original_rate
 
     @pytest.mark.asyncio
     async def test_service_unavailable_scenarios(self, test_message: Message) -> None:
