@@ -12,7 +12,6 @@ from mover_status.notifications.base.config_validator import (
     ConfigValidator,
     ConfigValidationError,
     CredentialValidator,
-    SchemaValidator,
     EnvironmentValidator,
     ValidationResult,
     ValidationSeverity,
@@ -114,63 +113,6 @@ class TestValidationResult:
         assert not result_with_warnings.has_errors()
         assert result_with_errors.has_errors()
 
-
-class TestSchemaValidator:
-    """Test SchemaValidator class."""
-    
-    def test_schema_validator_creation(self) -> None:
-        """Test creating a schema validator."""
-        schema: Mapping[str, object] = {
-            "type": "object",
-            "properties": {
-                "api_key": {"type": "string"},
-                "timeout": {"type": "number", "minimum": 0}
-            },
-            "required": ["api_key"]
-        }
-
-        validator = SchemaValidator(schema)
-        assert validator.schema == dict(schema)
-        
-    def test_validate_valid_config(self) -> None:
-        """Test validating a valid configuration."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "api_key": {"type": "string"},
-                "timeout": {"type": "number", "minimum": 0}
-            },
-            "required": ["api_key"]
-        }
-        
-        validator = SchemaValidator(schema)
-        config = {"api_key": "test-key", "timeout": 30}
-        
-        result = validator.validate(config)
-        
-        assert result.is_valid is True
-        assert len(result.issues) == 0
-        
-    def test_validate_invalid_config(self) -> None:
-        """Test validating an invalid configuration."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "api_key": {"type": "string"},
-                "timeout": {"type": "number", "minimum": 0}
-            },
-            "required": ["api_key"]
-        }
-
-        validator = SchemaValidator(schema)
-        config = {"timeout": -5}  # Missing api_key, negative timeout
-
-        result = validator.validate(config)
-
-        assert result.is_valid is False
-        assert len(result.issues) >= 1
-        # Check that we have validation errors (field path might be "root" for missing required fields)
-        assert any(issue.severity == ValidationSeverity.ERROR for issue in result.issues)
 
 
 class TestCredentialValidator:
@@ -274,18 +216,8 @@ class TestConfigValidator:
         """Test creating a config validator."""
         validator = ConfigValidator("test-provider")
         assert validator.provider_name == "test-provider"
-        assert len(validator.schema_validators) == 0
         assert len(validator.credential_validators) == 0
         assert len(validator.environment_validators) == 0
-        
-    def test_add_schema_validator(self) -> None:
-        """Test adding a schema validator."""
-        validator = ConfigValidator("test-provider")
-        schema: dict[str, object] = {"type": "object", "properties": {"api_key": {"type": "string"}}}
-
-        validator.add_schema_validator(schema)
-        
-        assert len(validator.schema_validators) == 1
         
     def test_add_credential_validator(self) -> None:
         """Test adding a credential validator."""
@@ -312,14 +244,6 @@ class TestConfigValidator:
         """Test successful configuration validation."""
         validator = ConfigValidator("test-provider")
 
-        # Add schema validator
-        schema: dict[str, object] = {
-            "type": "object",
-            "properties": {"api_key": {"type": "string"}},
-            "required": ["api_key"]
-        }
-        validator.add_schema_validator(schema)
-
         # Add credential validator
         async def test_func(_config: Mapping[str, object]) -> bool:
             return True
@@ -337,15 +261,13 @@ class TestConfigValidator:
         """Test failed configuration validation."""
         validator = ConfigValidator("test-provider")
 
-        # Add schema validator
-        schema: dict[str, object] = {
-            "type": "object",
-            "properties": {"api_key": {"type": "string"}},
-            "required": ["api_key"]
-        }
-        validator.add_schema_validator(schema)
+        # Add credential validator that will fail
+        async def test_func(_config: Mapping[str, object]) -> bool:
+            return False
 
-        config: dict[str, object] = {}  # Missing required api_key
+        validator.add_credential_validator(test_func)
+
+        config: dict[str, object] = {"api_key": "invalid-key"}
         result = await validator.validate(config)
         
         assert result.is_valid is False
@@ -398,21 +320,6 @@ class TestConfigValidator:
         assert str(error) == "Validation failed"
         assert error.result == result
 
-    def test_schema_validator_exception_handling(self) -> None:
-        """Test schema validator exception handling."""
-        # Create an invalid schema that will cause an exception
-        schema: dict[str, object] = {"type": "invalid_type"}
-        validator = SchemaValidator(schema)
-        config: dict[str, object] = {"test": "value"}
-
-        result = validator.validate(config)
-
-        # Should handle the exception gracefully
-        assert result.is_valid is False
-        assert len(result.issues) >= 1
-        # The invalid schema type will cause a SCHEMA_VALIDATION_EXCEPTION
-        error_codes = [issue.code for issue in result.issues]
-        assert "SCHEMA_VALIDATION_EXCEPTION" in error_codes
 
     @pytest.mark.asyncio
     async def test_validate_config_with_environment_validator(self) -> None:
