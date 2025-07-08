@@ -65,10 +65,18 @@ class EnvLoader:
             if not config_key:
                 continue
                 
-            # Convert to lowercase and replace separator with dots
+            # Convert to lowercase and handle separators
             config_path = config_key.lower()
-            if self.separator != ".":
-                config_path = config_path.replace(self.separator, ".")
+            
+            # If we have double underscores, use them for nesting and preserve single underscores
+            # Otherwise, use the traditional behavior where single underscores become dots
+            if "__" in config_path:
+                # New behavior: __ for nesting, _ preserved for field names like bot_token
+                config_path = config_path.replace("__", ".")
+            else:
+                # Traditional behavior: _ becomes . for nesting
+                if self.separator != ".":
+                    config_path = config_path.replace(self.separator, ".")
             
             # Convert value if type conversion is enabled
             value: object = raw_value

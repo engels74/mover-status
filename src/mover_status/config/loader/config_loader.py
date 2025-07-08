@@ -52,13 +52,7 @@ class ConfigLoader:
         if main_config_path.exists():
             main_config = self.yaml_loader.load(main_config_path)
         
-        # Check for old-style unified config (backward compatibility)
-        if self._is_unified_config(main_config):
-            # Old format - just use as-is
-            env_config = self.env_loader.load()
-            return self.merger.merge(main_config, env_config)
-        
-        # New format - load provider configs separately
+        # Start with main config
         merged_config = main_config.copy()
         
         # Ensure providers section exists
@@ -74,10 +68,10 @@ class ConfigLoader:
         enabled_providers = self._get_enabled_providers(main_config)
         
         for provider in enabled_providers:
-            provider_config = self.provider_manager.load_provider_config(provider)  # type: ignore[arg-type]
+            provider_config = self.provider_manager.load_provider_config(provider)
             if provider_config is None:
                 # Auto-create default config if missing
-                provider_config = self.provider_manager.ensure_provider_config(provider)  # type: ignore[arg-type]
+                provider_config = self.provider_manager.ensure_provider_config(provider)
             
             # Merge provider config into main config
             if provider not in providers_section:
@@ -97,29 +91,7 @@ class ConfigLoader:
         
         return final_config
 
-    def _is_unified_config(self, config: dict[str, object]) -> bool:
-        """Check if config uses old unified format.
-        
-        Args:
-            config: Configuration to check
-            
-        Returns:
-            True if old unified format, False if new split format
-        """
-        providers = config.get("providers", {})
-        if not isinstance(providers, dict):
-            return False
-            
-        # Check if any provider has actual config (not just enabled flag)
-        for provider_name in ["telegram", "discord"]:
-            provider_config = providers.get(provider_name, {})
-            if isinstance(provider_config, dict):
-                # If it has more than just "enabled" key, it's old format
-                config_keys = set(provider_config.keys()) - {"enabled"}
-                if config_keys:
-                    return True
-        
-        return False
+
 
     def _get_enabled_providers(self, config: dict[str, object]) -> list[Literal["telegram", "discord"]]:
         """Get list of enabled providers from config.
