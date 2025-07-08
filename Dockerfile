@@ -13,13 +13,11 @@ ARG TARGETARCH
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv using the installer script for proper cross-platform support
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-RUN sh /uv-installer.sh && rm /uv-installer.sh
+# Install uv using the official distroless image for proper cross-platform support
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Create app directory
 WORKDIR /app
@@ -58,8 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for runtime use
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-RUN sh /uv-installer.sh && rm /uv-installer.sh
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Create non-root user for security
 RUN groupadd --gid 1000 app && \
