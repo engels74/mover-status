@@ -9,6 +9,9 @@ from collections.abc import Generator
 
 import pytest
 
+# Import integration fixtures to make them available
+from tests.fixtures.integration_fixtures import integration_env  # pyright: ignore[reportUnusedImport]
+
 
 @pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:

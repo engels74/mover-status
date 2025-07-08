@@ -51,6 +51,7 @@ markers = [
     "shutdown: marks tests that test graceful shutdown behavior",
     "stress: marks tests that perform stress testing under high load",
     "integration: marks tests as integration tests",
+    "performance: marks tests that measure performance characteristics",
 ]
 
 [tool.coverage.run]

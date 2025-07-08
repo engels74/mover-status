@@ -14,6 +14,7 @@ from collections.abc import Generator, AsyncGenerator, Mapping
 from dataclasses import dataclass, field
 from contextlib import asynccontextmanager, contextmanager
 import pytest
+import pytest_asyncio
 
 from mover_status.notifications.base.registry import get_global_registry, ProviderRegistry
 from mover_status.notifications.manager.dispatcher import AsyncDispatcher
@@ -552,7 +553,7 @@ class IntegrationTestEnvironment:
 
 # Pytest fixtures for integration testing
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def integration_env() -> AsyncGenerator[IntegrationTestEnvironment, None]:
     """Provide complete integration test environment."""
     env = IntegrationTestEnvironment()
@@ -585,7 +586,7 @@ def test_database() -> Generator[IntegrationTestDatabase, None, None]:
         db.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def mock_webhook_service() -> AsyncGenerator[MockWebhookService, None]:
     """Provide mock webhook service."""
     service = MockWebhookService()
