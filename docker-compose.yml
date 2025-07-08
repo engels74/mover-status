@@ -1,0 +1,57 @@
+services:
+  mover-status:
+    image: ghcr.io/engels74/mover-status:latest
+    container_name: mover-status-app
+    restart: unless-stopped
+    volumes:
+      # Mount configuration directory
+      - "./configs:/app/configs:ro"
+      # Mount Unraid system directories (read-only for monitoring)
+      - "/mnt:/mnt:ro"
+      - "/var/log:/var/log:ro"
+      - "/proc:/host/proc:ro"
+      - "/sys:/host/sys:ro"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      # Add any environment variables your app needs
+    network_mode: host
+    pid: host
+    # Uncomment if you need access to Docker socket
+    # volumes:
+    #   - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    command: ["python", "-m", "mover_status"]
+
+  # Development service
+  mover-status-dev:
+    image: ghcr.io/engels74/mover-status:latest
+    container_name: mover-status-dev
+    volumes:
+      - ".:/app"
+      - "/mnt:/mnt:ro"
+      - "/var/log:/var/log:ro"
+      - "/proc:/host/proc:ro"
+      - "/sys:/host/sys:ro"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    network_mode: host
+    pid: host
+    profiles:
+      - dev
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
+  # Testing service
+  mover-status-test:
+    image: ghcr.io/engels74/mover-status:latest
+    container_name: mover-status-test
+    volumes:
+      - ".:/app"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    profiles:
+      - test
+    command: ["python", "-m", "pytest", "--cov=src/mover_status", "--cov-report=term-missing"]

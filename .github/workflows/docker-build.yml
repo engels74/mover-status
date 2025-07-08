@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "build image"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export (production)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          tags: mover-status:latest
+          cache-from: type=gha,scope=mover-status
+          cache-to: type=gha,mode=min,scope=mover-status
+          outputs: type=docker,dest=/tmp/mover-status.tar
+
+      - name: Build and export (development)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: development
+          platforms: linux/amd64,linux/arm64
+          tags: mover-status:dev
+          cache-from: type=gha,scope=mover-status-dev
+          cache-to: type=gha,mode=min,scope=mover-status-dev
+          outputs: type=docker,dest=/tmp/mover-status-dev.tar
+
+      - name: Upload artifact (production)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mover-status
+          path: /tmp/mover-status.tar
+
+      - name: Upload artifact (development)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mover-status-dev
+          path: /tmp/mover-status-dev.tar
+
+  test:
+    name: "test image"
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact (production)
+        uses: actions/download-artifact@v4
+        with:
+          name: mover-status
+          path: /tmp
+
+      - name: Download artifact (development)
+        uses: actions/download-artifact@v4
+        with:
+          name: mover-status-dev
+          path: /tmp
+
+      - name: Load images
+        run: |
+          docker load --input /tmp/mover-status.tar
+          docker load --input /tmp/mover-status-dev.tar
+          docker image ls -a
+
+      - name: Test basic functionality
+        run: |
+          # Test help command
+          docker run --rm mover-status:latest python -m mover_status --help
+          
+          # Test import functionality
+          docker run --rm mover-status:latest python -c "import mover_status; print('Import successful')"
+
+      - name: Test with example config
+        run: |
+          # Test config validation with example config
+          docker run --rm -v "${{ github.workspace }}/configs/examples:/app/configs:ro" \
+            mover-status:latest python -c "
+            import yaml
+            with open('/app/configs/config.yaml.example') as f:
+                config = yaml.safe_load(f)
+                print('Config validation successful')
+                print(f'Process name: {config.get(\"process\", {}).get(\"name\", \"unknown\")}')
+          "
+
+      - name: Test development dependencies
+        run: |
+          # Test development dependencies
+          docker run --rm mover-status:dev python -c "
+            import pytest
+            import ruff
+            print('Development dependencies available')
+          "
+
+      - name: Test Docker Compose
+        run: |
+          # Create minimal config for testing
+          mkdir -p test-configs
+          cp configs/examples/config.yaml.example test-configs/config.yaml
+          
+          # Update docker-compose for testing
+          cat > docker-compose.test.yml << 'EOF'
+          services:
+            mover-status-test:
+              image: mover-status:latest
+              volumes:
+                - "./test-configs:/app/configs:ro"
+              command: ["python", "-c", "import mover_status; print('Docker Compose test successful')"]
+          EOF
+          
+          # Test compose
+          docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+          docker-compose -f docker-compose.test.yml down
