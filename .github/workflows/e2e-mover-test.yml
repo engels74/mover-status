@@ -2,6 +2,7 @@
 name: E2E Mover Test
 
 "on":
+  pull_request:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
