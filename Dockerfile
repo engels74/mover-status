@@ -14,6 +14,7 @@ ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv using the official installer script for proper cross-platform support
@@ -43,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 
 # Stage 2: Runtime image
-FROM --platform=$TARGETPLATFORM python:3.13-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 # Build arguments for multi-platform builds
 ARG TARGETPLATFORM
