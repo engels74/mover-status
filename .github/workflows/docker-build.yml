@@ -89,8 +89,19 @@ jobs:
 
       - name: Load images
         run: |
-          docker load --input /tmp/mover-status.tar
-          docker load --input /tmp/mover-status-dev.tar
+          # Extract and import OCI archives
+          mkdir -p /tmp/oci-production /tmp/oci-development
+          
+          # Extract OCI archives
+          tar -xf /tmp/mover-status.tar -C /tmp/oci-production
+          tar -xf /tmp/mover-status-dev.tar -C /tmp/oci-development
+          
+          # Import using buildx imagetools from OCI layout
+          docker buildx imagetools create --tag mover-status:latest \
+            oci-layout:/tmp/oci-production
+          docker buildx imagetools create --tag mover-status:dev \
+            oci-layout:/tmp/oci-development
+          
           docker image ls -a
 
       - name: Test basic functionality
