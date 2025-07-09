@@ -1,9 +1,7 @@
 # Optimized multi-stage Docker build for uv build backend Python project
-# Size-optimized for Unraid environment testing with multi-platform support
-# Target: Reduce image size from ~151MB to ~100-110MB
 
 # Stage 1: Build dependencies and compile
-FROM --platform=$BUILDPLATFORM python:3.13-slim-bookworm AS builder
+FROM --platform=$BUILDPLATFORM python:3.13-alpine3.21 AS builder
 
 # Build arguments for multi-platform builds
 ARG BUILDPLATFORM
@@ -12,11 +10,11 @@ ARG TARGETOS
 ARG TARGETARCH
 
 # Install minimal system dependencies for building
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+RUN apk add --no-cache \
+    build-base \
     ca-certificates \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apk/*
 
 # Create app directory
 WORKDIR /app
@@ -28,6 +26,7 @@ COPY pyproject.toml uv.lock ./
 # Use --no-install-project to cache dependencies separately
 # Use --no-editable for smaller final image
 ENV UV_COMPILE_BYTECODE=1
+ENV PYTHONOPTIMIZE=2
 RUN --mount=from=ghcr.io/astral-sh/uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-editable
@@ -41,22 +40,25 @@ RUN --mount=from=ghcr.io/astral-sh/uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
+# Compile bytecode for smaller runtime
+RUN python -m compileall /app/.venv/lib/python3.13/site-packages/
+
 # Stage 2: Optimized runtime image
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13-alpine3.21 AS runtime
 
 # Build arguments for multi-platform builds
 ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 
-# Install only essential runtime dependencies (removed procps and curl)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install only essential runtime dependencies
+RUN apk add --no-cache \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apk/*
 
 # Create non-root user for security
-RUN groupadd --gid 1000 app && \
-    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home app
+RUN addgroup -g 1000 app && \
+    adduser -D -u 1000 -G app app
 
 # Create app directory
 WORKDIR /app
@@ -64,9 +66,8 @@ WORKDIR /app
 # Copy the virtual environment from builder stage
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 
-# Copy project files
+# Copy only necessary project files
 COPY --from=builder --chown=app:app /app/src /app/src
-COPY --from=builder --chown=app:app /app/pyproject.toml /app/uv.lock /app/README.md /app/LICENSE ./
 
 # Create configs directory for mounting
 RUN mkdir -p /app/configs && chown app:app /app/configs
@@ -80,17 +81,18 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Set Python environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONOPTIMIZE=2
 ENV UV_COMPILE_BYTECODE=1
 
 # Health check (simplified without curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import mover_status; print('OK')" || exit 1
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Default command - can be overridden
 CMD ["python", "-m", "mover_status", "--help"]
 
 # Stage 3: Development image (optional)
-FROM python:3.13-slim-bookworm AS development
+FROM python:3.13-alpine3.21 AS development
 
 # Build arguments for multi-platform builds
 ARG TARGETPLATFORM
@@ -98,15 +100,16 @@ ARG TARGETOS
 ARG TARGETARCH
 
 # Install runtime dependencies for development
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     curl \
     ca-certificates \
     procps \
-    && rm -rf /var/lib/apt/lists/*
+    bash \
+    && rm -rf /var/cache/apk/*
 
 # Create non-root user for security
-RUN groupadd --gid 1000 app && \
-    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home app
+RUN addgroup -g 1000 app && \
+    adduser -D -u 1000 -G app -s /bin/bash app
 
 # Create app directory
 WORKDIR /app
@@ -116,7 +119,8 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 
 # Copy project files
 COPY --from=builder --chown=app:app /app/src /app/src
-COPY --from=builder --chown=app:app /app/pyproject.toml /app/uv.lock /app/README.md /app/LICENSE ./
+COPY --from=builder --chown=app:app /app/pyproject.toml /app/uv.lock ./
+COPY --chown=app:app README.md LICENSE ./
 
 # Create configs directory for mounting
 RUN mkdir -p /app/configs && chown app:app /app/configs
@@ -135,6 +139,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Set Python environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONOPTIMIZE=2
 ENV UV_COMPILE_BYTECODE=1
 
 # Expose common development ports
