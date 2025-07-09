@@ -1,0 +1,859 @@
+---
+name: E2E Mover Test
+
+"on":
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      test_file_sizes:
+        description: "Test file sizes in MB (comma-separated)"
+        required: false
+        default: "100,1000,2000"
+        type: string
+      skip_large_files:
+        description: "Skip large file generation (for faster testing)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.ref_name }}-${{
+    github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CACHE_SIZE_GB: "10"
+  ARRAY_SIZE_GB: "20"
+  MOVER_LOG_LEVEL: "DEBUG"
+
+jobs:
+  setup-environment:
+    name: "setup mock unraid environment"
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event_name == 'workflow_dispatch'
+    outputs:
+      test-file-sizes: ${{ steps.parse-inputs.outputs.test-file-sizes }}
+      skip-large-files: ${{ steps.parse-inputs.outputs.skip-large-files }}
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 2048
+          swap-size-mb: 1024
+          build-mount-path: /mnt/build
+          remove-dotnet: true
+          remove-android: true
+          remove-haskell: true
+          remove-codeql: true
+          remove-docker-images: true
+
+      - name: Parse workflow inputs
+        id: parse-inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "test-file-sizes=${{ github.event.inputs.test_file_sizes }}" >> $GITHUB_OUTPUT
+            echo "skip-large-files=${{ github.event.inputs.skip_large_files }}" >> $GITHUB_OUTPUT
+          else
+            echo "test-file-sizes=100,1000,2000" >> $GITHUB_OUTPUT
+            echo "skip-large-files=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Create mock Unraid filesystem structure
+        run: |
+          # Create main directories
+          sudo mkdir -p /mnt/build/{cache,array,docker,system}
+
+          # Create Unraid-like directory structure
+          sudo mkdir -p /mnt/build/cache/{appdata,domains,shares}
+          sudo mkdir -p /mnt/build/array/{disk1,disk2,disk3}
+          sudo mkdir -p /mnt/build/system/{config,logs,tmp}
+
+          # Create shares structure
+          sudo mkdir -p /mnt/build/cache/shares/{media,downloads,appdata}
+          sudo mkdir -p /mnt/build/array/disk1/{media,downloads}
+          sudo mkdir -p /mnt/build/array/disk2/{media,downloads}
+
+          # Set permissions
+          sudo chmod -R 755 /mnt/build
+          sudo chown -R $(id -u):$(id -g) /mnt/build
+
+          # Create PID directory
+          sudo mkdir -p /var/run
+          sudo chmod 755 /var/run
+
+      - name: Generate mock test files
+        if: steps.parse-inputs.outputs.skip-large-files == 'false'
+        run: |
+          # Parse file sizes
+          IFS=',' read -ra SIZES <<< "${{ steps.parse-inputs.outputs.test-file-sizes }}"
+
+          # Generate test files in cache (to be moved)
+          for size in "${SIZES[@]}"; do
+            echo "Generating ${size}MB test file..."
+
+            # Create sparse file first, then fill with some data
+            truncate -s "${size}M" "/mnt/build/cache/shares/media/test_${size}MB.dat"
+
+            # Fill first and last 1MB with actual data to simulate real files
+            dd if=/dev/urandom of="/mnt/build/cache/shares/media/test_${size}MB.dat" \
+              bs=1M count=1 seek=0 conv=notrunc status=none
+
+            if [ "$size" -gt 1 ]; then
+              dd if=/dev/urandom of="/mnt/build/cache/shares/media/test_${size}MB.dat" \
+                bs=1M count=1 seek=$((size-1)) conv=notrunc status=none
+            fi
+          done
+
+          # Generate smaller files for realistic distribution
+          for i in {1..20}; do
+            dd if=/dev/urandom of="/mnt/build/cache/shares/downloads/file_${i}.txt" \
+              bs=1K count=$((RANDOM % 1000 + 1)) status=none
+          done
+
+          # Generate some directory structures
+          mkdir -p /mnt/build/cache/shares/appdata/{plex,sonarr,radarr}
+          for app in plex sonarr radarr; do
+            mkdir -p "/mnt/build/cache/shares/appdata/${app}/config"
+            echo "Config data for ${app}" > "/mnt/build/cache/shares/appdata/${app}/config/settings.conf"
+          done
+
+      - name: Create mock files for fast testing
+        if: steps.parse-inputs.outputs.skip-large-files == 'true'
+        run: |
+          # Create smaller test files for faster CI runs
+          for size in 1 5 10; do
+            echo "Creating ${size}MB test file..."
+            dd if=/dev/urandom of="/mnt/build/cache/shares/media/test_${size}MB.dat" \
+              bs=1M count=$size status=none
+          done
+
+          # Create directory structure
+          mkdir -p /mnt/build/cache/shares/appdata/test-app
+          echo "Test config" > /mnt/build/cache/shares/appdata/test-app/config.conf
+
+      - name: Display filesystem structure
+        run: |
+          echo "=== Filesystem Structure ==="
+          find /mnt/build -type f -exec ls -lh {} \; | head -20
+          echo ""
+          echo "=== Disk Usage ==="
+          du -sh /mnt/build/*
+          echo ""
+          echo "=== Available Space ==="
+          df -h /mnt/build
+
+      - name: Archive mock filesystem
+        run: |
+          cd /mnt/build
+          tar -czf /tmp/mock-unraid-fs.tar.gz .
+          ls -lh /tmp/mock-unraid-fs.tar.gz
+
+      - name: Upload mock filesystem
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-unraid-filesystem
+          path: /tmp/mock-unraid-fs.tar.gz
+          retention-days: 1
+
+  create-test-configs:
+    name: "create test configurations"
+    runs-on: ubuntu-latest
+    needs: setup-environment
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test configuration files
+        run: |
+          mkdir -p test-configs
+
+          # Create main config for E2E testing
+          cat > test-configs/config.yaml << 'EOF'
+          # E2E Test Configuration
+          monitoring:
+            interval: 5
+            detection_timeout: 30
+            dry_run: false
+
+          process:
+            name: "mover"
+            paths:
+              - "/usr/local/sbin/mover"
+              - "/usr/local/emhttp/plugins/ca.mover.tuning/age_mover"
+              - "/usr/local/sbin/mover.old"
+
+          progress:
+            min_change_threshold: 1.0
+            estimation_window: 5
+            exclusions:
+              - "/.Trash-*"
+              - "/lost+found"
+              - "/tmp"
+              - "/var/tmp"
+              - "/.cache"
+
+          notifications:
+            enabled_providers:
+              - "discord"
+            events:
+              - "started"
+              - "progress"
+              - "completed"
+              - "failed"
+            rate_limits:
+              progress: 30
+              status: 10
+
+          logging:
+            level: "DEBUG"
+            format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            file: "/app/logs/mover-status.log"
+          EOF
+
+          # Create Discord config for E2E testing
+          cat > test-configs/config_discord.yaml << 'EOF'
+          # Discord E2E Test Configuration
+          discord:
+            webhook_url: "${DISCORD_WEBHOOK_URL}"
+            username: "Mover Status E2E Test"
+            avatar_url: null
+
+            embed:
+              color: 0x00ff00
+              title: "Unraid Mover Status"
+              footer_text: "E2E Test Environment"
+              timestamp: true
+
+            mentions:
+              users: []
+              roles: []
+              everyone: false
+
+            templates:
+              started: |
+                🚀 **Mover Started**
+                Process: `{process_name}` (PID: {process_pid})
+                Command: `{process_command}`
+                Started at: {timestamp}
+
+              progress: |
+                📊 **Mover Progress Update**
+                Progress: {progress:.1f}%
+                Processed: {processed_size} / {total_size}
+                Speed: {speed}/s
+                ETC: {etc}
+
+              completed: |
+                ✅ **Mover Completed**
+                Total time: {duration}
+                Files processed: {files_processed}
+                Data moved: {total_size}
+
+              failed: |
+                ❌ **Mover Failed**
+                Error: {error_message}
+                Duration: {duration}
+                Last progress: {progress:.1f}%
+          EOF
+
+          # Create plugin config for ca.mover.tuning simulation
+          cat > test-configs/ca.mover.tuning.cfg << 'EOF'
+          logging=yes
+          debuglogging=yes
+          moverDisabled=no
+          parity=yes
+          force=no
+          forceParity=no
+          movenow=yes
+          movingThreshold=75
+          fillupThreshold=85
+          age=yes
+          sizef=no
+          sparsnessf=no
+          filelistf=no
+          filetypesf=no
+          testmode=no
+          moverNice=0
+          moverIO=-c 2 -n 0
+          beforescript=
+          afterscript=
+          EOF
+
+          # Create var.ini for Unraid system info
+          cat > test-configs/var.ini << 'EOF'
+          version=6.12.6
+          mdResyncPos=0
+          mdState=STARTED
+          EOF
+
+      - name: Upload test configurations
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-configurations
+          path: test-configs/
+          retention-days: 1
+
+  create-mover-simulation:
+    name: "create mover simulation scripts"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Unraid mover simulation scripts
+        run: |
+          mkdir -p simulation-scripts
+
+          # Create mock mover bash script
+          cat > simulation-scripts/mover << 'EOF'
+          #!/bin/bash
+          # Mock Unraid mover script for E2E testing
+
+          PPPID=$(ps h -o ppid= $PPID 2>/dev/null || echo "1")
+          P_COMMAND=$(ps h -o %c $PPPID 2>/dev/null || echo "bash")
+
+          # Log the execution
+          echo "$(date): Mock mover called with P_COMMAND=$P_COMMAND, args=$*" >> /app/logs/mover.log
+
+          # Call the PHP script
+          /usr/local/emhttp/plugins/ca.mover.tuning/mover.php "$P_COMMAND" "$*"
+          EOF
+
+          # Create mock mover.php script
+          cat > simulation-scripts/mover.php << 'EOF'
+          #!/usr/bin/php
+          <?php
+          // Mock mover.php for E2E testing
+
+          // Parse configuration
+          $cfg = [
+              'logging' => 'yes',
+              'debuglogging' => 'yes',
+              'moverDisabled' => 'no',
+              'parity' => 'yes',
+              'force' => 'no',
+              'forceParity' => 'no',
+              'movenow' => 'yes',
+              'movingThreshold' => '75',
+              'fillupThreshold' => '85',
+              'age' => 'yes',
+              'testmode' => 'no',
+              'moverNice' => '0',
+              'moverIO' => '-c 2 -n 0',
+              'beforescript' => '',
+              'afterscript' => ''
+          ];
+
+          $vars = [
+              'version' => '6.12.6',
+              'mdResyncPos' => '0',
+              'mdState' => 'STARTED'
+          ];
+
+          $cron = $argv[1] == "crond";
+          $bash = $argv[1] == "bash";
+          $args = [];
+
+          function logger($string) {
+              global $cfg;
+              if ($cfg['logging'] == 'yes') {
+                  exec("logger -t mover " . escapeshellarg($string));
+                  file_put_contents("/app/logs/mover.log", date('Y-m-d H:i:s') . " - " . $string . "\n", FILE_APPEND);
+              }
+          }
+
+          function startMover() {
+              global $vars, $cfg, $cron, $bash, $argv, $args;
+
+              if (isset($argv[2])) {
+                  $args[] = trim($argv[2]);
+              }
+
+              if ($cfg['debuglogging'] == 'yes') {
+                  if ($bash) {
+                      logger("Manually executed (bash)");
+                  } else if ($cron) {
+                      logger("Auto executed (crond)");
+                  } else if (empty($argv[1])) {
+                      logger("Manually executed (Move button)");
+                  }
+              }
+
+              if (!$cron) {
+                  if (isset($args[0])) {
+                      $option1 = $args[0];
+                      if ($cfg['debuglogging'] == 'yes') {
+                          logger("Option 1: $option1");
+                      }
+                  } else if (version_compare($vars['version'], '7.0.0', '<')) {
+                      $args[0] = 'start';
+                      $option1 = $args[0];
+                      if ($cfg['debuglogging'] == 'yes') {
+                          logger("Option 1 set to 'start' due to version < 7.0.0");
+                      }
+                  }
+
+                  $options = implode(' ', $args);
+
+                  if ($cfg['debuglogging'] == 'yes') {
+                      logger("Options: $options");
+                  }
+              } else {
+                  $options = "start";
+                  logger("Cron + options: $options");
+              }
+
+              if ($options != "stop") {
+                  clearstatcache();
+                  $pid = @file_get_contents("/var/run/mover.pid");
+                  if ($pid) {
+                      logger("Mover already running");
+                      exit();
+                  }
+              }
+
+              if ($cfg['force'] == "yes") {
+                  if ($cfg['forceParity'] == "no" && $vars['mdResyncPos']) {
+                      logger("Parity Check / Rebuild in Progress. Not running forced move");
+                      exit();
+                  }
+              }
+
+              if ($options == "stop") {
+                  logger("Stopping mover");
+                  @unlink("/var/run/mover.pid");
+                  exit();
+              }
+
+              // Start the actual mover simulation
+              file_put_contents("/var/run/mover.pid", getmypid());
+              logger("Starting Mover (simulated)...");
+
+              // Call the actual mover simulation
+              $niceLevel = $cfg['moverNice'] ?: "0";
+              $ioLevel = $cfg['moverIO'] ?: "-c 2 -n 0";
+
+              logger("Executing simulated mover with options: $options");
+
+              // Execute the simulation script
+              passthru("/app/simulation-scripts/simulate_mover.sh $options");
+
+              @unlink("/var/run/mover.pid");
+              logger("Mover simulation completed");
+          }
+
+          if ($cron && $cfg['moverDisabled'] == 'yes') {
+              logger("Mover schedule disabled");
+              exit();
+          }
+
+          if ($cfg['parity'] == 'no' && $vars['mdResyncPos']) {
+              logger("Parity Check / rebuild in progress. Not running mover");
+              exit();
+          }
+
+          logger("Starting Mover...");
+          startMover();
+          ?>
+          EOF
+
+          # Create the actual mover simulation script
+          cat > simulation-scripts/simulate_mover.sh << 'EOF'
+          #!/bin/bash
+          # Simulated mover process that moves files from cache to array
+
+          set -e
+
+          CACHE_DIR="/mnt/build/cache"
+          ARRAY_DIR="/mnt/build/array"
+          LOG_FILE="/app/logs/mover.log"
+
+          # Function to log messages
+          log_message() {
+              echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+          }
+
+          # Function to simulate file movement with progress
+          simulate_file_move() {
+              local source_file="$1"
+              local dest_dir="$2"
+              local filename=$(basename "$source_file")
+              local dest_file="$dest_dir/$filename"
+
+              log_message "Moving $filename to array..."
+
+              # Get file size
+              local size=$(stat -c%s "$source_file")
+
+              # Create destination directory if it doesn't exist
+              mkdir -p "$dest_dir"
+
+              # Simulate the move with progress (copy then delete)
+              cp "$source_file" "$dest_file"
+
+              # Small delay to simulate actual disk I/O
+              sleep 1
+
+              # Remove source file
+              rm "$source_file"
+
+              log_message "Moved $filename ($size bytes) to array storage"
+          }
+
+          # Main mover simulation logic
+          main() {
+              log_message "=== Starting Mover Simulation ==="
+
+              # Find all files in cache shares
+              local files_to_move=()
+              while IFS= read -r -d '' file; do
+                  files_to_move+=("$file")
+              done < <(find "$CACHE_DIR/shares" -type f -print0 2>/dev/null || true)
+
+              local total_files=${#files_to_move[@]}
+
+              if [ $total_files -eq 0 ]; then
+                  log_message "No files to move"
+                  exit 0
+              fi
+
+              log_message "Found $total_files files to move"
+
+              # Process each file
+              local count=0
+              for file in "${files_to_move[@]}"; do
+                  ((count++))
+
+                  # Determine destination based on file path
+                  local rel_path=${file#$CACHE_DIR/shares/}
+                  local dest_dir="$ARRAY_DIR/disk1/$(dirname "$rel_path")"
+
+                  # Create destination directory structure
+                  mkdir -p "$dest_dir"
+
+                  # Simulate the move
+                  simulate_file_move "$file" "$dest_dir"
+
+                  # Log progress
+                  local progress=$((count * 100 / total_files))
+                  log_message "Progress: $progress% ($count/$total_files files)"
+
+                  # Add some delay between files for realistic simulation
+                  sleep 2
+              done
+
+              log_message "=== Mover Simulation Completed ==="
+              log_message "Total files moved: $total_files"
+          }
+
+          # Execute main function
+          main "$@"
+          EOF
+
+          # Make scripts executable
+          chmod +x simulation-scripts/mover
+          chmod +x simulation-scripts/mover.php
+          chmod +x simulation-scripts/simulate_mover.sh
+
+      - name: Upload simulation scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-scripts
+          path: simulation-scripts/
+          retention-days: 1
+
+  run-e2e-tests:
+    name: "run end-to-end tests"
+    runs-on: ubuntu-latest
+    needs: [setup-environment, create-test-configs, create-mover-simulation]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mover-status
+          path: /tmp
+
+      - name: Download mock filesystem
+        uses: actions/download-artifact@v4
+        with:
+          name: mock-unraid-filesystem
+          path: /tmp
+
+      - name: Download test configurations
+        uses: actions/download-artifact@v4
+        with:
+          name: test-configurations
+          path: /tmp/test-configs
+
+      - name: Download simulation scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: simulation-scripts
+          path: /tmp/simulation-scripts
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Load Docker image
+        run: |
+          docker load --input /tmp/mover-status.tar
+          docker image ls -a
+
+      - name: Prepare test environment
+        run: |
+          # Create test directories
+          mkdir -p test-workspace/{logs,configs,simulation-scripts}
+
+          # Extract mock filesystem
+          cd test-workspace
+          tar -xzf /tmp/mock-unraid-fs.tar.gz
+
+          # Copy configurations
+          cp -r /tmp/test-configs/* configs/
+
+          # Copy simulation scripts
+          cp -r /tmp/simulation-scripts/* simulation-scripts/
+          chmod +x simulation-scripts/*
+
+          # Create required directories
+          mkdir -p logs
+          mkdir -p usr/local/{sbin,emhttp/plugins/ca.mover.tuning}
+          mkdir -p var/{run,local/emhttp}
+
+          # Set up mock Unraid paths
+          cp simulation-scripts/mover usr/local/sbin/
+          cp simulation-scripts/mover.php usr/local/emhttp/plugins/ca.mover.tuning/
+          cp configs/ca.mover.tuning.cfg var/local/emhttp/
+          cp configs/var.ini var/local/emhttp/
+
+          # Set permissions
+          chmod +x usr/local/sbin/mover
+          chmod +x usr/local/emhttp/plugins/ca.mover.tuning/mover.php
+
+          # Display structure
+          echo "=== Test Environment Structure ==="
+          find . -type f -name "*.sh" -o -name "*.php" -o -name "mover" | head -10
+
+          echo "=== Available Test Files ==="
+          find . -name "*.dat" -o -name "*.txt" | head -10
+
+      - name: Create Docker Compose for E2E testing
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          cd test-workspace
+
+          # Create Docker Compose file for E2E testing
+          cat > docker-compose.e2e.yml << 'EOF'
+          services:
+            mover-status-e2e:
+              image: mover-status:latest
+              container_name: mover-status-e2e
+              environment:
+                - MOVER_STATUS_NOTIFICATIONS__ENABLED_PROVIDERS__0=discord
+                - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+                - MOVER_STATUS_LOGGING__LEVEL=DEBUG
+                - MOVER_STATUS_MONITORING__INTERVAL=5
+                - MOVER_STATUS_MONITORING__DETECTION_TIMEOUT=30
+                - MOVER_STATUS_PROCESS__NAME=mover
+                - MOVER_STATUS_PROGRESS__MIN_CHANGE_THRESHOLD=1.0
+              volumes:
+                - "./configs:/app/configs:ro"
+                - "./logs:/app/logs:rw"
+                - "./usr:/usr:ro"
+                - "./var:/var:rw"
+                - "./mnt:/mnt:rw"
+                - "./simulation-scripts:/app/simulation-scripts:ro"
+              command: ["python", "-m", "mover_status", "--config", "/app/configs/config.yaml"]
+              network_mode: "host"
+              pid: "host"
+              privileged: true
+              restart: "no"
+
+            mover-simulator:
+              image: mover-status:latest
+              container_name: mover-simulator
+              depends_on:
+                - mover-status-e2e
+              volumes:
+                - "./logs:/app/logs:rw"
+                - "./usr:/usr:ro"
+                - "./var:/var:rw"
+                - "./mnt:/mnt:rw"
+                - "./simulation-scripts:/app/simulation-scripts:ro"
+              command: ["sleep", "10"]
+              network_mode: "host"
+              pid: "host"
+              privileged: true
+              restart: "no"
+          EOF
+
+      - name: Run E2E test scenario
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          cd test-workspace
+
+          echo "=== Starting E2E Test Scenario ==="
+
+          # Start mover-status in background
+          docker compose -f docker-compose.e2e.yml up -d mover-status-e2e
+
+          # Wait for mover-status to start
+          echo "Waiting for mover-status to initialize..."
+          sleep 10
+
+          # Check if mover-status is running
+          if ! docker ps | grep -q mover-status-e2e; then
+              echo "❌ mover-status container failed to start"
+              docker compose -f docker-compose.e2e.yml logs mover-status-e2e
+              exit 1
+          fi
+
+          echo "✅ mover-status container started successfully"
+
+          # Simulate manual mover execution (bash)
+          echo "=== Test 1: Manual Mover Execution (bash) ==="
+          docker compose -f docker-compose.e2e.yml exec -T mover-simulator \
+            /usr/local/sbin/mover start
+
+          # Wait for mover to complete
+          echo "Waiting for mover simulation to complete..."
+          sleep 30
+
+          # Check if Discord webhook was called (check logs)
+          echo "=== Checking mover-status logs ==="
+          docker compose -f docker-compose.e2e.yml logs mover-status-e2e | tail -20
+
+          # Test 2: Simulate cron execution
+          echo "=== Test 2: Cron Mover Execution ==="
+
+          # Reset filesystem for second test
+          if [ -f ../mock-unraid-fs.tar.gz ]; then
+              tar -xzf /tmp/mock-unraid-fs.tar.gz
+          fi
+
+          # Run mover via cron simulation
+          docker compose -f docker-compose.e2e.yml exec -T mover-simulator \
+            /usr/local/emhttp/plugins/ca.mover.tuning/mover.php crond start
+
+          # Wait for completion
+          sleep 30
+
+          # Check final logs
+          echo "=== Final mover-status logs ==="
+          docker compose -f docker-compose.e2e.yml logs mover-status-e2e | tail -30
+
+          # Stop containers
+          docker compose -f docker-compose.e2e.yml down
+
+      - name: Validate test results
+        run: |
+          cd test-workspace
+
+          echo "=== Test Results Validation ==="
+
+          # Check if log files were created
+          if [ -f logs/mover-status.log ]; then
+              echo "✅ mover-status log file created"
+              echo "Last 10 lines of mover-status.log:"
+              tail -10 logs/mover-status.log
+          else
+              echo "❌ mover-status log file not found"
+          fi
+
+          if [ -f logs/mover.log ]; then
+              echo "✅ mover simulation log file created"
+              echo "Last 10 lines of mover.log:"
+              tail -10 logs/mover.log
+          else
+              echo "❌ mover simulation log file not found"
+          fi
+
+          # Check if files were moved
+          echo "=== Checking file movement results ==="
+          echo "Files remaining in cache:"
+          find mnt/build/cache -type f -name "*.dat" -o -name "*.txt" | wc -l
+
+          echo "Files moved to array:"
+          find mnt/build/array -type f -name "*.dat" -o -name "*.txt" | wc -l
+
+          # Validate Discord webhook was called (check for webhook-related logs)
+          if [ -f logs/mover-status.log ]; then
+              if grep -q "discord" logs/mover-status.log; then
+                  echo "✅ Discord integration detected in logs"
+              else
+                  echo "⚠️  Discord integration not detected in logs"
+              fi
+
+              if grep -q "started\|progress\|completed" logs/mover-status.log; then
+                  echo "✅ Mover status events detected"
+              else
+                  echo "❌ No mover status events detected"
+              fi
+          fi
+
+          # Check for any errors
+          if [ -f logs/mover-status.log ]; then
+              if grep -qi "error\|exception\|failed" logs/mover-status.log; then
+                  echo "⚠️  Errors detected in logs:"
+                  grep -i "error\|exception\|failed" logs/mover-status.log | tail -5
+              else
+                  echo "✅ No errors detected in logs"
+              fi
+          fi
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: |
+            test-workspace/logs/
+            test-workspace/configs/
+          retention-days: 7
+
+  send-test-notification:
+    name: "send test completion notification"
+    runs-on: ubuntu-latest
+    needs: run-e2e-tests
+    if: always() && secrets.DISCORD_WEBHOOK_URL
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # Determine status
+          if [ "${{ needs.run-e2e-tests.result }}" = "success" ]; then
+              STATUS="✅ PASSED"
+              COLOR="3066993"
+          else
+              STATUS="❌ FAILED"
+              COLOR="15158332"
+          fi
+
+          # Send notification
+          curl -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"E2E Mover Test Results\",
+                \"description\": \"**Status:** $STATUS\n**Branch:** ${{ github.ref_name }}\n**Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                \"color\": $COLOR,
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",
+                \"footer\": {
+                  \"text\": \"GitHub Actions E2E Test\"
+                }
+              }]
+            }"
