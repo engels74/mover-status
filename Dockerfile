@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # This method correctly handles different architectures during cross-compilation
 ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
 RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Create app directory
 WORKDIR /app
@@ -62,6 +63,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # This ensures we get the correct architecture-specific binary
 ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
 RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Create non-root user for security
 RUN groupadd --gid 1000 app && \
