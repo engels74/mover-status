@@ -90,7 +90,7 @@ jobs:
           # Load Docker format archives
           docker load --input /tmp/mover-status.tar
           docker load --input /tmp/mover-status-dev.tar
-          
+
           # Verify images were loaded
           docker image ls -a
 
@@ -104,27 +104,28 @@ jobs:
 
       - name: Test with example config
         run: |
+          # Create test script
+          cat > test_config.py << 'EOF'
+          import yaml
+          with open('/app/configs/config.yaml.example') as f:
+              config = yaml.safe_load(f)
+              print('Config validation successful')
+              process_config = config.get('process', {})
+              process_name = process_config.get('name', 'unknown')
+              print(f'Process name: {process_name}')
+          EOF
+
           # Test config validation with example config
           docker run --rm \
             -v "${{ github.workspace }}/configs/examples:/app/configs:ro" \
-            mover-status:latest python -c "
-            import yaml
-            with open('/app/configs/config.yaml.example') as f:
-                config = yaml.safe_load(f)
-                print('Config validation successful')
-                process_config = config.get(\"process\", {})
-                process_name = process_config.get(\"name\", \"unknown\")
-                print(f'Process name: {process_name}')
-          "
+            -v "${{ github.workspace }}/test_config.py:/app/test_config.py:ro" \
+            mover-status:latest python /app/test_config.py
 
       - name: Test development dependencies
         run: |
           # Test development dependencies
-          docker run --rm mover-status:dev python -c "
-            import pytest
-            import ruff
-            print('Development dependencies available')
-          "
+          docker run --rm mover-status:dev python -c \
+            "import pytest; import ruff; print('Dev dependencies available')"
 
       - name: Test Docker Compose
         run: |
