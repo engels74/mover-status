@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv using the official distroless image for proper cross-platform support
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv using the official installer script for proper cross-platform support
+# This method correctly handles different architectures during cross-compilation
+ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
+RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
 
 # Create app directory
 WORKDIR /app
@@ -55,8 +57,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for runtime use
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv for runtime use using the official installer script
+# This ensures we get the correct architecture-specific binary
+ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
+RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
 
 # Create non-root user for security
 RUN groupadd --gid 1000 app && \
