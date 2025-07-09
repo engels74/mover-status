@@ -89,9 +89,9 @@ jobs:
 
       - name: Load images
         run: |
-          # Load OCI archives directly into Docker
-          docker load --input /tmp/mover-status.tar
-          docker load --input /tmp/mover-status-dev.tar
+          # Import OCI archives using docker buildx imagetools
+          docker buildx imagetools import --tag mover-status:latest /tmp/mover-status.tar
+          docker buildx imagetools import --tag mover-status:dev /tmp/mover-status-dev.tar
           
           # Verify images were loaded
           docker image ls -a
