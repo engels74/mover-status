@@ -22,6 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -83,10 +89,8 @@ jobs:
 
       - name: Load images
         run: |
-          docker buildx imagetools create --tag mover-status:latest \
-            oci-archive:/tmp/mover-status.tar
-          docker buildx imagetools create --tag mover-status:dev \
-            oci-archive:/tmp/mover-status-dev.tar
+          docker load --input /tmp/mover-status.tar
+          docker load --input /tmp/mover-status-dev.tar
           docker image ls -a
 
       - name: Test basic functionality
