@@ -19,9 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv using the official installer script for proper cross-platform support
 # This method correctly handles different architectures during cross-compilation
-ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
-RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin:$PATH"
 
 # Create app directory
 WORKDIR /app
@@ -61,9 +61,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv for runtime use using the official installer script
 # This ensures we get the correct architecture-specific binary
-ADD https://astral.sh/uv/install.sh /tmp/install-uv.sh
-RUN chmod +x /tmp/install-uv.sh && /tmp/install-uv.sh && rm /tmp/install-uv.sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin:$PATH"
 
 # Create non-root user for security
 RUN groupadd --gid 1000 app && \
