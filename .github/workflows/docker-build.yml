@@ -40,7 +40,7 @@ jobs:
           tags: mover-status:latest
           cache-from: type=gha,scope=mover-status
           cache-to: type=gha,mode=min,scope=mover-status
-          outputs: type=oci,dest=/tmp/mover-status.tar
+          outputs: type=docker,dest=/tmp/mover-status.tar
 
       - name: Build and export (development)
         uses: docker/build-push-action@v6
@@ -51,7 +51,7 @@ jobs:
           tags: mover-status:dev
           cache-from: type=gha,scope=mover-status-dev
           cache-to: type=gha,mode=min,scope=mover-status-dev
-          outputs: type=oci,dest=/tmp/mover-status-dev.tar
+          outputs: type=docker,dest=/tmp/mover-status-dev.tar
 
       - name: Upload artifact (production)
         uses: actions/upload-artifact@v4
@@ -89,9 +89,9 @@ jobs:
 
       - name: Load images
         run: |
-          # Import OCI archives using docker buildx imagetools
-          docker buildx imagetools import --tag mover-status:latest /tmp/mover-status.tar
-          docker buildx imagetools import --tag mover-status:dev /tmp/mover-status-dev.tar
+          # Load Docker format archives
+          docker load --input /tmp/mover-status.tar
+          docker load --input /tmp/mover-status-dev.tar
           
           # Verify images were loaded
           docker image ls -a
