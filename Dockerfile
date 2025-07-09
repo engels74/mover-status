@@ -14,6 +14,7 @@ RUN apk add --no-cache \
     build-base \
     ca-certificates \
     curl \
+    linux-headers \
     && rm -rf /var/cache/apk/*
 
 # Create app directory
