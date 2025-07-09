@@ -103,9 +103,15 @@ CMD ["python", "-m", "mover_status", "--help"]
 # Stage 3: Development image (optional)
 FROM runtime AS development
 
+# Switch back to root to install development dependencies
+USER root
+
 # Install development dependencies
 ENV UV_COMPILE_BYTECODE=1
 RUN uv sync --locked --group dev
+
+# Switch back to app user
+USER app
 
 # Expose common development ports
 EXPOSE 8000
