@@ -7,18 +7,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 # Set working directory
 WORKDIR /app
 
-# Copy project files needed for installation
-COPY pyproject.toml uv.lock README.md ./
+# Copy minimal files for dependency installation
+COPY README.md ./
 
-# Copy source code
-COPY src/ src/
-
-# Install dependencies into a virtual environment
-# Use --no-install-project to separate dependency installation for better caching
+# Install dependencies using mounted files for pyproject and lock
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --locked --no-install-project --no-editable
 
-# Now install the project itself in non-editable mode
+# Now copy the source code
+COPY . .
+
+# Install the project itself in non-editable mode
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
