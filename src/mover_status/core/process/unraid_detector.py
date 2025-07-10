@@ -284,20 +284,91 @@ class UnraidMoverDetector(ProcessDetector):
     def _is_mover_process(self, cmdline: str, process_name: str) -> bool:
         """Check if a process is a mover process based on command line and name.
         
+        Uses strict matching to ensure we only detect genuine Unraid mover processes
+        and avoid false positives on non-Unraid systems.
+        
         Args:
             cmdline: Full command line of the process
             process_name: Name of the process
             
         Returns:
-            True if this appears to be a mover process
+            True if this appears to be a genuine Unraid mover process
         """
+        # First, check if we're likely on an Unraid system
+        if not self._is_unraid_system():
+            return False
+        
         cmdline_lower = cmdline.lower()
         name_lower = process_name.lower()
         
-        return any(
-            pattern.lower() in cmdline_lower or pattern.lower() in name_lower
-            for pattern in self.MOVER_PATTERNS
-        )
+        # Use strict pattern matching to avoid false positives
+        # Check for exact path matches or specific command patterns
+        for pattern in self.MOVER_PATTERNS:
+            pattern_lower = pattern.lower()
+            
+            # For full paths, require exact match or as argument to another command
+            if pattern_lower.startswith('/'):
+                if (pattern_lower in cmdline_lower and 
+                    (cmdline_lower.startswith(pattern_lower) or 
+                     f' {pattern_lower}' in cmdline_lower or
+                     f'={pattern_lower}' in cmdline_lower)):
+                    return True
+            # For short names, be more careful about context
+            elif pattern_lower in ['mover', 'mover.py']:
+                # Only match if it's the actual executable name or a clear script reference
+                if (name_lower == pattern_lower or 
+                    cmdline_lower.endswith(pattern_lower) or
+                    f'/{pattern_lower}' in cmdline_lower or
+                    f' {pattern_lower} ' in cmdline_lower):
+                    return True
+        
+        return False
+    
+    def _is_unraid_system(self) -> bool:
+        """Check if we're running on an Unraid system.
+        
+        Returns:
+            True if this appears to be an Unraid system, False otherwise
+        """
+        from pathlib import Path
+        
+        # Check for key Unraid system files and directories
+        unraid_indicators = [
+            '/usr/local/sbin/mover',           # The main mover script
+            '/usr/local/sbin/mover.old',       # The original mover binary
+            '/usr/local/emhttp/plugins',       # Unraid plugin directory
+            '/boot/config',                    # Unraid boot config
+            '/etc/unraid-version',             # Version file (if exists)
+        ]
+        
+        # Check if any of these key files exist
+        for indicator in unraid_indicators:
+            if Path(indicator).exists():
+                logger.debug(f"Found Unraid system indicator: {indicator}")
+                return True
+        
+        # Check for Unraid-specific environment or processes
+        try:
+            # Look for emhttp process (Unraid web interface)
+            for proc in psutil.process_iter(['name']):  # pyright: ignore[reportUnknownMemberType]
+                if proc.info['name'] == 'emhttp':
+                    logger.debug("Found emhttp process, indicating Unraid system")
+                    return True
+        except Exception:
+            pass
+        
+        # Check for Unraid-specific mount points or filesystem signatures
+        try:
+            with open('/proc/mounts', 'r') as f:
+                mounts = f.read()
+                if '/mnt/user' in mounts or '/mnt/disk' in mounts:
+                    logger.debug("Found Unraid-specific mount points")
+                    return True
+        except Exception:
+            pass
+        
+        logger.debug("No Unraid system indicators found")
+        return False
     
     def _create_process_info(self, proc: psutil.Process) -> ProcessInfo:
         """Create ProcessInfo object from psutil Process.
