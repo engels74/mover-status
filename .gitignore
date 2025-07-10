@@ -215,3 +215,5 @@ __marimo__/
 .mover_status_state.json
 .vscode/
 config.yaml
+config_telegram.yaml
+config_discord.yaml

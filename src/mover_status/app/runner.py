@@ -59,24 +59,21 @@ class ApplicationRunner:
         
         self.config_loader: ConfigLoader = ConfigLoader(config_dir)
         
-        # For now, use the basic YAML loader directly to load the specific config file
-        from ..config.loader.yaml_loader import YamlLoader
-        yaml_loader = YamlLoader()
+        # Load complete configuration (main config + provider configs + env overrides)
+        try:
+            complete_config = self.config_loader.load_complete_config()
+        except Exception as e:
+            raise ValueError(f"Failed to load configuration from '{config_dir}': {e}")
         
         try:
-            raw_config = yaml_loader.load(config_path)
+            self.config: AppConfig = AppConfig.model_validate(complete_config)
         except Exception as e:
-            raise ValueError(f"Failed to load configuration file '{config_path}': {e}")
-        
-        try:
-            self.config: AppConfig = AppConfig.model_validate(raw_config)
-        except Exception as e:
-            # Re-raise with more context about which file failed
+            # Re-raise with more context about which directory failed
             # For ValidationError, we want to preserve the original error
             if isinstance(e, ValidationError):
                 raise e  # Preserve the original ValidationError
             else:
-                raise type(e)(f"Configuration validation failed for '{config_path}': {e}") from e
+                raise type(e)(f"Configuration validation failed for '{config_dir}': {e}") from e
         
         # Override with CLI flags
         if dry_run:
