@@ -8,6 +8,8 @@ import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from ..config.loader.config_loader import ConfigLoader
 from ..config.models.main import AppConfig
 
@@ -48,7 +50,11 @@ class ApplicationRunner:
         
         # If the config file doesn't exist, try to find it using discovery logic
         if not config_path.exists():
-            config_path = self._discover_config_file()
+            discovered_path = self._discover_config_file()
+            if not discovered_path.exists():
+                # No configuration file found anywhere
+                self._handle_missing_configuration(config_path)
+            config_path = discovered_path
             config_dir = config_path.parent if config_path.parent != Path('.') else Path.cwd()
         
         self.config_loader: ConfigLoader = ConfigLoader(config_dir)
@@ -56,9 +62,21 @@ class ApplicationRunner:
         # For now, use the basic YAML loader directly to load the specific config file
         from ..config.loader.yaml_loader import YamlLoader
         yaml_loader = YamlLoader()
-        raw_config = yaml_loader.load(config_path)
         
-        self.config: AppConfig = AppConfig.model_validate(raw_config)
+        try:
+            raw_config = yaml_loader.load(config_path)
+        except Exception as e:
+            raise ValueError(f"Failed to load configuration file '{config_path}': {e}")
+        
+        try:
+            self.config: AppConfig = AppConfig.model_validate(raw_config)
+        except Exception as e:
+            # Re-raise with more context about which file failed
+            # For ValidationError, we want to preserve the original error
+            if isinstance(e, ValidationError):
+                raise e  # Preserve the original ValidationError
+            else:
+                raise type(e)(f"Configuration validation failed for '{config_path}': {e}") from e
         
         # Override with CLI flags
         if dry_run:
@@ -135,6 +153,68 @@ class ApplicationRunner:
         
         # Default fallback
         return Path('config.yaml')
+    
+    def _handle_missing_configuration(self, requested_path: Path) -> None:
+        """Handle missing configuration file with helpful error message.
+        
+        Args:
+            requested_path: The configuration file path that was requested
+            
+        Raises:
+            FileNotFoundError: Always raises with helpful guidance
+        """
+        error_message = f"Configuration file not found: {requested_path}\n"
+        error_message += "\nSearched in the following locations:\n"
+        
+        # Show current directory search
+        error_message += f"  • Current directory: {Path.cwd()}\n"
+        for config_file in ['config.yaml', 'config.yml', 'config.json', 'config.toml']:
+            error_message += f"    - {config_file}\n"
+        
+        # Show home directory search
+        try:
+            home_dir = Path.home()
+            error_message += f"  • Home directory: {home_dir}\n"
+            for config_file in ['.mover-status.yaml', '.mover-status.yml', '.mover-status.json', '.mover-status.toml']:
+                error_message += f"    - {config_file}\n"
+        except (OSError, RuntimeError):
+            error_message += "  • Home directory: (unavailable)\n"
+        
+        # Show system directories
+        error_message += "  • System directories:\n"
+        system_paths = [
+            '/etc/mover-status/config.yaml',
+            '/etc/mover-status.yaml',
+            '/usr/local/etc/mover-status/config.yaml',
+            '/usr/local/etc/mover-status.yaml',
+        ]
+        for path in system_paths:
+            error_message += f"    - {path}\n"
+        
+        error_message += "\nTo get started:\n"
+        error_message += "  1. Copy the example configuration to 'config.yaml' in your current directory\n"
+        error_message += "  2. Edit the configuration file to add your credentials\n"
+        error_message += "  3. Run 'mover-status --validate-config' to check your configuration\n"
+        
+        # Check if there's an example config nearby
+        example_configs = [
+            'configs/examples/config.yaml.example',
+            'config.yaml.example',
+            'example-config.yaml'
+        ]
+        
+        found_example = None
+        for example in example_configs:
+            example_path = Path(example)
+            if example_path.exists():
+                found_example = example_path
+                break
+        
+        if found_example:
+            error_message += f"\nExample configuration found at: {found_example}\n"
+            error_message += f"Copy it with: cp {found_example} config.yaml\n"
+        
+        raise FileNotFoundError(error_message)
     
     def _setup_logging(self) -> None:
         """Set up logging based on configuration and CLI options."""
