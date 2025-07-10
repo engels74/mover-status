@@ -121,6 +121,15 @@ class DiscordConfig(BaseConfig):
     @classmethod
     def validate_webhook_url(cls, v: str) -> str:
         """Validate Discord webhook URL format."""
+        # Allow placeholder values for initial configuration
+        placeholder_values = [
+            "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+            "${DISCORD_WEBHOOK_URL}",
+            "YOUR_DISCORD_WEBHOOK_URL_HERE"
+        ]
+        if v in placeholder_values:
+            return v
+            
         pattern = r"^https://discord\.com/api/webhooks/\d+/[A-Za-z0-9_-]+$"
         if not re.match(pattern, v):
             raise ValueError(
@@ -246,6 +255,15 @@ class TelegramConfig(BaseConfig):
     @classmethod
     def validate_bot_token(cls, v: str) -> str:
         """Validate Telegram bot token format."""
+        # Allow placeholder values for initial configuration
+        placeholder_values = [
+            "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+            "${TELEGRAM_BOT_TOKEN}",
+            "YOUR_BOT_TOKEN_FROM_BOTFATHER"
+        ]
+        if v in placeholder_values:
+            return v
+            
         pattern = r"^\d+:[A-Za-z0-9_-]+$"
         if not re.match(pattern, v):
             raise ValueError(

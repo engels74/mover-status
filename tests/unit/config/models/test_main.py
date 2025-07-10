@@ -265,3 +265,130 @@ class TestAppConfig:
         assert config.providers.telegram is not None
         assert config.providers.discord is not None
         assert len(config.providers.telegram.chat_ids) == 2
+
+    def test_app_config_validation_enabled_providers_not_configured_error_message(self) -> None:
+        """Test exact error message when enabled providers are not configured."""
+        with pytest.raises(ValidationError) as exc_info:
+            _ = AppConfig(
+                process=ProcessConfig(name="mover", paths=["/usr/bin/mover"]),
+                notifications=NotificationConfig(enabled_providers=["telegram", "discord"]),
+                providers=ProviderConfig(),  # No provider configs
+            )
+        
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+        # Check the exact error message matches what we see in the real error
+        error_messages = [str(error.get("ctx", {}).get("error", "")) for error in errors]
+        expected_message1 = "Enabled providers {'discord', 'telegram'} are not configured"
+        expected_message2 = "Enabled providers {'telegram', 'discord'} are not configured"
+        assert any(expected_message1 in msg or expected_message2 in msg for msg in error_messages)
+
+    def test_app_config_validation_current_config_file_structure(self) -> None:
+        """Test AppConfig validation with the current config file structure that causes the error."""
+        # This simulates the exact structure from the current config.yaml file
+        config_dict = {
+            "monitoring": {
+                "interval": 30,
+                "detection_timeout": 60,
+                "dry_run": False,
+            },
+            "process": {
+                "name": "mover",
+                "paths": ["/usr/local/sbin/mover", "/usr/bin/mover"],
+            },
+            "progress": {
+                "min_change_threshold": 5.0,
+                "estimation_window": 10,
+                "exclusions": ["/.Trash-*", "/lost+found", "/tmp", "/var/tmp"],
+            },
+            "notifications": {
+                "enabled_providers": ["telegram", "discord"],
+                "events": ["started", "progress", "completed", "failed"],
+                "rate_limits": {"progress": 300, "status": 60},
+            },
+            "logging": {
+                "level": "INFO",
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "file": None,
+            },
+            # Missing providers section - this causes the validation error
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            _ = AppConfig.model_validate(config_dict)
+        
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+        # Check that the error message contains the expected text
+        # Look for value_error type with our specific message
+        value_errors = [error for error in errors if error.get("type") == "value_error"]
+        assert len(value_errors) >= 1
+        # Actually check the ctx for the error message
+        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))
+        # The set order might vary, so check both possible orders
+        expected_message1 = "Enabled providers {'discord', 'telegram'} are not configured"
+        expected_message2 = "Enabled providers {'telegram', 'discord'} are not configured"
+        assert expected_message1 in actual_error_msg or expected_message2 in actual_error_msg
+
+    def test_app_config_validation_placeholder_values_helpful_error(self) -> None:
+        """Test that placeholder values produce helpful error messages."""
+        config_dict = {
+            "process": {
+                "name": "mover",
+                "paths": ["/usr/local/sbin/mover", "/usr/bin/mover"],
+            },
+            "notifications": {
+                "enabled_providers": ["telegram", "discord"],
+                "events": ["started", "progress", "completed", "failed"],
+            },
+            "providers": {
+                "telegram": {
+                    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+                    "chat_ids": [123456789],
+                },
+                "discord": {
+                    "webhook_url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+                },
+            },
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            _ = AppConfig.model_validate(config_dict)
+        
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+        # Look for value_error with placeholder information
+        value_errors = [error for error in errors if error.get("type") == "value_error"]
+        assert len(value_errors) >= 1
+        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))
+        assert "placeholder values" in actual_error_msg
+        assert "Telegram" in actual_error_msg
+        assert "Discord" in actual_error_msg
+
+    def test_app_config_validation_no_providers_enabled_works_with_placeholders(self) -> None:
+        """Test that when no providers are enabled, placeholder configurations are allowed."""
+        config_dict = {
+            "process": {
+                "name": "mover",
+                "paths": ["/usr/local/sbin/mover", "/usr/bin/mover"],
+            },
+            "notifications": {
+                "enabled_providers": [],  # No providers enabled
+                "events": ["started", "progress", "completed", "failed"],
+            },
+            "providers": {
+                "telegram": {
+                    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+                    "chat_ids": [123456789],
+                },
+                "discord": {
+                    "webhook_url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+                },
+            },
+        }
+        
+        # Should not raise any validation error since no providers are enabled
+        config = AppConfig.model_validate(config_dict)
+        assert config.notifications.enabled_providers == []
+        assert config.providers.telegram is not None
+        assert config.providers.discord is not None
