@@ -214,3 +214,4 @@ __marimo__/
 .cursor/mcp.json
 .mover_status_state.json
 .vscode/
+config.yaml
