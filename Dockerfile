@@ -44,4 +44,3 @@ USER appuser
 
 # Set the entrypoint to the project's CLI
 ENTRYPOINT ["mover-status"]
-CMD ["--help"] 
