@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
 # Final stage: slim runtime image
-FROM --platform=$TARGETPLATFORM python:3.13-slim
+FROM python:3.13-slim
 
 # Create a non-root user
 RUN useradd -m appuser
