@@ -14,6 +14,7 @@ from ..config.models.main import AppConfig
 if TYPE_CHECKING:
     from ..core.monitor.orchestrator import MonitorOrchestrator
     from ..core.monitor.lifecycle import LifecycleManager
+    from ..core.monitor.state_machine import StateMachine
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,9 @@ class ApplicationRunner:
         # If config_path is just a filename, use current directory as config dir
         config_dir = config_path.parent if config_path.parent != Path('.') else Path.cwd()
         
-        # If the config file doesn't exist, try to find it using the CLI discovery logic
+        # If the config file doesn't exist, try to find it using discovery logic
         if not config_path.exists():
-            from .cli import discover_config_file
-            config_path = discover_config_file()
+            config_path = self._discover_config_file()
             config_dir = config_path.parent if config_path.parent != Path('.') else Path.cwd()
         
         self.config_loader: ConfigLoader = ConfigLoader(config_dir)
@@ -73,6 +73,68 @@ class ApplicationRunner:
         
         # Application state
         self._shutdown_requested: bool = False
+    
+    def _discover_config_file(self) -> Path:
+        """Discover configuration file in standard locations.
+        
+        Searches for configuration files in the following order of precedence:
+        1. Current directory (config.yaml, config.yml, config.json, config.toml)
+        2. User home directory (~/.mover-status.yaml, etc.)
+        3. System directories (/etc/mover-status/, etc.)
+        
+        Returns:
+            Path to the first configuration file found, or default 'config.yaml'
+            if no configuration file is discovered.
+        """
+        # Configuration file discovery paths in order of precedence
+        # 1. Current directory
+        current_dir_config_files = [
+            'config.yaml',
+            'config.yml',
+            'config.json',
+            'config.toml',
+        ]
+        
+        # 2. User home directory
+        home_config_files = [
+            '.mover-status.yaml',
+            '.mover-status.yml',
+            '.mover-status.json',
+            '.mover-status.toml',
+        ]
+        
+        # 3. System configuration directories
+        system_config_paths = [
+            Path('/etc/mover-status/config.yaml'),
+            Path('/etc/mover-status.yaml'),
+            Path('/usr/local/etc/mover-status/config.yaml'),
+            Path('/usr/local/etc/mover-status.yaml'),
+        ]
+        
+        # 1. Check current directory
+        for config_file in current_dir_config_files:
+            config_path = Path(config_file)
+            if config_path.exists() and config_path.is_file():
+                return config_path
+        
+        # 2. Check user home directory
+        try:
+            home_dir = Path.home()
+            for config_file in home_config_files:
+                config_path = home_dir / config_file
+                if config_path.exists() and config_path.is_file():
+                    return config_path
+        except (OSError, RuntimeError):
+            # Path.home() can fail in some environments
+            pass
+        
+        # 3. Check system directories
+        for config_path in system_config_paths:
+            if config_path.exists() and config_path.is_file():
+                return config_path
+        
+        # Default fallback
+        return Path('config.yaml')
     
     def _setup_logging(self) -> None:
         """Set up logging based on configuration and CLI options."""
@@ -151,7 +213,7 @@ class ApplicationRunner:
         
         logger.info("All components initialized successfully")
     
-    def _setup_state_transitions(self, state_machine: object) -> None:
+    def _setup_state_transitions(self, state_machine: "StateMachine") -> None:
         """Set up valid state transitions for the state machine."""
         from ..core.monitor.state_machine import StateTransition, MonitorState
         
