@@ -278,7 +278,7 @@ class TestAppConfig:
         errors = exc_info.value.errors()
         assert len(errors) >= 1
         # Check the exact error message matches what we see in the real error
-        error_messages = [str(error.get("ctx", {}).get("error", "")) for error in errors]
+        error_messages = [str(error.get("ctx", {}).get("error", "")) for error in errors]  # pyright: ignore[reportAny]
         expected_message1 = "Enabled providers {'discord', 'telegram'} are not configured"
         expected_message2 = "Enabled providers {'telegram', 'discord'} are not configured"
         assert any(expected_message1 in msg or expected_message2 in msg for msg in error_messages)
@@ -324,7 +324,7 @@ class TestAppConfig:
         value_errors = [error for error in errors if error.get("type") == "value_error"]
         assert len(value_errors) >= 1
         # Actually check the ctx for the error message
-        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))
+        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))  # pyright: ignore[reportAny]
         # The set order might vary, so check both possible orders
         expected_message1 = "Enabled providers {'discord', 'telegram'} are not configured"
         expected_message2 = "Enabled providers {'telegram', 'discord'} are not configured"
@@ -360,7 +360,7 @@ class TestAppConfig:
         # Look for value_error with placeholder information
         value_errors = [error for error in errors if error.get("type") == "value_error"]
         assert len(value_errors) >= 1
-        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))
+        actual_error_msg = str(value_errors[0].get("ctx", {}).get("error", ""))  # pyright: ignore[reportAny]
         assert "placeholder values" in actual_error_msg
         assert "Telegram" in actual_error_msg
         assert "Discord" in actual_error_msg
