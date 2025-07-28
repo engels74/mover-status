@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from .discovery import PluginDiscovery, PluginInfo, PluginDiscoveryError
+from .loader import PluginLoader, PluginLoadError
+
 __all__ = [
-    # TODO: Add loader classes when implemented
-    # "PluginLoader",
-    # "PluginDiscovery",
+    "PluginDiscovery",
+    "PluginInfo", 
+    "PluginDiscoveryError",
+    "PluginLoader",
+    "PluginLoadError",
 ]

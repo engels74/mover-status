@@ -344,39 +344,63 @@ class ApplicationRunner:
             state_machine.add_transition(transition)
     
     def _configure_notification_providers(self) -> None:
-        """Configure and register notification providers based on config."""
+        """Configure and register notification providers using dynamic plugin loading."""
         if not self.orchestrator:
             return
             
-        logger.info("Configuring notification providers")
+        logger.info("Configuring notification providers using dynamic plugin loading")
         
-        # Register Discord provider if enabled
-        if "discord" in self.config.notifications.enabled_providers and self.config.providers.discord:
-            try:
-                from ..plugins.discord import DiscordProvider
-                
-                # Convert pydantic model to dict for provider config
-                discord_config = self.config.providers.discord.model_dump()
-                discord_provider = DiscordProvider(config=discord_config)
-                self.orchestrator.dispatcher.register_provider("discord", discord_provider)
-                logger.info("Discord provider registered")
-                
-            except Exception as e:
-                logger.error(f"Failed to register Discord provider: {e}")
+        # Import plugin loader
+        from ..plugins.loader import PluginLoader
         
-        # Register Telegram provider if enabled
-        if "telegram" in self.config.notifications.enabled_providers and self.config.providers.telegram:
+        # Initialize plugin loader
+        plugin_loader = PluginLoader()
+        
+        # Load plugins for enabled providers
+        enabled_providers = list(self.config.notifications.enabled_providers)
+        load_results = plugin_loader.load_enabled_plugins(enabled_providers)
+        
+        # Log load results
+        for plugin_name, success in load_results.items():
+            if success:
+                logger.info("Successfully loaded plugin: %s", plugin_name)
+            else:
+                logger.error("Failed to load plugin: %s", plugin_name)
+        
+        # Create and register provider instances
+        for provider_name in enabled_providers:
             try:
-                from ..plugins.telegram import TelegramProvider
+                # Get provider configuration
+                provider_config = None
+                if provider_name == "discord" and self.config.providers.discord:
+                    provider_config = self.config.providers.discord.model_dump()
+                elif provider_name == "telegram" and self.config.providers.telegram:
+                    provider_config = self.config.providers.telegram.model_dump()
                 
-                # Convert pydantic model to dict for provider config
-                telegram_config = self.config.providers.telegram.model_dump()
-                telegram_provider = TelegramProvider(config=telegram_config)
-                self.orchestrator.dispatcher.register_provider("telegram", telegram_provider)
-                logger.info("Telegram provider registered")
+                if provider_config is None:
+                    logger.warning("No configuration found for provider: %s", provider_name)
+                    continue
                 
+                # Create provider instance
+                provider_instance = plugin_loader.create_provider_instance(
+                    provider_name, 
+                    provider_config
+                )
+                
+                if provider_instance:
+                    # Register with dispatcher
+                    self.orchestrator.dispatcher.register_provider(provider_name, provider_instance)
+                    logger.info("Provider registered with dispatcher: %s", provider_name)
+                else:
+                    logger.error("Failed to create instance for provider: %s", provider_name)
+                    
             except Exception as e:
-                logger.error(f"Failed to register Telegram provider: {e}")
+                logger.error("Failed to configure provider %s: %s", provider_name, e)
+        
+        # Log final status
+        loader_status = plugin_loader.get_loader_status()
+        logger.info("Plugin loading completed. Loaded %d plugins, registered %d providers", 
+                   loader_status["loaded_plugins"], loader_status["registered_providers"])
     
     def _setup_event_handlers(self) -> None:
         """Wire event handlers between components."""
