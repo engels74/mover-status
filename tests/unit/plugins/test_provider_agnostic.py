@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,6 +14,7 @@ from mover_status.app.runner import ApplicationRunner
 from mover_status.plugins.loader.loader import PluginLoader
 from mover_status.plugins.loader.discovery import PluginDiscovery, PluginInfo
 from mover_status.notifications.base.registry import ProviderMetadata
+from mover_status.notifications.base.provider import NotificationProvider
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -32,7 +33,7 @@ class TestProviderAgnosticSystem:
             "another_provider": {"username": "test", "password": "secret"}
         }
         
-        provider_config = ProviderConfig(**config_data)
+        provider_config = ProviderConfig.model_validate(config_data)
         
         # Should be able to get configuration for any provider
         telegram_config = provider_config.get_provider_config("telegram")
@@ -57,13 +58,13 @@ class TestProviderAgnosticSystem:
     def test_provider_config_lists_all_providers(self) -> None:
         """Test that ProviderConfig can list all configured providers."""
         config_data = {
-            "telegram": {"bot_token": "test"},
+            "telegram": {"bot_token": "test", "chat_ids": [123]},
             "discord": {"webhook_url": "https://test.com"},
             "slack": {"webhook_url": "https://slack.com"},
             "email": {"smtp_server": "smtp.test.com"}
         }
         
-        provider_config = ProviderConfig(**config_data)
+        provider_config = ProviderConfig.model_validate(config_data)
         configured_providers = provider_config.list_configured_providers()
         
         # Should include all providers
@@ -82,7 +83,7 @@ class TestProviderAgnosticSystem:
             custom_plugin_dir.mkdir()
             
             # Create __init__.py
-            (custom_plugin_dir / "__init__.py").write_text("")
+            _ = (custom_plugin_dir / "__init__.py").write_text("")
             
             # Create provider.py with a mock provider class
             provider_py = '''
@@ -108,7 +109,7 @@ class CustomProvider(NotificationProvider):
     def get_provider_name(self):
         return "custom_provider"
 '''
-            (custom_plugin_dir / "provider.py").write_text(provider_py)
+            _ = (custom_plugin_dir / "provider.py").write_text(provider_py)
             
             # Test discovery
             discovery = PluginDiscovery()
@@ -130,10 +131,12 @@ class CustomProvider(NotificationProvider):
         mock_setup_components: MagicMock
     ) -> None:
         """Test that ApplicationRunner can extract configuration for any provider."""
+        _ = mock_setup_logging  # Unused parameter
+        _ = mock_setup_components  # Unused parameter
         # Create a mock config with various providers
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.yaml"
-            config_path.write_text("""
+            _ = config_path.write_text("""
 monitoring:
   interval: 30
 process:
@@ -181,7 +184,7 @@ notifications:
     def test_plugin_loader_loads_any_provider(self) -> None:
         """Test that PluginLoader can load any provider without hardcoding."""
         # Create mock plugin infos for various providers
-        custom_provider_class = Mock()
+        custom_provider_class = cast(type[NotificationProvider], Mock())
         custom_metadata = ProviderMetadata(
             name="custom_provider",
             description="Custom provider",
@@ -190,7 +193,7 @@ notifications:
             provider_class=custom_provider_class
         )
         
-        slack_provider_class = Mock()
+        slack_provider_class = cast(type[NotificationProvider], Mock())
         slack_metadata = ProviderMetadata(
             name="slack",
             description="Slack provider", 
@@ -259,7 +262,7 @@ notifications:
         
         # Set up get_provider_config to return different configs
         def mock_get_provider_config(provider_name: str) -> dict[str, object] | None:
-            configs = {
+            configs: dict[str, dict[str, object]] = {
                 "email": {"smtp_server": "smtp.test.com", "username": "test@test.com"},
                 "sms": {"api_key": "sms_key", "phone_numbers": ["+1234567890"]},
                 "webhook": {"url": "https://webhook.test.com", "secret": "webhook_secret"},
@@ -273,7 +276,7 @@ notifications:
         # Create a minimal runner instance just for testing the method
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.yaml"
-            config_path.write_text("monitoring: {}")
+            _ = config_path.write_text("monitoring: {}")
             
             with patch('mover_status.app.runner.ConfigLoader'), \
                  patch('mover_status.config.models.main.AppConfig.model_validate', return_value=mock_config), \

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, field_validator, HttpUrl, ConfigDict
 
@@ -295,7 +295,7 @@ class ProviderConfig(BaseConfig):
     )
     
     # Allow extra fields for dynamic providers
-    model_config = ConfigDict(extra='allow')
+    model_config: ConfigDict = ConfigDict(extra='allow')
 
     def get_provider_config(self, provider_name: str) -> dict[str, object] | None:
         """Get configuration for a specific provider dynamically.
@@ -310,11 +310,11 @@ class ProviderConfig(BaseConfig):
         
         if provider_config is not None:
             if hasattr(provider_config, 'model_dump'):
-                return provider_config.model_dump()
+                return cast(dict[str, object], provider_config.model_dump())
             elif hasattr(provider_config, 'dict'):
-                return provider_config.dict()
+                return cast(dict[str, object], provider_config.dict())
             elif isinstance(provider_config, dict):
-                return provider_config
+                return cast(dict[str, object], provider_config)
             else:
                 # Try to convert to dict
                 try:
@@ -341,7 +341,7 @@ class ProviderConfig(BaseConfig):
         Returns:
             List of provider names with configurations
         """
-        providers = []
+        providers: list[str] = []
         
         # Check known providers
         if self.telegram is not None:

@@ -6,6 +6,7 @@ import importlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from types import ModuleType
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:

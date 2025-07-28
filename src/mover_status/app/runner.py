@@ -6,7 +6,7 @@ import asyncio
 import logging
 import signal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from collections.abc import Sequence
 
 from pydantic import ValidationError
@@ -475,14 +475,11 @@ class ApplicationRunner:
                     config_data = yaml_loader.load(config_file)
                     
                     # The config file might have the provider as root key or direct config
-                    if isinstance(config_data, dict):
-                        if provider_name in config_data:
-                            provider_config = config_data[provider_name]
-                            return provider_config if isinstance(provider_config, dict) else {}
-                        else:
-                            return config_data
-                    
-                    break
+                    if provider_name in config_data:
+                        provider_config = config_data[provider_name]
+                        return cast(dict[str, object], provider_config) if isinstance(provider_config, dict) else {}
+                    else:
+                        return config_data
             
             logger.warning("No configuration file found for provider: %s", provider_name)
             return {}
