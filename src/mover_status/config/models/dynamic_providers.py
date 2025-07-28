@@ -1,0 +1,123 @@
+"""Dynamic provider configuration models that support any provider."""
+
+from __future__ import annotations
+
+from typing import Any
+from collections.abc import Mapping
+
+from pydantic import Field, field_validator, ConfigDict
+
+from .base import BaseConfig
+
+
+class DynamicProviderConfig(BaseConfig):
+    """Dynamic provider configuration that can hold any provider's config."""
+    
+    model_config = ConfigDict(extra='allow')  # Allow additional fields
+    
+    enabled: bool = Field(
+        default=True,
+        description="Whether this provider is enabled"
+    )
+    
+    # All other fields are dynamic and will be validated by the provider itself
+    
+    def __init__(self, **data: Any) -> None:
+        """Initialize with any additional fields."""
+        super().__init__(**data)
+    
+    def get_provider_config(self, provider_name: str) -> dict[str, Any]:
+        """Get configuration for a specific provider.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            Configuration dictionary for the provider
+        """
+        # Return all fields as configuration
+        return self.model_dump()
+
+
+class FlexibleProviderConfig(BaseConfig):
+    """Flexible provider configuration container that supports any provider."""
+    
+    model_config = ConfigDict(extra='allow')  # Allow any additional provider configs
+    
+    def __init__(self, **data: Any) -> None:
+        """Initialize with dynamic provider configurations."""
+        super().__init__(**data)
+    
+    def get_provider_config(self, provider_name: str) -> dict[str, Any] | None:
+        """Get configuration for a specific provider.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            Configuration dictionary for the provider, or None if not found
+        """
+        provider_config = getattr(self, provider_name, None)
+        
+        if provider_config is not None:
+            if hasattr(provider_config, 'model_dump'):
+                return provider_config.model_dump()
+            elif hasattr(provider_config, 'dict'):
+                return provider_config.dict()
+            elif isinstance(provider_config, dict):
+                return provider_config
+            else:
+                # Try to convert to dict
+                return dict(provider_config) if provider_config else None
+        
+        return None
+    
+    def has_provider_config(self, provider_name: str) -> bool:
+        """Check if configuration exists for a provider.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            True if configuration exists, False otherwise
+        """
+        return hasattr(self, provider_name) and getattr(self, provider_name) is not None
+    
+    def list_configured_providers(self) -> list[str]:
+        """List all providers that have configurations.
+        
+        Returns:
+            List of provider names with configurations
+        """
+        # Get all attributes that don't start with underscore and aren't methods
+        providers = []
+        for attr_name in dir(self):
+            if not attr_name.startswith('_') and not callable(getattr(self, attr_name)):
+                attr_value = getattr(self, attr_name)
+                if attr_value is not None:
+                    providers.append(attr_name)
+        
+        return providers
+    
+    def add_provider_config(self, provider_name: str, config: dict[str, Any] | DynamicProviderConfig) -> None:
+        """Add configuration for a new provider dynamically.
+        
+        Args:
+            provider_name: Name of the provider
+            config: Configuration for the provider
+        """
+        if isinstance(config, dict):
+            config_obj = DynamicProviderConfig(**config)
+        else:
+            config_obj = config
+            
+        setattr(self, provider_name, config_obj)
+    
+    @field_validator('*', mode='before')
+    @classmethod
+    def validate_provider_configs(cls, v: Any, info: Any) -> Any:
+        """Validate provider configurations dynamically."""
+        # If it's a dict, convert to DynamicProviderConfig
+        if isinstance(v, dict) and info.field_name and not info.field_name.startswith('_'):
+            return DynamicProviderConfig(**v)
+        return v

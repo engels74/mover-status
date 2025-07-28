@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import Field, field_validator, HttpUrl
+from pydantic import Field, field_validator, HttpUrl, ConfigDict
 
 from .base import BaseConfig, RetryConfig, RateLimitConfig
 
@@ -282,8 +282,9 @@ class TelegramConfig(BaseConfig):
 
 
 class ProviderConfig(BaseConfig):
-    """Provider configuration container."""
+    """Provider configuration container with dynamic provider support."""
 
+    # Keep existing providers for backward compatibility
     telegram: TelegramConfig | None = Field(
         default=None,
         description="Telegram provider configuration",
@@ -292,6 +293,72 @@ class ProviderConfig(BaseConfig):
         default=None,
         description="Discord provider configuration",
     )
+    
+    # Allow extra fields for dynamic providers
+    model_config = ConfigDict(extra='allow')
+
+    def get_provider_config(self, provider_name: str) -> dict[str, object] | None:
+        """Get configuration for a specific provider dynamically.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            Configuration dictionary for the provider, or None if not found
+        """
+        provider_config = getattr(self, provider_name, None)
+        
+        if provider_config is not None:
+            if hasattr(provider_config, 'model_dump'):
+                return provider_config.model_dump()
+            elif hasattr(provider_config, 'dict'):
+                return provider_config.dict()
+            elif isinstance(provider_config, dict):
+                return provider_config
+            else:
+                # Try to convert to dict
+                try:
+                    return dict(provider_config) if provider_config else None
+                except (TypeError, ValueError):
+                    return None
+        
+        return None
+    
+    def has_provider_config(self, provider_name: str) -> bool:
+        """Check if configuration exists for a provider.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            True if configuration exists, False otherwise
+        """
+        return hasattr(self, provider_name) and getattr(self, provider_name) is not None
+    
+    def list_configured_providers(self) -> list[str]:
+        """List all providers that have configurations.
+        
+        Returns:
+            List of provider names with configurations
+        """
+        providers = []
+        
+        # Check known providers
+        if self.telegram is not None:
+            providers.append("telegram")
+        if self.discord is not None:
+            providers.append("discord")
+        
+        # Check for dynamic providers (extra fields)
+        for attr_name in dir(self):
+            if (not attr_name.startswith('_') and 
+                attr_name not in ['telegram', 'discord', 'model_config', 'model_fields', 'model_computed_fields'] and
+                not callable(getattr(self, attr_name))):
+                attr_value = getattr(self, attr_name)
+                if attr_value is not None:
+                    providers.append(attr_name)
+        
+        return providers
 
     @field_validator("telegram", "discord")
     @classmethod

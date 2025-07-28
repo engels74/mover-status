@@ -7,6 +7,7 @@ import logging
 import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 from pydantic import ValidationError
 
@@ -367,15 +368,13 @@ class ApplicationRunner:
             else:
                 logger.error("Failed to load plugin: %s", plugin_name)
         
-        # Create and register provider instances
+        # Create and register provider instances using dynamic configuration extraction
+        provider_configs = self._extract_provider_configurations(enabled_providers)
+        
         for provider_name in enabled_providers:
             try:
-                # Get provider configuration
-                provider_config = None
-                if provider_name == "discord" and self.config.providers.discord:
-                    provider_config = self.config.providers.discord.model_dump()
-                elif provider_name == "telegram" and self.config.providers.telegram:
-                    provider_config = self.config.providers.telegram.model_dump()
+                # Get provider configuration dynamically
+                provider_config = provider_configs.get(provider_name)
                 
                 if provider_config is None:
                     logger.warning("No configuration found for provider: %s", provider_name)
@@ -401,6 +400,96 @@ class ApplicationRunner:
         loader_status = plugin_loader.get_loader_status()
         logger.info("Plugin loading completed. Loaded %d plugins, registered %d providers", 
                    loader_status["loaded_plugins"], loader_status["registered_providers"])
+    
+    def _extract_provider_configurations(self, enabled_providers: Sequence[object]) -> dict[str, dict[str, object]]:
+        """Extract provider configurations dynamically from the config object.
+        
+        This method provides a provider-agnostic way to extract configuration
+        by using reflection to find provider-specific config sections.
+        
+        Args:
+            enabled_providers: List of enabled provider names
+            
+        Returns:
+            Dictionary mapping provider names to their configurations
+        """
+        provider_configs: dict[str, dict[str, object]] = {}
+        
+        # Get all provider configurations from the providers object using reflection
+        providers_config = self.config.providers
+        
+        for provider_name_raw in enabled_providers:
+            provider_name = str(provider_name_raw)
+            try:
+                # Use the new dynamic provider config method
+                provider_config = providers_config.get_provider_config(provider_name)
+                
+                if provider_config is not None:
+                    provider_configs[provider_name] = provider_config
+                    logger.debug("Extracted configuration for provider: %s", provider_name)
+                else:
+                    # Try to load from the config loader's raw configuration
+                    fallback_config = self._load_provider_config_from_file(provider_name)
+                    if fallback_config:
+                        provider_configs[provider_name] = fallback_config
+                    
+            except Exception as e:
+                logger.error("Failed to extract configuration for provider %s: %s", provider_name, e)
+        
+        return provider_configs
+    
+    def _load_provider_config_from_file(self, provider_name: str) -> dict[str, object]:
+        """Load provider configuration directly from config files.
+        
+        This method looks for provider-specific configuration files and loads them directly.
+        This is a fallback when the provider config is not in the main config structure.
+        
+        Args:
+            provider_name: Name of the provider
+            
+        Returns:
+            Provider configuration dictionary
+        """
+        try:
+            # Try to load provider-specific config file
+            config_file_patterns = [
+                f"config_{provider_name}.yaml",
+                f"config_{provider_name}.yml", 
+                f"config_{provider_name}.json",
+                f"{provider_name}.yaml",
+                f"{provider_name}.yml",
+                f"{provider_name}.json"
+            ]
+            
+            config_dir = self.config_path.parent if self.config_path.parent != Path('.') else Path.cwd()
+            
+            for pattern in config_file_patterns:
+                config_file = config_dir / pattern
+                if config_file.exists():
+                    logger.debug("Loading provider config from file: %s", config_file)
+                    
+                    # Import the yaml loader
+                    from ..config.loader.yaml_loader import YamlLoader
+                    yaml_loader = YamlLoader()
+                    
+                    config_data = yaml_loader.load(config_file)
+                    
+                    # The config file might have the provider as root key or direct config
+                    if isinstance(config_data, dict):
+                        if provider_name in config_data:
+                            provider_config = config_data[provider_name]
+                            return provider_config if isinstance(provider_config, dict) else {}
+                        else:
+                            return config_data
+                    
+                    break
+            
+            logger.warning("No configuration file found for provider: %s", provider_name)
+            return {}
+            
+        except Exception as e:
+            logger.error("Error loading provider config file for %s: %s", provider_name, e)
+            return {}
     
     def _setup_event_handlers(self) -> None:
         """Wire event handlers between components."""
