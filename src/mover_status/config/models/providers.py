@@ -310,15 +310,15 @@ class ProviderConfig(BaseConfig):
         
         if provider_config is not None:
             if hasattr(provider_config, 'model_dump'):
-                return cast(dict[str, object], provider_config.model_dump())
+                return cast(dict[str, object], provider_config.model_dump())  # pyright: ignore[reportAny] # dynamic attribute access
             elif hasattr(provider_config, 'dict'):
-                return cast(dict[str, object], provider_config.dict())
+                return cast(dict[str, object], provider_config.dict())  # pyright: ignore[reportAny] # dynamic attribute access
             elif isinstance(provider_config, dict):
                 return cast(dict[str, object], provider_config)
             else:
                 # Try to convert to dict
                 try:
-                    return dict(provider_config) if provider_config else None
+                    return dict(provider_config) if provider_config else None  # pyright: ignore[reportAny] # dynamic conversion
                 except (TypeError, ValueError):
                     return None
         
@@ -353,8 +353,8 @@ class ProviderConfig(BaseConfig):
         for attr_name in dir(self):
             if (not attr_name.startswith('_') and 
                 attr_name not in ['telegram', 'discord', 'model_config', 'model_fields', 'model_computed_fields'] and
-                not callable(getattr(self, attr_name))):
-                attr_value = getattr(self, attr_name)
+                not callable(getattr(self, attr_name))):  # pyright: ignore[reportAny] # dynamic attribute access
+                attr_value = getattr(self, attr_name)  # pyright: ignore[reportAny] # dynamic attribute access
                 if attr_value is not None:
                     providers.append(attr_name)
         

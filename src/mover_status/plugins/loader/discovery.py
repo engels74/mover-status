@@ -6,7 +6,6 @@ import importlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from types import ModuleType
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
@@ -197,7 +196,7 @@ class PluginDiscovery:
             logger.error("Error loading plugin %s: %s", plugin_name, e)
             return plugin_info
     
-    def _find_provider_class(self, module: Any, plugin_name: str) -> type[NotificationProvider] | None:
+    def _find_provider_class(self, module: object, plugin_name: str) -> type[NotificationProvider] | None:
         """Find the provider class in a module.
         
         Args:
@@ -219,7 +218,7 @@ class PluginDiscovery:
         
         for class_name in possible_names:
             if hasattr(module, class_name):
-                cls = getattr(module, class_name)
+                cls = getattr(module, class_name)  # pyright: ignore[reportAny] # dynamic attribute access
                 if (isinstance(cls, type) and 
                     issubclass(cls, NotificationProvider) and 
                     cls is not NotificationProvider):
@@ -227,7 +226,7 @@ class PluginDiscovery:
         
         # Fallback: look for any class that inherits from NotificationProvider
         for attr_name in dir(module):
-            attr = getattr(module, attr_name)
+            attr = getattr(module, attr_name)  # pyright: ignore[reportAny] # dynamic attribute access
             if (isinstance(attr, type) and 
                 issubclass(attr, NotificationProvider) and 
                 attr is not NotificationProvider):
@@ -235,7 +234,7 @@ class PluginDiscovery:
         
         return None
     
-    def _load_plugin_metadata(self, module: Any, plugin_name: str) -> ProviderMetadata | None:
+    def _load_plugin_metadata(self, module: object, plugin_name: str) -> ProviderMetadata | None:
         """Load plugin metadata from module or metadata file.
         
         Args:
@@ -250,7 +249,7 @@ class PluginDiscovery:
         # Try to get metadata from module attributes
         if hasattr(module, "PLUGIN_METADATA"):
             try:
-                metadata_dict = module.PLUGIN_METADATA
+                metadata_dict = getattr(module, "PLUGIN_METADATA")  # pyright: ignore[reportAny] # dynamic module attribute access
                 if isinstance(metadata_dict, dict):
                     provider_class = self._find_provider_class(module, plugin_name)
                     if provider_class:

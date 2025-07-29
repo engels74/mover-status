@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock, patch
 
-import pytest
+import pytest  # pyright: ignore[reportUnusedImport] # used for fixtures
 
-from mover_status.notifications.base.registry import ProviderMetadata
+from mover_status.notifications.base.provider import NotificationProvider
 from mover_status.plugins.loader.discovery import PluginDiscovery, PluginDiscoveryError, PluginInfo
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class TestPluginInfo:
     
     def test_plugin_info_with_all_fields(self) -> None:
         """Test PluginInfo with all fields populated."""
-        mock_provider_class = Mock()
+        mock_provider_class = cast(type[NotificationProvider], Mock())
         mock_metadata = Mock()
         mock_error = Exception("test error")
         
@@ -281,7 +281,7 @@ class TestPluginDiscovery:
         
         # Add plugins with different states
         loaded_plugin = PluginInfo("loaded", Path("/loaded"), "loaded.module")
-        loaded_plugin.provider_class = Mock()
+        loaded_plugin.provider_class = cast(type[NotificationProvider], Mock())
         
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
         failed_plugin.load_error = Exception("Load error")
@@ -301,7 +301,7 @@ class TestPluginDiscovery:
         
         # Add plugins with different states
         loaded_plugin = PluginInfo("loaded", Path("/loaded"), "loaded.module")
-        loaded_plugin.provider_class = Mock()
+        loaded_plugin.provider_class = cast(type[NotificationProvider], Mock())
         
         error = Exception("Load error")
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
@@ -324,7 +324,7 @@ class TestPluginDiscovery:
         
         # Add plugins with different states
         loaded_plugin = PluginInfo("loaded", Path("/loaded"), "loaded.module")
-        loaded_plugin.provider_class = Mock()
+        loaded_plugin.provider_class = cast(type[NotificationProvider], Mock())
         
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
         failed_plugin.load_error = Exception("Load error")
