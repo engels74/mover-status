@@ -236,6 +236,11 @@ class PluginLoader:
         """
         return self.discovery.list_available_plugins()
     
+    @property
+    def loaded_plugins(self) -> dict[str, str]:
+        """Get mapping of loaded plugins to their provider names (property access)."""
+        return self._loaded_plugins.copy()
+    
     def get_loaded_plugin_count(self) -> int:
         """Get count of successfully loaded plugins.
         

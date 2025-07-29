@@ -46,7 +46,7 @@ class TestPluginLoader:
         
         assert loader.registry is not None
         assert loader.discovery is not None
-        assert loader._loaded_plugins == {}
+        assert loader.loaded_plugins == {}
     
     def test_initialization_with_custom_registry(self) -> None:
         """Test PluginLoader initialization with custom registry."""
@@ -89,8 +89,8 @@ class TestPluginLoader:
         results = loader.discover_and_load_all_plugins()
         
         assert results == {"test_plugin": True}
-        assert "test_plugin" in loader._loaded_plugins
-        assert loader._loaded_plugins["test_plugin"] == "test_provider"
+        assert "test_plugin" in loader.loaded_plugins
+        assert loader.loaded_plugins["test_plugin"] == "test_provider"
         mock_discover.assert_called_once_with(force_reload=True)
     
     @patch.object(PluginDiscovery, 'discover_plugins')
@@ -131,8 +131,8 @@ class TestPluginLoader:
         results = loader.discover_and_load_all_plugins()
         
         assert results == {"good_plugin": True, "failed_plugin": False}
-        assert "good_plugin" in loader._loaded_plugins
-        assert "failed_plugin" not in loader._loaded_plugins
+        assert "good_plugin" in loader.loaded_plugins
+        assert "failed_plugin" not in loader.loaded_plugins
     
     def test_load_plugin_success(self) -> None:
         """Test successful plugin loading."""
@@ -160,13 +160,13 @@ class TestPluginLoader:
             result = loader.load_plugin("test_plugin")
         
         assert result is True
-        assert "test_plugin" in loader._loaded_plugins
-        assert loader._loaded_plugins["test_plugin"] == "test_provider"
+        assert "test_plugin" in loader.loaded_plugins
+        assert loader.loaded_plugins["test_plugin"] == "test_provider"
     
     def test_load_plugin_already_loaded(self) -> None:
         """Test loading already loaded plugin."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state["test_plugin"] = "test_provider"
+        loader._loaded_plugins["test_plugin"] = "test_provider"  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         result = loader.load_plugin("test_plugin")
         
@@ -216,14 +216,14 @@ class TestPluginLoader:
     def test_unload_plugin_success(self) -> None:
         """Test successful plugin unloading."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state["test_plugin"] = "test_provider"
+        loader._loaded_plugins["test_plugin"] = "test_provider"  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         # Mock registry to avoid actual unregistration
         with patch.object(loader.registry, 'unregister') as mock_unregister:
             result = loader.unload_plugin("test_plugin")
         
         assert result is True
-        assert "test_plugin" not in loader._loaded_plugins
+        assert "test_plugin" not in loader.loaded_plugins
         mock_unregister.assert_called_once_with("test_provider")
     
     def test_unload_plugin_not_loaded(self) -> None:
@@ -237,7 +237,7 @@ class TestPluginLoader:
     def test_unload_plugin_registry_error(self) -> None:
         """Test unloading plugin with registry error."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state["test_plugin"] = "test_provider"
+        loader._loaded_plugins["test_plugin"] = "test_provider"  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         # Mock registry to raise error
         with patch.object(loader.registry, 'unregister', side_effect=Exception("Registry error")):
@@ -311,9 +311,9 @@ class TestPluginLoader:
         results = loader.load_enabled_plugins(["discord", "telegram"])
         
         assert results == {"discord": True, "telegram": True}
-        assert "discord" in loader._loaded_plugins
-        assert "telegram" in loader._loaded_plugins
-        assert "other" not in loader._loaded_plugins
+        assert "discord" in loader.loaded_plugins
+        assert "telegram" in loader.loaded_plugins
+        assert "other" not in loader.loaded_plugins
     
     def test_create_provider_instance_success(self) -> None:
         """Test successful provider instance creation."""
@@ -338,14 +338,14 @@ class TestPluginLoader:
     def test_get_loaded_plugins(self) -> None:
         """Test getting loaded plugins mapping."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state = {"plugin1": "provider1", "plugin2": "provider2"}
+        loader._loaded_plugins = {"plugin1": "provider1", "plugin2": "provider2"}  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         result = loader.get_loaded_plugins()
         
         assert result == {"plugin1": "provider1", "plugin2": "provider2"}
         # Ensure it's a copy
         result["new"] = "value"
-        assert "new" not in loader._loaded_plugins
+        assert "new" not in loader.loaded_plugins
     
     def test_get_available_plugins(self) -> None:
         """Test getting available plugins."""
@@ -359,7 +359,7 @@ class TestPluginLoader:
     def test_get_loaded_plugin_count(self) -> None:
         """Test getting loaded plugin count."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state = {"plugin1": "provider1", "plugin2": "provider2"}
+        loader._loaded_plugins = {"plugin1": "provider1", "plugin2": "provider2"}  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         result = loader.get_loaded_plugin_count()
         
@@ -368,7 +368,7 @@ class TestPluginLoader:
     def test_is_plugin_loaded(self) -> None:
         """Test checking if plugin is loaded."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state = {"plugin1": "provider1"}
+        loader._loaded_plugins = {"plugin1": "provider1"}  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         assert loader.is_plugin_loaded("plugin1") is True
         assert loader.is_plugin_loaded("plugin2") is False
@@ -376,7 +376,7 @@ class TestPluginLoader:
     def test_get_plugin_provider_name(self) -> None:
         """Test getting provider name for plugin."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state = {"plugin1": "provider1"}
+        loader._loaded_plugins = {"plugin1": "provider1"}  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         assert loader.get_plugin_provider_name("plugin1") == "provider1"
         assert loader.get_plugin_provider_name("plugin2") is None
@@ -401,7 +401,7 @@ class TestPluginLoader:
         )
         
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state["test_plugin"] = "test_provider"
+        loader._loaded_plugins["test_plugin"] = "test_provider"  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         with patch.object(loader.discovery, 'discover_plugins'), \
              patch.object(loader.discovery, 'get_plugin', return_value=plugin_info), \
@@ -414,7 +414,7 @@ class TestPluginLoader:
     def test_reload_plugin_unload_failure(self) -> None:
         """Test plugin reload with unload failure."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state["test_plugin"] = "test_provider"
+        loader._loaded_plugins["test_plugin"] = "test_provider"  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         with patch.object(loader, 'unload_plugin', return_value=False):
             result = loader.reload_plugin("test_plugin")
@@ -424,7 +424,7 @@ class TestPluginLoader:
     def test_get_loader_status(self) -> None:
         """Test getting loader status."""
         loader = PluginLoader()
-        loader._loaded_plugins  # pyright: ignore[reportPrivateUsage] # testing internal state = {"plugin1": "provider1"}
+        loader._loaded_plugins = {"plugin1": "provider1"}  # pyright: ignore[reportPrivateUsage] # Direct assignment needed for testing
         
         mock_discovery_summary = {
             "total_plugins": 2,

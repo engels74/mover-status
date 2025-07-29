@@ -261,11 +261,11 @@ class PluginDiscovery:
                     
                     tags: list[str] = []
                     if isinstance(tags_raw, (list, tuple)):
-                        tags = [str(tag) for tag in tags_raw]  # pyright: ignore[reportUnknownArgumentType] # dynamic tag conversion
+                        tags = [str(tag) for tag in tags_raw]  # pyright: ignore[reportUnknownArgumentType,reportUnknownVariableType] # metadata from dynamic plugin
                     
                     dependencies: list[str] = []
                     if isinstance(dependencies_raw, (list, tuple)):
-                        dependencies = [str(dep) for dep in dependencies_raw]  # pyright: ignore[reportUnknownArgumentType] # dynamic dependency conversion
+                        dependencies = [str(dep) for dep in dependencies_raw]  # pyright: ignore[reportUnknownArgumentType,reportUnknownVariableType] # metadata from dynamic plugin
                     
                     return ProviderMetadata(
                         name=name,
@@ -316,6 +316,16 @@ class PluginDiscovery:
             _ = self.discover_plugins()
         
         return list(self._discovered_plugins.keys())
+    
+    @property
+    def discovered_plugins(self) -> dict[str, PluginInfo]:
+        """Get the discovered plugins dictionary (read-only access for testing)."""
+        return self._discovered_plugins.copy()
+    
+    @property
+    def search_paths(self) -> list[Path]:
+        """Get the search paths list (read-only access for testing)."""
+        return self._search_paths.copy()
     
     def list_loaded_plugins(self) -> list[str]:
         """List names of successfully loaded plugins.

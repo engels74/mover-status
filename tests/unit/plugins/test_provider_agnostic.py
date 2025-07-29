@@ -113,7 +113,7 @@ class CustomProvider(NotificationProvider):
             
             # Test discovery
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
@@ -148,30 +148,30 @@ notifications:
             
             # Mock the config loading to include custom providers
             mock_config = Mock()
-            mock_config.notifications.enabled_providers = ["custom_provider", "another_provider"]
+            mock_config.notifications.enabled_providers = ["custom_provider", "another_provider"]  # pyright: ignore[reportAny] # Mock object
             mock_config.providers = Mock()
             
             # Mock custom provider configs
             custom_provider_config = Mock()
-            custom_provider_config.model_dump.return_value = {"api_key": "test_key"}
+            custom_provider_config.model_dump.return_value = {"api_key": "test_key"}  # pyright: ignore[reportAny] # Mock object
             
-            another_provider_config = Mock() 
-            another_provider_config.model_dump.return_value = {"endpoint": "https://test.com"}
+            another_provider_config = Mock()
+            another_provider_config.model_dump.return_value = {"endpoint": "https://test.com"}  # pyright: ignore[reportAny] # Mock object
             
-            mock_config.providers.get_provider_config.side_effect = lambda name: {
+            mock_config.providers.get_provider_config.side_effect = lambda name: {  # pyright: ignore[reportUnknownLambdaType,reportAny] # Mock side_effect function
                 "custom_provider": {"api_key": "test_key"},
                 "another_provider": {"endpoint": "https://test.com"}
-            }.get(name)
+            }.get(cast(str, name))
             
             with patch('mover_status.app.runner.ConfigLoader') as mock_loader_class:
-                mock_loader = mock_loader_class.return_value
-                mock_loader.load_complete_config.return_value = {}
+                mock_loader = mock_loader_class.return_value  # pyright: ignore[reportAny] # Mock object
+                mock_loader.load_complete_config.return_value = {}  # pyright: ignore[reportAny] # Mock object
                 
                 with patch('mover_status.config.models.main.AppConfig.model_validate', return_value=mock_config):
                     runner = ApplicationRunner(config_path)
                     
                     # Test the configuration extraction
-                    provider_configs = runner._extract_provider_configurations(
+                    provider_configs = runner._extract_provider_configurations(  # pyright: ignore[reportPrivateUsage] # Testing protected method
                         ["custom_provider", "another_provider"]
                     )
                     
@@ -220,7 +220,7 @@ notifications:
         
         # Mock discovery
         mock_discovery = Mock()
-        mock_discovery.discover_plugins.return_value = {
+        mock_discovery.discover_plugins.return_value = {  # pyright: ignore[reportAny] # Mock object
             "custom_provider": custom_plugin,
             "slack": slack_plugin
         }
@@ -231,8 +231,8 @@ notifications:
         results = loader.load_enabled_plugins(["custom_provider", "slack"])
         
         assert results == {"custom_provider": True, "slack": True}
-        assert "custom_provider" in loader._loaded_plugins
-        assert "slack" in loader._loaded_plugins
+        assert "custom_provider" in loader.loaded_plugins
+        assert "slack" in loader.loaded_plugins
     
     def test_no_hardcoded_provider_names_in_runner(self) -> None:
         """Test that runner.py contains no hardcoded provider names."""
@@ -270,7 +270,7 @@ notifications:
             }
             return configs.get(provider_name)
         
-        mock_providers.get_provider_config.side_effect = mock_get_provider_config
+        mock_providers.get_provider_config.side_effect = mock_get_provider_config  # pyright: ignore[reportAny] # Mock object
         mock_config.providers = mock_providers
         
         # Create a minimal runner instance just for testing the method
@@ -285,7 +285,7 @@ notifications:
                 runner = ApplicationRunner(config_path)
                 
                 # Test extracting configurations for various providers
-                provider_configs = runner._extract_provider_configurations([
+                provider_configs = runner._extract_provider_configurations([  # pyright: ignore[reportPrivateUsage] # Testing protected method
                     "email", "sms", "webhook", "push"
                 ])
                 

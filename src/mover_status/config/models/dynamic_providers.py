@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 from pydantic import Field, field_validator, ConfigDict, ValidationInfo
 
 from .base import BaseConfig
@@ -20,9 +20,9 @@ class DynamicProviderConfig(BaseConfig):
     
     # All other fields are dynamic and will be validated by the provider itself
     
-    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # dynamic config requires Any
+    def __init__(self, **data: object) -> None:
         """Initialize with any additional fields."""
-        super().__init__(**data)
+        super().__init__(**data)  # pyright: ignore[reportArgumentType] # pydantic base allows arbitrary kwargs
     
     def get_provider_config(self, provider_name: str) -> dict[str, object]: 
         """Get configuration for a specific provider.
@@ -43,9 +43,9 @@ class FlexibleProviderConfig(BaseConfig):
     
     model_config: ConfigDict = ConfigDict(extra='allow')  # Allow any additional provider configs
     
-    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # dynamic config requires Any
+    def __init__(self, **data: object) -> None:
         """Initialize with dynamic provider configurations."""
-        super().__init__(**data)
+        super().__init__(**data)  # pyright: ignore[reportArgumentType] # pydantic base allows arbitrary kwargs
     
     def get_provider_config(self, provider_name: str) -> dict[str, object] | None:
         """Get configuration for a specific provider.
@@ -101,7 +101,7 @@ class FlexibleProviderConfig(BaseConfig):
         
         return providers
     
-    def add_provider_config(self, provider_name: str, config: dict[str, Any] | DynamicProviderConfig) -> None:
+    def add_provider_config(self, provider_name: str, config: dict[str, object] | DynamicProviderConfig) -> None:
         """Add configuration for a new provider dynamically.
         
         Args:
@@ -117,9 +117,9 @@ class FlexibleProviderConfig(BaseConfig):
     
     @field_validator('*', mode='before')
     @classmethod
-    def validate_provider_configs(cls, v: Any, info: ValidationInfo) -> Any:  # pyright: ignore[reportExplicitAny] # pydantic validator requires Any
+    def validate_provider_configs(cls, v: object, info: ValidationInfo) -> object | DynamicProviderConfig:
         """Validate provider configurations dynamically."""
         # If it's a dict, convert to DynamicProviderConfig
         if isinstance(v, dict) and hasattr(info, 'field_name') and info.field_name and not info.field_name.startswith('_'):
-            return DynamicProviderConfig(**v)
-        return v
+            return DynamicProviderConfig(**v)  # pyright: ignore[reportUnknownArgumentType] # dynamic dict conversion
+        return v  # pyright: ignore[reportUnknownVariableType] # return value could be various types

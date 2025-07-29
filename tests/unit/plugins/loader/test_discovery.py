@@ -77,8 +77,8 @@ class TestPluginDiscovery:
         discovery = PluginDiscovery()
         
         assert discovery.base_package == "mover_status.plugins"
-        assert discovery._discovered_plugins == {}
-        assert len(discovery._search_paths) >= 0  # May have default paths
+        assert discovery.discovered_plugins == {}
+        assert len(discovery.search_paths) >= 0  # May have default paths
     
     def test_initialization_with_custom_package(self) -> None:
         """Test PluginDiscovery initialization with custom package."""
@@ -89,13 +89,13 @@ class TestPluginDiscovery:
     def test_add_search_path(self) -> None:
         """Test adding search paths."""
         discovery = PluginDiscovery()
-        initial_count = len(discovery._search_paths)
+        initial_count = len(discovery.search_paths)
         
         test_path = Path("/test/path")
         discovery.add_search_path(test_path)
         
-        assert len(discovery._search_paths) == initial_count + 1
-        assert test_path in discovery._search_paths
+        assert len(discovery.search_paths) == initial_count + 1
+        assert test_path in discovery.search_paths
     
     def test_add_duplicate_search_path(self) -> None:
         """Test adding duplicate search path is ignored."""
@@ -103,31 +103,35 @@ class TestPluginDiscovery:
         
         test_path = Path("/test/path")
         discovery.add_search_path(test_path)
-        initial_count = len(discovery._search_paths)
+        initial_count = len(discovery.search_paths)
         
         discovery.add_search_path(test_path)
         
-        assert len(discovery._search_paths) == initial_count
+        assert len(discovery.search_paths) == initial_count
     
     @patch('importlib.import_module')
-    def test_add_default_search_paths_success(self, mock_import: MagicMock) -> None:
+    @patch('pathlib.Path.exists')
+    def test_add_default_search_paths_success(self, mock_path_exists: MagicMock, mock_import: MagicMock) -> None:
         """Test successful addition of default search paths."""
         # Mock module with __path__ attribute
         mock_module = Mock()
         mock_module.__path__ = ["/test/plugins/path"]
         mock_import.return_value = mock_module
         
+        # Mock Path.exists() to return True
+        mock_path_exists.return_value = True
+        
         discovery = PluginDiscovery()
         
         mock_import.assert_called_with("mover_status.plugins")
-        assert Path("/test/plugins/path") in discovery._search_paths
+        assert Path("/test/plugins/path") in discovery.search_paths
     
     @patch('importlib.import_module')
     def test_add_default_search_paths_import_error(self, mock_import: MagicMock) -> None:
         """Test handling of import error when adding default search paths."""
         mock_import.side_effect = ImportError("Module not found")
         
-        discovery = PluginDiscovery()  # Should not raise exception
+        _ = PluginDiscovery()  # Should not raise exception
         
         mock_import.assert_called_with("mover_status.plugins")
     
@@ -135,12 +139,12 @@ class TestPluginDiscovery:
         """Test plugin discovery with empty directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             discovery = PluginDiscovery()
-            discovery._search_paths = [Path(temp_dir)]
+            discovery._search_paths = [Path(temp_dir)]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
             assert plugins == {}
-            assert discovery._discovered_plugins == {}
+            assert discovery.discovered_plugins == {}
     
     def test_discover_plugins_with_excluded_directories(self) -> None:
         """Test that excluded directories are ignored."""
@@ -148,13 +152,13 @@ class TestPluginDiscovery:
             temp_path = Path(temp_dir)
             
             # Create excluded directories
-            (temp_path / "template").mkdir()
-            (temp_path / "loader").mkdir()
-            (temp_path / "__pycache__").mkdir()
-            (temp_path / ".hidden").mkdir()
+            _ = (temp_path / "template").mkdir()
+            _ = (temp_path / "loader").mkdir()
+            _ = (temp_path / "__pycache__").mkdir()
+            _ = (temp_path / ".hidden").mkdir()
             
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
@@ -167,11 +171,11 @@ class TestPluginDiscovery:
             
             # Create plugin directory without provider.py
             plugin_dir = temp_path / "test_plugin"
-            plugin_dir.mkdir()
-            (plugin_dir / "__init__.py").write_text("")
+            _ = plugin_dir.mkdir()
+            _ = (plugin_dir / "__init__.py").write_text("")
             
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
@@ -184,11 +188,11 @@ class TestPluginDiscovery:
             
             # Create plugin directory without __init__.py
             plugin_dir = temp_path / "test_plugin"
-            plugin_dir.mkdir()
-            (plugin_dir / "provider.py").write_text("")
+            _ = plugin_dir.mkdir()
+            _ = (plugin_dir / "provider.py").write_text("")
             
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
@@ -202,15 +206,15 @@ class TestPluginDiscovery:
             
             # Create valid plugin directory structure
             plugin_dir = temp_path / "test_plugin"
-            plugin_dir.mkdir()
-            (plugin_dir / "__init__.py").write_text("")
-            (plugin_dir / "provider.py").write_text("")
+            _ = plugin_dir.mkdir()
+            _ = (plugin_dir / "__init__.py").write_text("")
+            _ = (plugin_dir / "provider.py").write_text("")
             
             # Mock import error
             mock_import.side_effect = ImportError("Module not found")
             
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             plugins = discovery.discover_plugins()
             
@@ -224,21 +228,21 @@ class TestPluginDiscovery:
         
         # Add fake plugin
         fake_plugin = PluginInfo("fake", Path("/fake"), "fake.module")
-        discovery._discovered_plugins["fake"] = fake_plugin
+        discovery._discovered_plugins["fake"] = fake_plugin  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         # Mock empty discovery
-        discovery._search_paths = []
+        discovery._search_paths = []  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         plugins = discovery.discover_plugins(force_reload=True)
         
         assert "fake" not in plugins
-        assert discovery._discovered_plugins == {}
+        assert discovery.discovered_plugins == {}
     
     def test_get_plugin_existing(self) -> None:
         """Test getting existing plugin."""
         discovery = PluginDiscovery()
         fake_plugin = PluginInfo("test", Path("/test"), "test.module")
-        discovery._discovered_plugins["test"] = fake_plugin
+        discovery._discovered_plugins["test"] = fake_plugin  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         result = discovery.get_plugin("test")
         
@@ -269,7 +273,7 @@ class TestPluginDiscovery:
         # Add fake plugins
         plugin1 = PluginInfo("plugin1", Path("/test1"), "test1.module")
         plugin2 = PluginInfo("plugin2", Path("/test2"), "test2.module")
-        discovery._discovered_plugins = {"plugin1": plugin1, "plugin2": plugin2}
+        discovery._discovered_plugins = {"plugin1": plugin1, "plugin2": plugin2}  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         plugins = discovery.list_available_plugins()
         
@@ -286,7 +290,7 @@ class TestPluginDiscovery:
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
         failed_plugin.load_error = Exception("Load error")
         
-        discovery._discovered_plugins = {
+        discovery._discovered_plugins = {  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             "loaded": loaded_plugin,
             "failed": failed_plugin
         }
@@ -307,7 +311,7 @@ class TestPluginDiscovery:
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
         failed_plugin.load_error = error
         
-        discovery._discovered_plugins = {
+        discovery._discovered_plugins = {  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             "loaded": loaded_plugin,
             "failed": failed_plugin
         }
@@ -329,11 +333,11 @@ class TestPluginDiscovery:
         failed_plugin = PluginInfo("failed", Path("/failed"), "failed.module")
         failed_plugin.load_error = Exception("Load error")
         
-        discovery._discovered_plugins = {
+        discovery._discovered_plugins = {  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             "loaded": loaded_plugin,
             "failed": failed_plugin
         }
-        discovery._search_paths = [Path("/test/path1"), Path("/test/path2")]
+        discovery._search_paths = [Path("/test/path1"), Path("/test/path2")]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         summary = discovery.get_discovery_summary()
         
@@ -361,7 +365,7 @@ class TestPluginDiscoveryErrorHandling:
         discovery = PluginDiscovery()
         
         # Add non-existent path
-        discovery._search_paths = [Path("/nonexistent/path")]
+        discovery._search_paths = [Path("/nonexistent/path")]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
         
         # Should not raise exception
         plugins = discovery.discover_plugins()
@@ -377,7 +381,7 @@ class TestPluginDiscoveryErrorHandling:
             mock_iterdir.side_effect = PermissionError("Access denied")
             
             discovery = PluginDiscovery()
-            discovery._search_paths = [temp_path]
+            discovery._search_paths = [temp_path]  # pyright: ignore[reportPrivateUsage] # Direct modification needed for testing
             
             # Should not raise exception
             plugins = discovery.discover_plugins()
