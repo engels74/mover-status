@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
@@ -249,19 +249,33 @@ class PluginDiscovery:
         # Try to get metadata from module attributes
         if hasattr(module, "PLUGIN_METADATA"):
             try:
-                metadata_dict = getattr(module, "PLUGIN_METADATA")  # pyright: ignore[reportAny] # dynamic module attribute access
-                if isinstance(metadata_dict, dict):
-                    provider_class = self._find_provider_class(module, plugin_name)
-                    if provider_class:
-                        return ProviderMetadata(
-                            name=str(metadata_dict.get("name", plugin_name)),
-                            description=str(metadata_dict.get("description", f"Plugin {plugin_name}")),
-                            version=str(metadata_dict.get("version", "1.0.0")),
-                            author=str(metadata_dict.get("author", "Unknown")),
-                            provider_class=provider_class,
-                            tags=list(metadata_dict.get("tags", [])),
-                            dependencies=list(metadata_dict.get("dependencies", []))
-                        )
+                metadata_dict: dict[str, object] = getattr(module, "PLUGIN_METADATA")  # pyright: ignore[reportAny] # dynamic module attribute
+                provider_class = self._find_provider_class(module, plugin_name)
+                if provider_class:
+                    name: str = str(metadata_dict.get("name", plugin_name))
+                    description: str = str(metadata_dict.get("description", f"Plugin {plugin_name}"))
+                    version: str = str(metadata_dict.get("version", "1.0.0"))
+                    author: str = str(metadata_dict.get("author", "Unknown"))
+                    tags_raw = metadata_dict.get("tags", [])
+                    dependencies_raw = metadata_dict.get("dependencies", [])
+                    
+                    tags: list[str] = []
+                    if isinstance(tags_raw, (list, tuple)):
+                        tags = [str(tag) for tag in tags_raw]  # pyright: ignore[reportUnknownArgumentType] # dynamic tag conversion
+                    
+                    dependencies: list[str] = []
+                    if isinstance(dependencies_raw, (list, tuple)):
+                        dependencies = [str(dep) for dep in dependencies_raw]  # pyright: ignore[reportUnknownArgumentType] # dynamic dependency conversion
+                    
+                    return ProviderMetadata(
+                        name=name,
+                        description=description,
+                        version=version,
+                        author=author,
+                        provider_class=provider_class,
+                        tags=tags,
+                        dependencies=dependencies
+                    )
             except Exception as e:
                 logger.warning("Error loading metadata from module %s: %s", plugin_name, e)
         
@@ -288,7 +302,7 @@ class PluginDiscovery:
             PluginInfo object or None if not found
         """
         if not self._discovered_plugins:
-            self.discover_plugins()
+            _ = self.discover_plugins()
         
         return self._discovered_plugins.get(name)
     
@@ -332,7 +346,7 @@ class PluginDiscovery:
             if info.load_error is not None
         ]
     
-    def get_discovery_summary(self) -> dict[str, Any]:
+    def get_discovery_summary(self) -> dict[str, object]:
         """Get a summary of plugin discovery results.
         
         Returns:

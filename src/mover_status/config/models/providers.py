@@ -309,10 +309,10 @@ class ProviderConfig(BaseConfig):
         provider_config = getattr(self, provider_name, None)
         
         if provider_config is not None:
-            if hasattr(provider_config, 'model_dump'):
-                return cast(dict[str, object], provider_config.model_dump())  # pyright: ignore[reportAny] # dynamic attribute access
-            elif hasattr(provider_config, 'dict'):
-                return cast(dict[str, object], provider_config.dict())  # pyright: ignore[reportAny] # dynamic attribute access
+            if hasattr(provider_config, 'model_dump'):  # pyright: ignore[reportAny] # dynamic attribute check
+                return cast(dict[str, object], provider_config.model_dump())  # pyright: ignore[reportAny] # dynamic method call
+            elif hasattr(provider_config, 'dict'):  # pyright: ignore[reportAny] # dynamic attribute check
+                return cast(dict[str, object], provider_config.dict())  # pyright: ignore[reportAny] # dynamic method call
             elif isinstance(provider_config, dict):
                 return cast(dict[str, object], provider_config)
             else:

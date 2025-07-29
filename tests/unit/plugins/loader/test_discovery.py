@@ -342,9 +342,9 @@ class TestPluginDiscovery:
         assert summary["failed_plugins"] == 1
         assert summary["loaded_plugin_names"] == ["loaded"]
         assert summary["failed_plugin_names"] == ["failed"]
-        assert len(summary["search_paths"]) == 2
+        assert len(summary["search_paths"]) == 2  # pyright: ignore[reportArgumentType]
         assert "plugin_details" in summary
-        assert len(summary["plugin_details"]) == 2
+        assert len(summary["plugin_details"]) == 2  # pyright: ignore[reportArgumentType]
 
 
 class TestPluginDiscoveryErrorHandling:

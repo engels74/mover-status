@@ -20,7 +20,7 @@ class DynamicProviderConfig(BaseConfig):
     
     # All other fields are dynamic and will be validated by the provider itself
     
-    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # pydantic requires Any for dynamic configs
+    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # dynamic config requires Any
         """Initialize with any additional fields."""
         super().__init__(**data)
     
@@ -43,7 +43,7 @@ class FlexibleProviderConfig(BaseConfig):
     
     model_config: ConfigDict = ConfigDict(extra='allow')  # Allow any additional provider configs
     
-    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # pydantic requires Any for dynamic configs
+    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportExplicitAny] # dynamic config requires Any
         """Initialize with dynamic provider configurations."""
         super().__init__(**data)
     
@@ -59,10 +59,10 @@ class FlexibleProviderConfig(BaseConfig):
         provider_config = getattr(self, provider_name, None)
         
         if provider_config is not None:
-            if hasattr(provider_config, 'model_dump'):
-                return cast(dict[str, object], provider_config.model_dump())  # pyright: ignore[reportAny] # dynamic attribute access
-            elif hasattr(provider_config, 'dict'):
-                return cast(dict[str, object], provider_config.dict())  # pyright: ignore[reportAny] # dynamic attribute access
+            if hasattr(provider_config, 'model_dump'):  # pyright: ignore[reportAny] # dynamic attribute check
+                return cast(dict[str, object], provider_config.model_dump())  # pyright: ignore[reportAny] # dynamic method call
+            elif hasattr(provider_config, 'dict'):  # pyright: ignore[reportAny] # dynamic attribute check
+                return cast(dict[str, object], provider_config.dict())  # pyright: ignore[reportAny] # dynamic method call
             elif isinstance(provider_config, dict):
                 return cast(dict[str, object], provider_config)
             else:
@@ -94,14 +94,14 @@ class FlexibleProviderConfig(BaseConfig):
         # Get all attributes that don't start with underscore and aren't methods
         providers: list[str] = []
         for attr_name in dir(self):
-            if not attr_name.startswith('_') and not callable(getattr(self, attr_name)):  # pyright: ignore[reportAny] # dynamic attribute access
+            if not attr_name.startswith('_') and not callable(getattr(self, attr_name)):  # pyright: ignore[reportAny] # dynamic attribute check
                 attr_value = getattr(self, attr_name)  # pyright: ignore[reportAny] # dynamic attribute access
                 if attr_value is not None:
                     providers.append(attr_name)
         
         return providers
     
-    def add_provider_config(self, provider_name: str, config: dict[str, Any] | DynamicProviderConfig) -> None:  # pyright: ignore[reportExplicitAny] # config values can be any type
+    def add_provider_config(self, provider_name: str, config: dict[str, Any] | DynamicProviderConfig) -> None:
         """Add configuration for a new provider dynamically.
         
         Args:
@@ -121,5 +121,5 @@ class FlexibleProviderConfig(BaseConfig):
         """Validate provider configurations dynamically."""
         # If it's a dict, convert to DynamicProviderConfig
         if isinstance(v, dict) and hasattr(info, 'field_name') and info.field_name and not info.field_name.startswith('_'):
-            return DynamicProviderConfig(**v)  # pyright: ignore[reportAny] # dynamic validation conversion
+            return DynamicProviderConfig(**v)
         return v
