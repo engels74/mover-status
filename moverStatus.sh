@@ -94,7 +94,7 @@ if [[ $USE_TELEGRAM == true ]]; then
 fi
 
 if [[ $USE_DISCORD == true ]]; then
-    if ! [[ $DISCORD_WEBHOOK_URL =~ ^https://discord.com/api/webhooks/ ]]; then
+    if ! [[ $DISCORD_WEBHOOK_URL =~ ^https://(discord\.com|discordapp\.com)/api/webhooks/ ]]; then
         log "Error: Invalid Discord webhook URL."
         exit 1
     fi
