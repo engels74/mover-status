@@ -62,7 +62,7 @@ MOVER_EXECUTABLE="/usr/local/sbin/mover"
 # Do Not Modify: Script essentials
 # ---------------------------------
 # Script versioning - check for updates
-CURRENT_VERSION="0.0.7"
+CURRENT_VERSION="0.0.8"
 
 # Function to check the latest version
 function check_latest_version {
