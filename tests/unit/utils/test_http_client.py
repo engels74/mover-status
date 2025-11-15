@@ -59,11 +59,11 @@ class TestAIOHTTPClientBasics:
         client = AIOHTTPClient()
 
         async with client:
-            assert client._session is not None
-            assert isinstance(client._session, aiohttp.ClientSession)
+            assert client._session is not None  # pyright: ignore[reportPrivateUsage]  # testing internal state
+            assert isinstance(client._session, aiohttp.ClientSession)  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Session should be closed after context exit
-        assert client._session is None
+        assert client._session is None  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
     async def test_context_manager_closes_session_on_error(self) -> None:
         """Test that session is closed even when exception occurs."""
@@ -71,13 +71,13 @@ class TestAIOHTTPClientBasics:
 
         try:
             async with client:
-                assert client._session is not None
+                assert client._session is not None  # pyright: ignore[reportPrivateUsage]  # testing internal state
                 raise ValueError("Test error")
         except ValueError:
             pass
 
         # Session should still be closed
-        assert client._session is None
+        assert client._session is None  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
     async def test_post_without_session_raises_error(self, client: AIOHTTPClient) -> None:
         """Test that post() raises error if session not initialized."""
@@ -91,8 +91,8 @@ class TestPostMethod:
     async def test_post_success(self, client: AIOHTTPClient, mock_session: AsyncMock, mock_response: AsyncMock) -> None:
         """Test successful POST request."""
         # Setup mock
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.return_value = mock_response  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute
         response = await client.post(
@@ -104,7 +104,7 @@ class TestPostMethod:
         # Verify
         assert response.status == 200
         assert response.body == {"success": True}
-        mock_session.post.assert_called_once()
+        mock_session.post.assert_called_once()  # pyright: ignore[reportAny]  # mock method
 
     async def test_post_timeout(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test POST request timeout handling."""
@@ -112,8 +112,8 @@ class TestPostMethod:
         async def slow_request(*args: object, **kwargs: object) -> None:  # pyright: ignore[reportUnusedParameter]
             await asyncio.sleep(10)  # Longer than timeout
 
-        mock_session.post.return_value.__aenter__.side_effect = slow_request
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = slow_request  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute and verify timeout
         with pytest.raises(TimeoutError):
@@ -122,8 +122,8 @@ class TestPostMethod:
     async def test_post_invalid_url(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test POST with invalid URL raises ValueError."""
         # Setup mock to raise InvalidURL
-        mock_session.post.side_effect = aiohttp.InvalidURL("invalid")
-        client._session = mock_session
+        mock_session.post.side_effect = aiohttp.InvalidURL("invalid")  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute and verify
         with pytest.raises(ValueError, match="Malformed URL"):
@@ -132,8 +132,8 @@ class TestPostMethod:
     async def test_post_connection_error(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test POST with connection error propagates exception."""
         # Setup mock to raise connection error
-        mock_session.post.side_effect = aiohttp.ClientConnectionError("Connection refused")
-        client._session = mock_session
+        mock_session.post.side_effect = aiohttp.ClientConnectionError("Connection refused")  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute and verify
         with pytest.raises(aiohttp.ClientConnectionError):
@@ -144,10 +144,10 @@ class TestPostMethod:
     ) -> None:
         """Test POST with non-JSON response returns empty body."""
         # Setup mock to raise ContentTypeError on json()
-        mock_response.json.side_effect = aiohttp.ContentTypeError(Mock(), Mock())
+        mock_response.json.side_effect = aiohttp.ContentTypeError(Mock(), Mock())  # pyright: ignore[reportAny]  # mock object
         mock_response.status = 200
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.return_value = mock_response  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute
         response = await client.post("https://example.com/webhook", {}, timeout=5.0)
@@ -177,8 +177,8 @@ class TestRetryLogic:
             response.headers = {}
             return response
 
-        mock_session.post.return_value.__aenter__.side_effect = timeout_then_succeed
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = timeout_then_succeed  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute with retry
         with patch("asyncio.sleep") as mock_sleep:
@@ -204,8 +204,8 @@ class TestRetryLogic:
             response.headers = {}
             return response
 
-        mock_session.post.return_value.__aenter__.side_effect = error_then_succeed
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = error_then_succeed  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute with retry
         with patch("asyncio.sleep") as mock_sleep:
@@ -223,15 +223,15 @@ class TestRetryLogic:
         response.status = 404
         response.json = AsyncMock(return_value={})
         response.headers = {}
-        mock_session.post.return_value.__aenter__.return_value = response
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.return_value = response  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute and verify no retry
         with pytest.raises(RuntimeError, match="Client error 404"):
             _ = await client.post_with_retry("https://example.com/webhook", {})
 
         # Should only be called once (no retries)
-        assert mock_session.post.call_count == 1
+        assert mock_session.post.call_count == 1  # pyright: ignore[reportAny]  # mock object
 
     async def test_retry_429_with_retry_after(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test that 429 errors respect Retry-After header."""
@@ -252,8 +252,8 @@ class TestRetryLogic:
             response.json = AsyncMock(return_value={})
             return response
 
-        mock_session.post.return_value.__aenter__.side_effect = rate_limit_then_succeed
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = rate_limit_then_succeed  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute with retry
         with patch("asyncio.sleep") as mock_sleep:
@@ -267,16 +267,16 @@ class TestRetryLogic:
     async def test_max_retries_exhausted(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test that max retries are enforced."""
         # Setup mock to always timeout
-        mock_session.post.return_value.__aenter__.side_effect = TimeoutError("Timeout")
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = TimeoutError("Timeout")  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         # Execute and verify exception after max retries
         with patch("asyncio.sleep"):
             with pytest.raises(TimeoutError):
-                await client.post_with_retry("https://example.com/webhook", {})
+                _ = await client.post_with_retry("https://example.com/webhook", {})
 
         # Should attempt initial + 3 retries = 4 total
-        assert mock_session.post.call_count == 4
+        assert mock_session.post.call_count == 4  # pyright: ignore[reportAny]  # mock object
 
 
 class TestExponentialBackoff:
@@ -285,7 +285,7 @@ class TestExponentialBackoff:
     def test_backoff_calculation(self, client: AIOHTTPClient) -> None:
         """Test exponential backoff increases correctly."""
         # Test multiple attempts
-        delays = [client._calculate_backoff_delay(i) for i in range(5)]
+        delays = [client.calculate_backoff_delay(i) for i in range(5)]
 
         # Verify exponential growth (with jitter tolerance)
         assert 0.8 <= delays[0] <= 1.2  # ~1s with jitter
@@ -296,13 +296,13 @@ class TestExponentialBackoff:
     def test_backoff_respects_max(self, client: AIOHTTPClient) -> None:
         """Test that backoff respects max_backoff_seconds."""
         # Large attempt number should be capped
-        delay = client._calculate_backoff_delay(100)
-        assert delay <= client._max_backoff_seconds
+        delay = client.calculate_backoff_delay(100)
+        assert delay <= client._max_backoff_seconds  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
     def test_backoff_jitter_applied(self, client: AIOHTTPClient) -> None:
         """Test that jitter is applied to backoff delays."""
         # Generate multiple delays for same attempt
-        delays = [client._calculate_backoff_delay(3) for _ in range(50)]
+        delays = [client.calculate_backoff_delay(3) for _ in range(50)]
 
         # Verify variance (not all identical due to jitter)
         assert len(set(delays)) > 1
@@ -316,8 +316,8 @@ class TestCircuitBreaker:
     async def test_circuit_breaker_opens_after_failures(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test that circuit opens after threshold failures."""
         # Setup mock to always fail
-        mock_session.post.return_value.__aenter__.side_effect = TimeoutError("Timeout")
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.side_effect = TimeoutError("Timeout")  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         url = "https://example.com/webhook"
 
@@ -331,22 +331,22 @@ class TestCircuitBreaker:
                     pass
 
         # Circuit should now be open (5 failures threshold)
-        assert not client._should_attempt_request(url)
-        breaker = client._circuit_breakers[url]
+        assert not client.should_attempt_request(url)
+        breaker = client._circuit_breakers[url]  # pyright: ignore[reportPrivateUsage]  # testing internal state
         assert breaker.circuit_state == CircuitState.OPEN
-        assert breaker.consecutive_failures >= client._circuit_breaker_threshold
+        assert breaker.consecutive_failures >= client._circuit_breaker_threshold  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
     async def test_circuit_breaker_prevents_requests_when_open(
         self, client: AIOHTTPClient, mock_session: AsyncMock
     ) -> None:
         """Test that open circuit prevents requests."""
-        client._session = mock_session
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
         url = "https://example.com/webhook"
 
         # Manually open circuit
         from mover_status.utils.http_client import CircuitBreakerState
 
-        client._circuit_breakers[url] = CircuitBreakerState(
+        client._circuit_breakers[url] = CircuitBreakerState(  # pyright: ignore[reportPrivateUsage]  # testing internal state
             consecutive_failures=10,
             last_failure_time=datetime.now(),
             circuit_state=CircuitState.OPEN,
@@ -363,15 +363,15 @@ class TestCircuitBreaker:
         # Manually set circuit to OPEN with old failure time
         from mover_status.utils.http_client import CircuitBreakerState
 
-        client._circuit_breakers[url] = CircuitBreakerState(
+        client._circuit_breakers[url] = CircuitBreakerState(  # pyright: ignore[reportPrivateUsage]  # testing internal state
             consecutive_failures=10,
             last_failure_time=datetime.now() - timedelta(seconds=35),  # Past cooldown
             circuit_state=CircuitState.OPEN,
         )
 
         # Should allow request (transitions to HALF_OPEN)
-        assert client._should_attempt_request(url)
-        assert client._circuit_breakers[url].circuit_state == CircuitState.HALF_OPEN
+        assert client.should_attempt_request(url)
+        assert client._circuit_breakers[url].circuit_state == CircuitState.HALF_OPEN  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
     async def test_circuit_breaker_closes_on_success(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test that circuit closes after successful request."""
@@ -380,15 +380,15 @@ class TestCircuitBreaker:
         response.status = 200
         response.json = AsyncMock(return_value={})
         response.headers = {}
-        mock_session.post.return_value.__aenter__.return_value = response
-        client._session = mock_session
+        mock_session.post.return_value.__aenter__.return_value = response  # pyright: ignore[reportAny]  # mock object
+        client._session = mock_session  # pyright: ignore[reportPrivateUsage]  # testing internal state
 
         url = "https://example.com/webhook"
 
         # Manually set circuit to HALF_OPEN
         from mover_status.utils.http_client import CircuitBreakerState
 
-        client._circuit_breakers[url] = CircuitBreakerState(
+        client._circuit_breakers[url] = CircuitBreakerState(  # pyright: ignore[reportPrivateUsage]  # testing internal state
             consecutive_failures=10,
             last_failure_time=datetime.now(),
             circuit_state=CircuitState.HALF_OPEN,
@@ -397,7 +397,7 @@ class TestCircuitBreaker:
         # Successful request should close circuit
         _ = await client.post_with_retry(url, {})
 
-        breaker = client._circuit_breakers[url]
+        breaker = client._circuit_breakers[url]  # pyright: ignore[reportPrivateUsage]  # testing internal state
         assert breaker.circuit_state == CircuitState.CLOSED
         assert breaker.consecutive_failures == 0
 
@@ -408,25 +408,25 @@ class TestRetryAfterParsing:
     def test_parse_retry_after_seconds(self, client: AIOHTTPClient) -> None:
         """Test parsing Retry-After header with seconds."""
         headers = {"Retry-After": "30"}
-        delay = client._parse_retry_after(headers)
+        delay = client.parse_retry_after(headers)
         assert delay == 30.0
 
     def test_parse_retry_after_lowercase(self, client: AIOHTTPClient) -> None:
         """Test parsing lowercase retry-after header."""
         headers = {"retry-after": "15"}
-        delay = client._parse_retry_after(headers)
+        delay = client.parse_retry_after(headers)
         assert delay == 15.0
 
     def test_parse_retry_after_missing(self, client: AIOHTTPClient) -> None:
         """Test parsing missing Retry-After header."""
         headers: Mapping[str, str] = {}
-        delay = client._parse_retry_after(headers)
+        delay = client.parse_retry_after(headers)
         assert delay is None
 
     def test_parse_retry_after_invalid(self, client: AIOHTTPClient) -> None:
         """Test parsing invalid Retry-After header."""
         headers = {"Retry-After": "invalid"}
-        delay = client._parse_retry_after(headers)
+        delay = client.parse_retry_after(headers)
         assert delay is None
 
 
@@ -435,22 +435,22 @@ class TestRetryableStatus:
 
     def test_429_is_retryable(self, client: AIOHTTPClient) -> None:
         """Test that 429 (rate limit) is retryable."""
-        assert client._is_retryable_status(429)
+        assert client.is_retryable_status(429)
 
     def test_5xx_is_retryable(self, client: AIOHTTPClient) -> None:
         """Test that 5xx server errors are retryable."""
-        assert client._is_retryable_status(500)
-        assert client._is_retryable_status(502)
-        assert client._is_retryable_status(503)
+        assert client.is_retryable_status(500)
+        assert client.is_retryable_status(502)
+        assert client.is_retryable_status(503)
 
     def test_2xx_not_retryable(self, client: AIOHTTPClient) -> None:
         """Test that 2xx success codes are not retryable."""
-        assert not client._is_retryable_status(200)
-        assert not client._is_retryable_status(201)
+        assert not client.is_retryable_status(200)
+        assert not client.is_retryable_status(201)
 
     def test_4xx_not_retryable(self, client: AIOHTTPClient) -> None:
         """Test that 4xx client errors (except 429) are not retryable."""
-        assert not client._is_retryable_status(400)
-        assert not client._is_retryable_status(401)
-        assert not client._is_retryable_status(404)
+        assert not client.is_retryable_status(400)
+        assert not client.is_retryable_status(401)
+        assert not client.is_retryable_status(404)
 

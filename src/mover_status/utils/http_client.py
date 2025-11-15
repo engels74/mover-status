@@ -224,7 +224,7 @@ class AIOHTTPClient:
             Exception: If all retry attempts are exhausted or circuit is open
         """
         # Check circuit breaker before attempting request
-        if not self._should_attempt_request(url):
+        if not self.should_attempt_request(url):
             msg = f"Circuit breaker is OPEN for {url}"
             self._logger.error(msg)
             raise RuntimeError(msg)
@@ -253,10 +253,10 @@ class AIOHTTPClient:
                     return response
 
                 # Check if response is retryable
-                if self._is_retryable_status(response.status):
+                if self.is_retryable_status(response.status):
                     # Handle rate limiting with Retry-After header
                     if response.status == 429:
-                        retry_after = self._parse_retry_after(response.headers)
+                        retry_after = self.parse_retry_after(response.headers)
                         if retry_after is not None:
                             delay = min(retry_after, self._max_backoff_seconds)
                             self._logger.warning(
@@ -271,7 +271,7 @@ class AIOHTTPClient:
 
                     # 5xx server error - retry with backoff
                     if attempt < self._max_retries:
-                        delay = self._calculate_backoff_delay(attempt)
+                        delay = self.calculate_backoff_delay(attempt)
                         self._logger.warning(
                             "Server error from %s (status=%d), retrying in %.1fs (attempt %d/%d)",
                             url,
@@ -303,7 +303,7 @@ class AIOHTTPClient:
                 )
 
                 if attempt < self._max_retries:
-                    delay = self._calculate_backoff_delay(attempt)
+                    delay = self.calculate_backoff_delay(attempt)
                     self._logger.warning("Retrying in %.1fs", delay)
                     await asyncio.sleep(delay)
                     continue
@@ -326,7 +326,7 @@ class AIOHTTPClient:
                 )
 
                 if attempt < self._max_retries:
-                    delay = self._calculate_backoff_delay(attempt)
+                    delay = self.calculate_backoff_delay(attempt)
                     self._logger.warning("Retrying in %.1fs", delay)
                     await asyncio.sleep(delay)
                     continue
@@ -347,7 +347,7 @@ class AIOHTTPClient:
                 )
 
                 if attempt < self._max_retries:
-                    delay = self._calculate_backoff_delay(attempt)
+                    delay = self.calculate_backoff_delay(attempt)
                     self._logger.warning("Retrying in %.1fs", delay)
                     await asyncio.sleep(delay)
                     continue
@@ -363,7 +363,7 @@ class AIOHTTPClient:
         msg = f"All retry attempts exhausted for {url}"
         raise RuntimeError(msg)
 
-    def _calculate_backoff_delay(self, attempt: int) -> float:
+    def calculate_backoff_delay(self, attempt: int) -> float:
         """Calculate exponential backoff delay with jitter.
 
         Uses exponential backoff: delay = min(2^attempt, max_backoff_seconds)
@@ -389,7 +389,7 @@ class AIOHTTPClient:
         # Ensure delay doesn't exceed max backoff
         return min(delay, self._max_backoff_seconds)
 
-    def _parse_retry_after(self, headers: Mapping[str, str]) -> float | None:
+    def parse_retry_after(self, headers: Mapping[str, str]) -> float | None:
         """Parse Retry-After header from HTTP response.
 
         Supports both seconds (integer) and HTTP-date formats.
@@ -412,7 +412,7 @@ class AIOHTTPClient:
             self._logger.warning("Retry-After header has unsupported format: %s", retry_after)
             return None
 
-    def _is_retryable_status(self, status: int) -> bool:
+    def is_retryable_status(self, status: int) -> bool:
         """Check if HTTP status code is retryable.
 
         Retryable statuses:
@@ -431,7 +431,7 @@ class AIOHTTPClient:
         """
         return status == 429 or status >= 500
 
-    def _should_attempt_request(self, url: str) -> bool:
+    def should_attempt_request(self, url: str) -> bool:
         """Check if request should be attempted based on circuit breaker state.
 
         Args:
