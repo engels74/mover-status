@@ -5,6 +5,7 @@ This package provides pure, stateless utility functions for:
 - Time duration formatting (seconds to human-readable)
 - Data rate formatting (bytes/second to human-readable)
 - Message template system (placeholder-based message formatting)
+- Structured logging with syslog integration and correlation ID tracking
 
 All utilities maintain provider agnosticism and have no side effects.
 
@@ -13,12 +14,22 @@ Requirements:
 - 16.3: Shared message template system for placeholder replacement
 - 16.4: Pure and stateless utility functions for reuse without side effects
 - 16.5: No provider-specific logic in shared utility modules
+- 13.1-13.5: Structured logging infrastructure
 """
 
 from mover_status.utils.formatting import (
     format_duration,
     format_rate,
     format_size,
+)
+from mover_status.utils.logging import (
+    clear_correlation_id,
+    configure_logging,
+    correlation_id_var,
+    get_correlation_id,
+    get_logger,
+    log_with_context,
+    set_correlation_id,
 )
 from mover_status.utils.template import (
     KNOWN_PLACEHOLDERS,
@@ -34,6 +45,14 @@ __all__ = [
     "format_duration",
     "format_rate",
     "format_size",
+    # Logging infrastructure
+    "clear_correlation_id",
+    "configure_logging",
+    "correlation_id_var",
+    "get_correlation_id",
+    "get_logger",
+    "log_with_context",
+    "set_correlation_id",
     # Template system
     "KNOWN_PLACEHOLDERS",
     "TemplateError",
