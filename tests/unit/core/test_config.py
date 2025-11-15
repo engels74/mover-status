@@ -11,14 +11,18 @@ import pytest
 from pydantic import ValidationError
 
 from mover_status.core.config import (
+    ENV_VAR_PATTERN,
     ApplicationConfig,
     ApplicationRuntimeConfig,
+    EnvironmentVariableError,
     MainConfig,
     MonitoringConfig,
     MonitoringRuntimeConfig,
     NotificationsConfig,
     ProvidersConfig,
     ProvidersRuntimeConfig,
+    resolve_env_var,
+    resolve_env_vars_in_dict,
 )
 
 
@@ -356,3 +360,217 @@ class TestMainConfig:
             )
 
         assert "Threshold must be between 0 and 100" in str(exc_info.value)
+
+
+@pytest.mark.unit
+class TestEnvironmentVariablePattern:
+    """Test environment variable pattern regex."""
+
+    def test_pattern_matches_valid_variable_names(self) -> None:
+        """Test pattern matches valid environment variable names."""
+        assert ENV_VAR_PATTERN.search("${SIMPLE_VAR}") is not None
+        assert ENV_VAR_PATTERN.search("${VAR_WITH_UNDERSCORES}") is not None
+        assert ENV_VAR_PATTERN.search("${VAR123}") is not None
+        assert ENV_VAR_PATTERN.search("${VAR_123_ABC}") is not None
+
+    def test_pattern_extracts_variable_name(self) -> None:
+        """Test pattern extracts variable name correctly."""
+        match = ENV_VAR_PATTERN.search("${TEST_VAR}")
+        assert match is not None
+        assert match.group(1) == "TEST_VAR"
+
+    def test_pattern_does_not_match_invalid_syntax(self) -> None:
+        """Test pattern does not match invalid syntax."""
+        assert ENV_VAR_PATTERN.search("$SIMPLE_VAR") is None  # Missing braces
+        assert ENV_VAR_PATTERN.search("{SIMPLE_VAR}") is None  # Missing $
+        assert ENV_VAR_PATTERN.search("${lowercase}") is None  # Lowercase not allowed
+        assert ENV_VAR_PATTERN.search("${VAR-WITH-DASHES}") is None  # Dashes not allowed
+
+    def test_pattern_finds_multiple_variables(self) -> None:
+        """Test pattern finds all variables in a string."""
+        text = "prefix ${VAR1} middle ${VAR2} suffix"
+        matches = list(ENV_VAR_PATTERN.finditer(text))
+        assert len(matches) == 2
+        assert matches[0].group(1) == "VAR1"
+        assert matches[1].group(1) == "VAR2"
+
+
+@pytest.mark.unit
+class TestResolveEnvVar:
+    """Test resolve_env_var function."""
+
+    def test_resolve_single_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving a single environment variable."""
+        monkeypatch.setenv("TEST_VAR", "test_value")
+        result = resolve_env_var("${TEST_VAR}")
+        assert result == "test_value"
+
+    def test_resolve_variable_in_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving environment variable within a string."""
+        monkeypatch.setenv("TEST_VAR", "secret")
+        result = resolve_env_var("prefix_${TEST_VAR}_suffix")
+        assert result == "prefix_secret_suffix"
+
+    def test_resolve_multiple_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving multiple environment variables in one string."""
+        monkeypatch.setenv("VAR1", "value1")
+        monkeypatch.setenv("VAR2", "value2")
+        result = resolve_env_var("${VAR1}_middle_${VAR2}")
+        assert result == "value1_middle_value2"
+
+    def test_no_variables_returns_original(self) -> None:
+        """Test string without variables is returned unchanged."""
+        result = resolve_env_var("no variables here")
+        assert result == "no variables here"
+
+    def test_missing_variable_raises_error(self) -> None:
+        """Test missing environment variable raises EnvironmentVariableError."""
+        with pytest.raises(EnvironmentVariableError) as exc_info:
+            _ = resolve_env_var("${NONEXISTENT_VAR}")
+
+        error_msg = str(exc_info.value)
+        assert "NONEXISTENT_VAR" in error_msg
+        assert "not set" in error_msg
+        assert "Please set this variable" in error_msg
+
+    def test_error_message_does_not_expose_secrets(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test error messages never expose secret values."""
+        monkeypatch.setenv("SECRET_VAR", "super_secret_value")
+
+        # Error for missing variable should not show other env var values
+        with pytest.raises(EnvironmentVariableError) as exc_info:
+            _ = resolve_env_var("${MISSING_VAR}")
+
+        error_msg = str(exc_info.value)
+        assert "super_secret_value" not in error_msg
+        assert "MISSING_VAR" in error_msg
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Test empty string is handled correctly."""
+        result = resolve_env_var("")
+        assert result == ""
+
+    def test_variable_with_empty_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test environment variable with empty value is resolved."""
+        monkeypatch.setenv("EMPTY_VAR", "")
+        result = resolve_env_var("${EMPTY_VAR}")
+        assert result == ""
+
+
+@pytest.mark.unit
+class TestResolveEnvVarsInDict:
+    """Test resolve_env_vars_in_dict function."""
+
+    def test_resolve_simple_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving environment variables in a simple dictionary."""
+        monkeypatch.setenv("SECRET", "my_secret")
+        data = {"key": "${SECRET}"}
+        result = resolve_env_vars_in_dict(data)
+        assert result == {"key": "my_secret"}
+
+    def test_resolve_nested_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving environment variables in nested dictionaries."""
+        monkeypatch.setenv("SECRET", "nested_secret")
+        data = {"outer": {"inner": "${SECRET}"}}
+        result = resolve_env_vars_in_dict(data)
+        assert result == {"outer": {"inner": "nested_secret"}}
+
+    def test_resolve_list_of_strings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving environment variables in lists."""
+        monkeypatch.setenv("VAR1", "value1")
+        monkeypatch.setenv("VAR2", "value2")
+        data = {"items": ["${VAR1}", "${VAR2}", "static"]}
+        result = resolve_env_vars_in_dict(data)
+        assert result == {"items": ["value1", "value2", "static"]}
+
+    def test_resolve_list_of_dicts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving environment variables in lists of dictionaries."""
+        monkeypatch.setenv("SECRET", "list_secret")
+        data = {"items": [{"key": "${SECRET}"}, {"key": "static"}]}
+        result = resolve_env_vars_in_dict(data)
+        assert result == {"items": [{"key": "list_secret"}, {"key": "static"}]}
+
+    def test_preserve_non_string_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test non-string values are preserved unchanged."""
+        monkeypatch.setenv("SECRET", "my_secret")
+        data = {
+            "string": "${SECRET}",
+            "int": 42,
+            "float": 3.14,
+            "bool": True,
+            "none": None,
+        }
+        result = resolve_env_vars_in_dict(data)
+        assert result == {
+            "string": "my_secret",
+            "int": 42,
+            "float": 3.14,
+            "bool": True,
+            "none": None,
+        }
+
+    def test_complex_nested_structure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test resolving in complex nested structures."""
+        monkeypatch.setenv("WEBHOOK_URL", "https://example.com/webhook")
+        monkeypatch.setenv("BOT_TOKEN", "secret_token")
+
+        data = {
+            "providers": {
+                "discord": {
+                    "webhook_url": "${WEBHOOK_URL}",
+                    "enabled": True,
+                },
+                "telegram": {
+                    "bot_token": "${BOT_TOKEN}",
+                    "chat_id": 123456,
+                },
+            },
+            "settings": {
+                "timeout": 30,
+                "retries": [1, 2, 3],
+            },
+        }
+
+        result = resolve_env_vars_in_dict(data)
+
+        # Type assertions for nested dict access in tests
+        assert isinstance(result["providers"], dict)
+        assert isinstance(result["providers"]["discord"], dict)
+        assert isinstance(result["providers"]["telegram"], dict)
+        assert isinstance(result["settings"], dict)
+
+        assert result["providers"]["discord"]["webhook_url"] == "https://example.com/webhook"
+        assert result["providers"]["telegram"]["bot_token"] == "secret_token"
+        assert result["providers"]["discord"]["enabled"] is True
+        assert result["providers"]["telegram"]["chat_id"] == 123456
+        assert result["settings"]["timeout"] == 30
+        assert result["settings"]["retries"] == [1, 2, 3]
+
+    def test_missing_variable_in_dict_raises_error(self) -> None:
+        """Test missing environment variable in dict raises error."""
+        data = {"key": "${MISSING_VAR}"}
+        with pytest.raises(EnvironmentVariableError) as exc_info:
+            _ = resolve_env_vars_in_dict(data)
+
+        assert "MISSING_VAR" in str(exc_info.value)
+
+    def test_missing_variable_in_nested_dict_raises_error(self) -> None:
+        """Test missing environment variable in nested dict raises error."""
+        data = {"outer": {"inner": "${MISSING_VAR}"}}
+        with pytest.raises(EnvironmentVariableError) as exc_info:
+            _ = resolve_env_vars_in_dict(data)
+
+        assert "MISSING_VAR" in str(exc_info.value)
+
+    def test_empty_dict_returns_empty(self) -> None:
+        """Test empty dictionary is handled correctly."""
+        result = resolve_env_vars_in_dict({})
+        assert result == {}
+
+    def test_dict_without_variables_unchanged(self) -> None:
+        """Test dictionary without variables is returned with same values."""
+        data = {"key1": "value1", "key2": 42, "nested": {"key3": "value3"}}
+        result = resolve_env_vars_in_dict(data)
+        assert result == data

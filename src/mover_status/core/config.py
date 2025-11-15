@@ -5,11 +5,17 @@ validation, with support for environment variable resolution and fail-fast
 validation with actionable error messages.
 """
 
-from collections.abc import Sequence
+import os
+import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, NotRequired, ReadOnly, TypedDict
+from typing import Annotated, Final, NotRequired, ReadOnly, TypedDict
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Regular expression pattern for environment variable references
+# Matches ${VARIABLE_NAME} syntax where VARIABLE_NAME can contain letters, digits, and underscores
+ENV_VAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
 
 class MonitoringRuntimeConfig(TypedDict):
@@ -296,3 +302,120 @@ class MainConfig(BaseModel):
                 syslog_enabled=self.application.syslog_enabled,
             ),
         }
+
+
+class EnvironmentVariableError(Exception):
+    """Exception raised when environment variable resolution fails.
+
+    This exception is raised when a required environment variable is missing
+    or when environment variable syntax is invalid. It provides clear error
+    messages without exposing secret values.
+    """
+
+
+def resolve_env_var(value: str) -> str:
+    """Resolve environment variable references in a string value.
+
+    Parses ${VARIABLE_NAME} syntax and replaces with environment variable values.
+    Supports multiple environment variable references in a single string.
+
+    Args:
+        value: String potentially containing environment variable references
+
+    Returns:
+        String with environment variables resolved
+
+    Raises:
+        EnvironmentVariableError: If a required environment variable is missing
+
+    Examples:
+        >>> os.environ["TEST_VAR"] = "secret_value"
+        >>> resolve_env_var("${TEST_VAR}")
+        'secret_value'
+        >>> resolve_env_var("prefix_${TEST_VAR}_suffix")
+        'prefix_secret_value_suffix'
+        >>> resolve_env_var("no variables here")
+        'no variables here'
+    """
+    def replace_match(match: re.Match[str]) -> str:
+        """Replace a single environment variable reference.
+
+        Args:
+            match: Regex match object for ${VARIABLE_NAME}
+
+        Returns:
+            Environment variable value
+
+        Raises:
+            EnvironmentVariableError: If environment variable is not set
+        """
+        var_name = match.group(1)
+        env_value = os.environ.get(var_name)
+
+        if env_value is None:
+            msg = (
+                f"Required environment variable '{var_name}' is not set. "
+                f"Please set this variable before starting the application."
+            )
+            raise EnvironmentVariableError(msg)
+
+        return env_value
+
+    # Replace all environment variable references
+    return ENV_VAR_PATTERN.sub(replace_match, value)
+
+
+def resolve_env_vars_in_dict(data: Mapping[str, object]) -> dict[str, object]:
+    """Recursively resolve environment variables in a dictionary.
+
+    Traverses nested dictionaries and lists, resolving environment variable
+    references in string values. Non-string values are preserved as-is.
+
+    This function is designed to be used at the API boundary when loading
+    YAML configuration files, before Pydantic validation. The use of `object`
+    type reflects the unvalidated nature of YAML data.
+
+    Args:
+        data: Dictionary potentially containing environment variable references
+
+    Returns:
+        New dictionary with environment variables resolved
+
+    Raises:
+        EnvironmentVariableError: If a required environment variable is missing
+
+    Examples:
+        >>> os.environ["SECRET"] = "my_secret"
+        >>> resolve_env_vars_in_dict({"key": "${SECRET}"})
+        {'key': 'my_secret'}
+        >>> resolve_env_vars_in_dict({"nested": {"key": "${SECRET}"}})
+        {'nested': {'key': 'my_secret'}}
+    """
+    result: dict[str, object] = {}
+
+    for key, value in data.items():
+        if isinstance(value, str):
+            # Resolve environment variables in string values
+            result[key] = resolve_env_var(value)
+        elif isinstance(value, dict):
+            # Recursively resolve in nested dictionaries
+            # YAML data is untyped at load time; validated by Pydantic after resolution
+            result[key] = resolve_env_vars_in_dict(value)  # pyright: ignore[reportUnknownArgumentType]  # YAML boundary
+        elif isinstance(value, list):
+            # Recursively resolve in lists
+            resolved_list: list[object] = []
+            for item in value:  # pyright: ignore[reportUnknownVariableType]  # YAML list items
+                if isinstance(item, str):
+                    resolved_list.append(resolve_env_var(item))
+                elif isinstance(item, dict):
+                    # YAML data is untyped at load time; validated by Pydantic after resolution
+                    resolved_list.append(resolve_env_vars_in_dict(item))  # pyright: ignore[reportUnknownArgumentType]  # YAML boundary
+                else:
+                    # Non-string, non-dict items preserved as-is (e.g., int, float, bool, None)
+                    resolved_list.append(item)  # pyright: ignore[reportUnknownArgumentType]  # YAML primitives
+            result[key] = resolved_list
+        else:
+            # Preserve non-string, non-dict, non-list values as-is
+            result[key] = value
+
+    return result
