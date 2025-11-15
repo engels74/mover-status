@@ -3,8 +3,14 @@
 This package provides:
 - Data models (immutable dataclasses)
 - Protocol definitions (structural subtyping interfaces)
+- Type aliases (PEP 695 modern syntax)
 """
 
+from mover_status.types.aliases import (
+    NotificationEvent,
+    ProviderConfig,
+    ProviderRegistry,
+)
 from mover_status.types.models import (
     DiskSample,
     HealthStatus,
@@ -20,6 +26,10 @@ from mover_status.types.protocols import (
 )
 
 __all__ = [
+    # Type aliases
+    "NotificationEvent",
+    "ProviderConfig",
+    "ProviderRegistry",
     # Data models
     "DiskSample",
     "HealthStatus",
