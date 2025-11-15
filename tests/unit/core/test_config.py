@@ -14,6 +14,7 @@ from mover_status.core.config import (
     ENV_VAR_PATTERN,
     ApplicationConfig,
     ApplicationRuntimeConfig,
+    ConfigurationError,
     EnvironmentVariableError,
     MainConfig,
     MonitoringConfig,
@@ -21,6 +22,8 @@ from mover_status.core.config import (
     NotificationsConfig,
     ProvidersConfig,
     ProvidersRuntimeConfig,
+    load_main_config,
+    load_provider_config,
     resolve_env_var,
     resolve_env_vars_in_dict,
 )
@@ -574,3 +577,342 @@ class TestResolveEnvVarsInDict:
         data = {"key1": "value1", "key2": 42, "nested": {"key3": "value3"}}
         result = resolve_env_vars_in_dict(data)
         assert result == data
+
+
+@pytest.mark.unit
+class TestLoadMainConfig:
+    """Test load_main_config function."""
+
+    def test_load_valid_config(self, tmp_path: Path) -> None:
+        """Test loading a valid configuration file."""
+        # Create a valid configuration file
+        config_file = tmp_path / "config.yaml"
+        pid_file = tmp_path / "mover.pid"
+
+        config_content = f"""
+monitoring:
+  pid_file: {pid_file}
+  sampling_interval: 30
+  process_timeout: 600
+  exclusion_paths: []
+
+notifications:
+  thresholds: [0.0, 50.0, 100.0]
+  completion_enabled: true
+  retry_attempts: 3
+
+providers:
+  discord_enabled: true
+  telegram_enabled: false
+
+application:
+  log_level: DEBUG
+  dry_run: false
+  version_check: true
+  syslog_enabled: false
+"""
+        _ = config_file.write_text(config_content)
+
+        # Load configuration
+        config = load_main_config(config_file)
+
+        # Verify configuration
+        assert config.monitoring.pid_file == pid_file
+        assert config.monitoring.sampling_interval == 30
+        assert config.monitoring.process_timeout == 600
+        assert config.notifications.thresholds == [0.0, 50.0, 100.0]
+        assert config.notifications.retry_attempts == 3
+        assert config.providers.discord_enabled is True
+        assert config.providers.telegram_enabled is False
+        assert config.application.log_level == "DEBUG"
+        assert config.application.dry_run is False
+
+    def test_load_config_with_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test loading configuration with environment variable resolution."""
+        monkeypatch.setenv("TEST_PID_FILE", str(tmp_path / "mover.pid"))
+        monkeypatch.setenv("TEST_LOG_LEVEL", "WARNING")
+
+        config_file = tmp_path / "config.yaml"
+        config_content = """
+monitoring:
+  pid_file: ${TEST_PID_FILE}
+  sampling_interval: 60
+
+notifications:
+  thresholds: [0.0, 100.0]
+
+providers:
+  discord_enabled: true
+  telegram_enabled: false
+
+application:
+  log_level: ${TEST_LOG_LEVEL}
+"""
+        _ = config_file.write_text(config_content)
+
+        config = load_main_config(config_file)
+
+        assert config.monitoring.pid_file == tmp_path / "mover.pid"
+        assert config.application.log_level == "WARNING"
+
+    def test_load_config_file_not_found(self, tmp_path: Path) -> None:
+        """Test error when configuration file does not exist."""
+        nonexistent = tmp_path / "nonexistent.yaml"
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(nonexistent)
+
+        error_msg = str(exc_info.value)
+        assert "not found" in error_msg
+        assert str(nonexistent) in error_msg
+
+    def test_load_config_invalid_yaml(self, tmp_path: Path) -> None:
+        """Test error when YAML file is malformed."""
+        config_file = tmp_path / "config.yaml"
+        _ = config_file.write_text("invalid: yaml: content: [")
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(config_file)
+
+        error_msg = str(exc_info.value)
+        assert "parse" in error_msg.lower()
+        assert "YAML" in error_msg
+
+    def test_load_config_not_dict(self, tmp_path: Path) -> None:
+        """Test error when YAML root is not a dictionary."""
+        config_file = tmp_path / "config.yaml"
+        _ = config_file.write_text("- item1\n- item2\n")
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(config_file)
+
+        error_msg = str(exc_info.value)
+        assert "dictionary" in error_msg.lower()
+        assert "list" in error_msg.lower()
+
+    def test_load_config_missing_env_var(self, tmp_path: Path) -> None:
+        """Test error when environment variable is missing."""
+        config_file = tmp_path / "config.yaml"
+        pid_file = tmp_path / "mover.pid"
+
+        config_content = f"""
+monitoring:
+  pid_file: {pid_file}
+
+notifications:
+  thresholds: [0.0, 100.0]
+
+providers:
+  discord_enabled: true
+  telegram_enabled: false
+
+application:
+  log_level: ${{MISSING_VAR}}
+"""
+        _ = config_file.write_text(config_content)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(config_file)
+
+        error_msg = str(exc_info.value)
+        assert "MISSING_VAR" in error_msg
+        assert "not set" in error_msg
+
+    def test_load_config_validation_error(self, tmp_path: Path) -> None:
+        """Test error when configuration fails Pydantic validation."""
+        config_file = tmp_path / "config.yaml"
+        pid_file = tmp_path / "mover.pid"
+
+        # Invalid: sampling_interval must be positive
+        config_content = f"""
+monitoring:
+  pid_file: {pid_file}
+  sampling_interval: -10
+
+notifications:
+  thresholds: [0.0, 100.0]
+
+providers:
+  discord_enabled: true
+  telegram_enabled: false
+"""
+        _ = config_file.write_text(config_content)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(config_file)
+
+        error_msg = str(exc_info.value)
+        assert "validation failed" in error_msg.lower()
+        assert "Field:" in error_msg
+        assert "Error:" in error_msg
+
+    def test_load_config_field_level_diagnostics(self, tmp_path: Path) -> None:
+        """Test that validation errors include field-level diagnostics."""
+        config_file = tmp_path / "config.yaml"
+        pid_file = tmp_path / "mover.pid"
+
+        # Invalid: threshold > 100
+        config_content = f"""
+monitoring:
+  pid_file: {pid_file}
+
+notifications:
+  thresholds: [0.0, 150.0]
+
+providers:
+  discord_enabled: true
+  telegram_enabled: false
+"""
+        _ = config_file.write_text(config_content)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_main_config(config_file)
+
+        error_msg = str(exc_info.value)
+        # Should contain field path
+        assert "notifications" in error_msg.lower() or "thresholds" in error_msg.lower()
+        # Should contain error details
+        assert "Field:" in error_msg
+        assert "Error:" in error_msg
+        assert "Type:" in error_msg
+
+
+@pytest.mark.unit
+class TestLoadProviderConfig:
+    """Test load_provider_config function."""
+
+    def test_load_valid_provider_config(self, tmp_path: Path) -> None:
+        """Test loading a valid provider configuration."""
+        # Create a simple Pydantic model for testing
+        from pydantic import BaseModel, Field
+
+        class TestProviderConfig(BaseModel):
+            """Test provider configuration."""
+
+            api_key: str = Field(description="API key")
+            enabled: bool = Field(default=True, description="Enable provider")
+
+        config_file = tmp_path / "provider.yaml"
+        config_content = """
+api_key: test_key_123
+enabled: true
+"""
+        _ = config_file.write_text(config_content)
+
+        config = load_provider_config(
+            config_file,
+            TestProviderConfig,
+            provider_name="TestProvider",
+        )
+
+        assert config.api_key == "test_key_123"
+        assert config.enabled is True
+
+    def test_load_provider_config_with_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test loading provider configuration with environment variables."""
+        from pydantic import BaseModel, Field
+
+        class TestProviderConfig(BaseModel):
+            """Test provider configuration."""
+
+            api_key: str = Field(description="API key")
+
+        monkeypatch.setenv("PROVIDER_API_KEY", "secret_key_from_env")
+
+        config_file = tmp_path / "provider.yaml"
+        config_content = """
+api_key: ${PROVIDER_API_KEY}
+"""
+        _ = config_file.write_text(config_content)
+
+        config = load_provider_config(
+            config_file,
+            TestProviderConfig,
+            provider_name="TestProvider",
+        )
+
+        assert config.api_key == "secret_key_from_env"
+
+    def test_load_provider_config_file_not_found(self, tmp_path: Path) -> None:
+        """Test error when provider configuration file does not exist."""
+        from pydantic import BaseModel
+
+        class TestProviderConfig(BaseModel):
+            """Test provider configuration."""
+
+            api_key: str
+
+        nonexistent = tmp_path / "nonexistent.yaml"
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_provider_config(
+                nonexistent,
+                TestProviderConfig,
+                provider_name="TestProvider",
+            )
+
+        error_msg = str(exc_info.value)
+        assert "TestProvider" in error_msg
+        assert "not found" in error_msg
+
+    def test_load_provider_config_validation_error(self, tmp_path: Path) -> None:
+        """Test error when provider configuration fails validation."""
+        from pydantic import BaseModel, Field
+
+        class TestProviderConfig(BaseModel):
+            """Test provider configuration."""
+
+            api_key: str = Field(min_length=10, description="API key")
+
+        config_file = tmp_path / "provider.yaml"
+        config_content = """
+api_key: short
+"""
+        _ = config_file.write_text(config_content)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_provider_config(
+                config_file,
+                TestProviderConfig,
+                provider_name="TestProvider",
+            )
+
+        error_msg = str(exc_info.value)
+        assert "TestProvider" in error_msg
+        assert "validation failed" in error_msg.lower()
+        assert "Field:" in error_msg
+
+    def test_load_provider_config_provider_name_in_errors(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that provider name appears in all error messages."""
+        from pydantic import BaseModel
+
+        class TestProviderConfig(BaseModel):
+            """Test provider configuration."""
+
+            api_key: str
+
+        # Test file not found error
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_provider_config(
+                tmp_path / "missing.yaml",
+                TestProviderConfig,
+                provider_name="Discord",
+            )
+        assert "Discord" in str(exc_info.value)
+
+        # Test invalid YAML error
+        config_file = tmp_path / "invalid.yaml"
+        _ = config_file.write_text("invalid: yaml: [")
+        with pytest.raises(ConfigurationError) as exc_info:
+            _ = load_provider_config(
+                config_file,
+                TestProviderConfig,
+                provider_name="Telegram",
+            )
+        assert "Telegram" in str(exc_info.value)

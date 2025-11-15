@@ -11,7 +11,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Final, NotRequired, ReadOnly, TypedDict
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+import yaml
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # Regular expression pattern for environment variable references
 # Matches ${VARIABLE_NAME} syntax where VARIABLE_NAME can contain letters, digits, and underscores
@@ -419,3 +420,211 @@ def resolve_env_vars_in_dict(data: Mapping[str, object]) -> dict[str, object]:
             result[key] = value
 
     return result
+
+
+class ConfigurationError(Exception):
+    """Exception raised when configuration loading or validation fails.
+
+    This exception provides detailed, actionable error messages for configuration
+    issues including file not found, YAML parsing errors, and validation failures.
+    """
+
+
+def load_main_config(config_path: Path) -> MainConfig:
+    """Load and validate main application configuration from YAML file.
+
+    Loads the main configuration file, resolves environment variables, and
+    validates against the MainConfig schema. Provides fail-fast validation
+    with actionable error messages.
+
+    Args:
+        config_path: Path to main configuration YAML file
+
+    Returns:
+        Validated MainConfig instance
+
+    Raises:
+        ConfigurationError: If configuration file cannot be loaded or is invalid
+        EnvironmentVariableError: If required environment variable is missing
+
+    Examples:
+        >>> config = load_main_config(Path("config/mover-status.yaml"))
+        >>> print(config.monitoring.pid_file)
+        /var/run/mover.pid
+    """
+    # Validate file exists
+    if not config_path.exists():
+        msg = (
+            f"Configuration file not found: {config_path}\n"
+            f"Please create a configuration file at this location.\n"
+            f"See documentation for configuration file format."
+        )
+        raise ConfigurationError(msg)
+
+    # Load YAML file
+    try:
+        with config_path.open("r") as f:
+            raw_data: object = yaml.safe_load(f)  # pyright: ignore[reportAny]  # YAML boundary
+    except yaml.YAMLError as e:
+        msg = (
+            f"Failed to parse YAML configuration file: {config_path}\n"
+            f"YAML parsing error: {e}\n"
+            f"Please check the file for syntax errors."
+        )
+        raise ConfigurationError(msg) from e
+    except OSError as e:
+        msg = (
+            f"Failed to read configuration file: {config_path}\n"
+            f"Error: {e}\n"
+            f"Please check file permissions."
+        )
+        raise ConfigurationError(msg) from e
+
+    # Validate YAML contains a dictionary
+    if not isinstance(raw_data, dict):
+        msg = (
+            f"Invalid configuration file format: {config_path}\n"
+            f"Expected YAML dictionary at root level, got: {type(raw_data).__name__}\n"
+            f"Configuration file must contain key-value pairs."
+        )
+        raise ConfigurationError(msg)
+
+    # Resolve environment variables
+    try:
+        resolved_data = resolve_env_vars_in_dict(raw_data)  # pyright: ignore[reportUnknownArgumentType]  # YAML boundary
+    except EnvironmentVariableError as e:
+        msg = (
+            f"Environment variable resolution failed in: {config_path}\n"
+            f"{e}\n"
+            f"Set the required environment variable before starting the application."
+        )
+        raise ConfigurationError(msg) from e
+
+    # Validate against Pydantic schema
+    try:
+        config = MainConfig.model_validate(resolved_data)
+    except ValidationError as e:
+        # Format validation errors with field-level diagnostics
+        error_lines = ["Configuration validation failed:", ""]
+        for error in e.errors():
+            field_path = " → ".join(str(loc) for loc in error["loc"])
+            error_msg = error["msg"]
+            error_type = error["type"]
+            error_lines.append(f"  Field: {field_path}")
+            error_lines.append(f"  Error: {error_msg}")
+            error_lines.append(f"  Type: {error_type}")
+            error_lines.append("")
+
+        error_lines.append(f"Configuration file: {config_path}")
+        error_lines.append("Please fix the above errors and try again.")
+
+        msg = "\n".join(error_lines)
+        raise ConfigurationError(msg) from e
+
+    return config
+
+
+def load_provider_config[T: BaseModel](
+    config_path: Path,
+    model: type[T],
+    *,
+    provider_name: str,
+) -> T:
+    """Load and validate provider-specific configuration from YAML file.
+
+    Loads a provider-specific configuration file, resolves environment variables,
+    and validates against the provided Pydantic model. Provides fail-fast validation
+    with actionable error messages specific to the provider.
+
+    Args:
+        config_path: Path to provider configuration YAML file
+        model: Pydantic model class for validation
+        provider_name: Human-readable provider name for error messages
+
+    Returns:
+        Validated provider configuration instance
+
+    Raises:
+        ConfigurationError: If configuration file cannot be loaded or is invalid
+        EnvironmentVariableError: If required environment variable is missing
+
+    Examples:
+        >>> from mover_status.plugins.discord.config import DiscordConfig
+        >>> config = load_provider_config(
+        ...     Path("config/providers/discord.yaml"),
+        ...     DiscordConfig,
+        ...     provider_name="Discord"
+        ... )
+        >>> print(config.webhook_url)
+        https://discord.com/api/webhooks/...
+    """
+    # Validate file exists
+    if not config_path.exists():
+        msg = (
+            f"{provider_name} configuration file not found: {config_path}\n"
+            f"Please create a configuration file for {provider_name} at this location.\n"
+            f"See documentation for {provider_name} configuration format."
+        )
+        raise ConfigurationError(msg)
+
+    # Load YAML file
+    try:
+        with config_path.open("r") as f:
+            raw_data: object = yaml.safe_load(f)  # pyright: ignore[reportAny]  # YAML boundary
+    except yaml.YAMLError as e:
+        msg = (
+            f"Failed to parse {provider_name} YAML configuration: {config_path}\n"
+            f"YAML parsing error: {e}\n"
+            f"Please check the file for syntax errors."
+        )
+        raise ConfigurationError(msg) from e
+    except OSError as e:
+        msg = (
+            f"Failed to read {provider_name} configuration file: {config_path}\n"
+            f"Error: {e}\n"
+            f"Please check file permissions."
+        )
+        raise ConfigurationError(msg) from e
+
+    # Validate YAML contains a dictionary
+    if not isinstance(raw_data, dict):
+        msg = (
+            f"Invalid {provider_name} configuration format: {config_path}\n"
+            f"Expected YAML dictionary at root level, got: {type(raw_data).__name__}\n"
+            f"Configuration file must contain key-value pairs."
+        )
+        raise ConfigurationError(msg)
+
+    # Resolve environment variables
+    try:
+        resolved_data = resolve_env_vars_in_dict(raw_data)  # pyright: ignore[reportUnknownArgumentType]  # YAML boundary
+    except EnvironmentVariableError as e:
+        msg = (
+            f"Environment variable resolution failed in {provider_name} config: {config_path}\n"
+            f"{e}\n"
+            f"Set the required environment variable before starting the application."
+        )
+        raise ConfigurationError(msg) from e
+
+    # Validate against Pydantic schema
+    try:
+        config = model.model_validate(resolved_data)
+    except ValidationError as e:
+        # Format validation errors with field-level diagnostics
+        error_lines = [f"{provider_name} configuration validation failed:", ""]
+        for error in e.errors():
+            field_path = " → ".join(str(loc) for loc in error["loc"])
+            error_msg = error["msg"]
+            error_type = error["type"]
+            error_lines.append(f"  Field: {field_path}")
+            error_lines.append(f"  Error: {error_msg}")
+            error_lines.append(f"  Type: {error_type}")
+            error_lines.append("")
+
+        error_lines.append(f"Configuration file: {config_path}")
+        error_lines.append(f"Please fix the above errors in your {provider_name} configuration.")
+
+        msg = "\n".join(error_lines)
+        raise ConfigurationError(msg) from e
+
+    return config

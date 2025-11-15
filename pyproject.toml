@@ -36,6 +36,7 @@ dev = [
     "ruff>=0.14.5",
     "basedpyright>=1.33.0",
     "nox>=2025.11.12",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [project.scripts]
