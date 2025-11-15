@@ -58,6 +58,18 @@ mover-status/
 
 ## Module Organization Principles
 
+### Provider Isolation Rule
+
+**CRITICAL: No Provider-Specific References in Core Code**
+
+Core modules (`core/`, `types/`, `utils/`) MUST maintain complete provider agnosticism:
+- **Code**: NEVER import, reference, or implement logic for specific providers (Discord, Telegram, etc.)
+- **Documentation**: NEVER mention specific provider names in docstrings, comments, or examples
+- **Type Definitions**: Use generic examples only (e.g., "webhook services", "chat platforms", "provider_a")
+- **Violations**: Any hardcoded provider name outside `plugins/` directory is an architectural violation
+
+This ensures the plugin architecture remains extensible and prevents tight coupling between core and providers.
+
 ### Core Modules (`src/mover_status/core/`)
 
 **Separation of Concerns:**

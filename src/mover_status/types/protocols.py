@@ -20,7 +20,7 @@ class NotificationProvider(Protocol):
     """Protocol for notification delivery providers.
 
     Defines the interface for sending notifications to external platforms
-    (e.g., Discord, Telegram) with health monitoring capabilities.
+    (e.g., webhook services, chat platforms) with health monitoring capabilities.
     """
 
     async def send_notification(self, data: NotificationData) -> NotificationResult:
@@ -80,8 +80,7 @@ class MessageFormatter(Protocol):
 
         Returns:
             Platform-specific time representation
-            (e.g., Discord: Unix timestamp with relative formatting,
-             Telegram: human-readable datetime string)
+            (e.g., Unix timestamps, ISO 8601 strings, human-readable formats)
         """
         ...
 

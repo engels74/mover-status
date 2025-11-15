@@ -66,3 +66,16 @@ def coverage(session: nox.Session) -> None:
     session.run("coverage", "report", "--show-missing")
     session.run("coverage", "html")
     session.log("Coverage report generated in htmlcov/index.html")
+
+
+@nox.session(python=["3.14"])
+def check_isolation(session: nox.Session) -> None:
+    """Check that core modules don't reference specific providers.
+
+    Enforces the architectural rule that core/, types/, and utils/
+    directories must remain provider-agnostic.
+
+    Args:
+        session: The nox session object.
+    """
+    session.run("python3", "scripts/check_provider_isolation.py", external=True)

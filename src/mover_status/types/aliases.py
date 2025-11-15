@@ -21,5 +21,5 @@ type NotificationEvent = NotificationData
 
 # Provider registry type
 # Generic dictionary type for storing provider instances by name
-# Example: ProviderRegistry[NotificationProvider] = {"discord": provider1, ...}
+# Example: ProviderRegistry[NotificationProvider] = {"provider_a": provider1, "provider_b": provider2, ...}
 type ProviderRegistry[T] = dict[str, T]
