@@ -4,7 +4,7 @@
 
 ### 1.1 Purpose of Conversion
 
-This document outlines the comprehensive architectural design for converting the legacy bash script (`moverStatus.sh`) into a modern, modular Python 3.14+ application. The conversion serves multiple strategic objectives:
+This document outlines the comprehensive architectural design for converting the legacy bash script (`.old_script/moverStatus.sh`) into a modern, modular Python 3.14+ application. The conversion serves multiple strategic objectives:
 
 - **Maintainability**: Transform a monolithic bash script with hardcoded provider logic into a well-structured, type-safe Python application following industry best practices
 - **Extensibility**: Enable seamless addition of new notification providers without modifying core application logic
