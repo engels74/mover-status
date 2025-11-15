@@ -4,7 +4,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
 
 ## Task List
 
-- [ ] 1. Set up project structure and tooling
+- [x] 1. Set up project structure and tooling
   - Create src/ layout with mover_status package
   - Configure pyproject.toml with PEP 621 metadata and uv_build backend
   - Set up ruff for linting/formatting with Python 3.14 target
