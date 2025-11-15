@@ -6,9 +6,11 @@ This package provides:
 """
 
 from mover_status.types.models import (
+    DiskSample,
     HealthStatus,
     NotificationData,
     NotificationResult,
+    ProgressData,
     Response,
 )
 from mover_status.types.protocols import (
@@ -19,9 +21,11 @@ from mover_status.types.protocols import (
 
 __all__ = [
     # Data models
+    "DiskSample",
     "HealthStatus",
     "NotificationData",
     "NotificationResult",
+    "ProgressData",
     "Response",
     # Protocols
     "HTTPClient",

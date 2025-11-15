@@ -65,3 +65,33 @@ class Response:
     status: int
     body: Mapping[str, object]
     headers: Mapping[str, str]
+
+
+@dataclass(slots=True, frozen=True)
+class DiskSample:
+    """Immutable disk usage sample for tracking data movement over time.
+
+    Represents a point-in-time snapshot of disk usage, used by the progress
+    calculator to track data movement rates across sampling intervals.
+    """
+
+    timestamp: datetime
+    bytes_used: int
+    path: str
+
+
+@dataclass(slots=True, frozen=True)
+class ProgressData:
+    """Immutable progress calculation result containing all progress metrics.
+
+    Represents the output from progress calculator pure functions, containing
+    comprehensive metrics about data movement progress including percentage,
+    bytes moved, transfer rate, and estimated time of completion.
+    """
+
+    percent: float
+    remaining_bytes: int
+    moved_bytes: int
+    total_bytes: int
+    rate_bytes_per_second: float
+    etc: datetime | None
