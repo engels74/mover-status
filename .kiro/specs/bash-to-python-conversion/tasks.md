@@ -39,7 +39,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - _Requirements: 7.1_
 
 - [ ] 3. Implement utility modules
-  - [ ] 3.1 Create formatting utilities
+  - [x] 3.1 Create formatting utilities
     - Implement format_size function for bytes to human-readable conversion (GB/TB/MB/KB)
     - Implement format_duration function for time formatting
     - Implement format_rate function for data rate formatting
