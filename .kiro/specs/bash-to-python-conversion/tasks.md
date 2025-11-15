@@ -91,7 +91,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
 - [ ] 5. Implement progress calculation engine
-  - [ ] 5.1 Create pure calculation functions
+  - [x] 5.1 Create pure calculation functions
     - Implement calculate_progress function with edge case handling (zero baseline, negative deltas)
     - Implement calculate_etc function with rate validation
     - Implement calculate_rate function with moving average
