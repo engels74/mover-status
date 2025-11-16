@@ -321,6 +321,7 @@ class TestWatchPidFile:
 
         # Measure time to detect file creation
         start_time = asyncio.get_event_loop().time()
+        elapsed: float = 0.0
 
         # Watch for events
         async for event in watch_pid_file(pid_file, check_interval=check_interval):
