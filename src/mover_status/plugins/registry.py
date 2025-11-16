@@ -131,13 +131,47 @@ class ProviderRegistry[T: NotificationProvider]:
         entry.health = status
         return status
 
+    def mark_for_retry(
+        self,
+        identifier: str,
+        *,
+        error_message: str | None = None,
+    ) -> HealthStatus:
+        """Record a transient failure while keeping provider eligible for retries."""
+        return self.record_failure(identifier, error_message=error_message)
+
+    def mark_unhealthy(
+        self,
+        identifier: str,
+        *,
+        error_message: str | None = None,
+    ) -> HealthStatus:
+        """Immediately mark a provider unhealthy for permanent failures."""
+        entry = self._require_entry(identifier)
+        consecutive = entry.health.consecutive_failures if entry.health else 0
+        status = HealthStatus(
+            is_healthy=False,
+            last_check=_now(),
+            consecutive_failures=max(consecutive, self._unhealthy_threshold),
+            error_message=error_message,
+        )
+        entry.health = status
+        return status
+
     def get_healthy_providers(self) -> tuple[T, ...]:
         """Return providers that are currently healthy (or unchecked)."""
+        return tuple(provider for _, provider in self.get_healthy_entries())
+
+    def get_healthy_entries(self) -> tuple[tuple[str, T], ...]:
+        """Return (identifier, provider) pairs for healthy providers."""
         identifiers: list[str] = []
         for identifier, entry in self._entries.items():
             if entry.health is None or entry.health.is_healthy:
                 identifiers.append(identifier)
-        return tuple(self._entries[identifier].provider for identifier in sorted(identifiers))
+        return tuple(
+            (identifier, self._entries[identifier].provider)
+            for identifier in sorted(identifiers)
+        )
 
     def get_unhealthy_providers(self) -> tuple[T, ...]:
         """Return providers explicitly marked unhealthy."""

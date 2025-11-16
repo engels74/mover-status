@@ -55,11 +55,13 @@ class StubProvider:
         delay: float = 0.0,
         fail_with: Exception | None = None,
         success: bool = True,
+        retryable_failure: bool = False,
     ) -> None:
         self.name: str = name
         self.delay: float = delay
         self.fail_with: Exception | None = fail_with
         self.success: bool = success
+        self.retryable_failure: bool = retryable_failure
         self.calls: int = 0
 
     async def send_notification(self, data: NotificationData) -> NotificationResult:
@@ -74,6 +76,7 @@ class StubProvider:
             provider_name=self.name,
             error_message=None if self.success else "failure",
             delivery_time_ms=5.0,
+            should_retry=self.retryable_failure if not self.success else False,
         )
 
     def validate_config(self) -> bool:  # pragma: no cover - protocol compliance
@@ -171,6 +174,50 @@ async def test_timeout_failure_does_not_block_other_providers(
 
 
 @pytest.mark.asyncio
+async def test_retryable_failure_marks_provider_for_retry() -> None:
+    """Retryable failures should keep provider eligible in registry."""
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
+        unhealthy_threshold=3
+    )
+    retrying = StubProvider("retrying", success=False, retryable_failure=True)
+    registry.register("retrying", retrying)
+
+    dispatcher = NotificationDispatcher(registry, provider_timeout_seconds=1.0)
+    data = _make_notification_data()
+
+    results = await dispatcher.dispatch_notification(data)
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.success is False
+    health = registry.get_health("retrying")
+    assert health is not None
+    assert health.is_healthy is True
+
+
+@pytest.mark.asyncio
+async def test_permanent_failure_marks_provider_unhealthy() -> None:
+    """Permanent failures should mark provider unhealthy immediately."""
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
+        unhealthy_threshold=5
+    )
+    failing = StubProvider("failing", success=False, retryable_failure=False)
+    registry.register("failing", failing)
+
+    dispatcher = NotificationDispatcher(registry, provider_timeout_seconds=1.0)
+    data = _make_notification_data()
+
+    results = await dispatcher.dispatch_notification(data)
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.success is False
+    health = registry.get_health("failing")
+    assert health is not None
+    assert health.is_healthy is False
+
+
+@pytest.mark.asyncio
 async def test_exception_group_logs_runtime_failure(
     caplog: LogCaptureFixture,
 ) -> None:
@@ -194,6 +241,9 @@ async def test_exception_group_logs_runtime_failure(
     assert failing_result.success is False
     assert "RuntimeError" in (failing_result.error_message or "")
     assert healthy_result.success is True
+    health = registry.get_health("failing")
+    assert health is not None
+    assert health.is_healthy is False
     failure_logs = [
         record for record in caplog.records if "Provider raised exception" in record.message
     ]

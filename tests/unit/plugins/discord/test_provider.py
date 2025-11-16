@@ -188,6 +188,7 @@ class TestSendNotification:
         assert result.error_message is not None
         assert "status=404" in result.error_message
         assert result.delivery_time_ms > 0.0
+        assert result.should_retry is False
 
     async def test_rate_limit_error_returns_failure_result(
         self,
@@ -217,6 +218,7 @@ class TestSendNotification:
         assert result.provider_name == "Discord"
         assert result.error_message is not None
         assert "status=429" in result.error_message
+        assert result.should_retry is True
 
     async def test_unexpected_exception_returns_failure_result(
         self,
@@ -242,6 +244,7 @@ class TestSendNotification:
         assert result.error_message is not None
         assert "Unexpected error" in result.error_message
         assert result.delivery_time_ms > 0.0
+        assert result.should_retry is True
 
     async def test_consecutive_failures_are_tracked(
         self,

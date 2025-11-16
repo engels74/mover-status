@@ -150,6 +150,7 @@ class NotificationDispatcher:
                     provider_name=identifier,
                     error_message=message,
                     delivery_time_ms=delivery_ms,
+                    should_retry=True,
                 )
                 dispatch_errors.append(
                     ProviderTimeoutError(
@@ -158,7 +159,12 @@ class NotificationDispatcher:
                         timeout_seconds=self._provider_timeout_seconds,
                     )
                 )
-                self._handle_provider_failure(identifier, result, log_failure=False)
+                self._handle_provider_failure(
+                    identifier,
+                    result,
+                    log_failure=False,
+                    should_retry=True,
+                )
             except Exception as exc:
                 delivery_ms = (time.perf_counter() - start) * 1000.0
                 error_message = f"Notification dispatch failed: {type(exc).__name__}: {exc}"
@@ -167,6 +173,7 @@ class NotificationDispatcher:
                     provider_name=identifier,
                     error_message=error_message,
                     delivery_time_ms=delivery_ms,
+                    should_retry=False,
                 )
                 dispatch_errors.append(
                     ProviderExecutionError(
@@ -175,12 +182,21 @@ class NotificationDispatcher:
                         cause=exc,
                     )
                 )
-                self._handle_provider_failure(identifier, result, log_failure=False)
+                self._handle_provider_failure(
+                    identifier,
+                    result,
+                    log_failure=False,
+                    should_retry=False,
+                )
             else:
                 if result.success:
                     self._handle_provider_success(identifier, result, data)
                 else:
-                    self._handle_provider_failure(identifier, result)
+                    self._handle_provider_failure(
+                        identifier,
+                        result,
+                        should_retry=result.should_retry,
+                    )
             finally:
                 if result is not None:
                     results[identifier] = result
@@ -198,16 +214,7 @@ class NotificationDispatcher:
         return tuple(results[identifier] for identifier in ordered_identifiers if identifier in results)
 
     def _collect_healthy_providers(self) -> list[tuple[str, NotificationProvider]]:
-        providers: list[tuple[str, NotificationProvider]] = []
-        for identifier in self._registry.get_identifiers():
-            provider = self._registry.get(identifier)
-            if provider is None:
-                continue
-            health = self._registry.get_health(identifier)
-            if health is not None and not health.is_healthy:
-                continue
-            providers.append((identifier, provider))
-        return providers
+        return list(self._registry.get_healthy_entries())
 
     def _handle_provider_success(
         self,
@@ -235,11 +242,18 @@ class NotificationDispatcher:
         result: NotificationResult,
         *,
         log_failure: bool = True,
+        should_retry: bool = False,
     ) -> None:
-        _ = self._registry.record_failure(
-            identifier,
-            error_message=result.error_message,
-        )
+        if should_retry:
+            _ = self._registry.mark_for_retry(
+                identifier,
+                error_message=result.error_message,
+            )
+        else:
+            _ = self._registry.mark_unhealthy(
+                identifier,
+                error_message=result.error_message,
+            )
         if log_failure:
             log_with_context(
                 self._logger,

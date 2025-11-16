@@ -32,13 +32,14 @@ class NotificationResult:
     """Result of notification delivery attempt.
 
     Captures the outcome of sending a notification to a provider,
-    including success status, timing, and error details if applicable.
+    including success status, timing, retry semantics, and error details.
     """
 
     success: bool
     provider_name: str
     error_message: str | None
     delivery_time_ms: float
+    should_retry: bool = False
 
 
 @dataclass(slots=True)

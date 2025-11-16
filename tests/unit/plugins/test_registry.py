@@ -89,3 +89,36 @@ def test_record_success_restores_health() -> None:
     assert status.is_healthy is True
     assert status.consecutive_failures == 0
     assert registry.get_healthy_providers() == (provider,)
+
+
+def test_mark_for_retry_records_failure() -> None:
+    """mark_for_retry should reuse failure tracking to keep provider eligible."""
+    registry = create_registry(unhealthy_threshold=3)
+    provider = DummyProvider("retryable")
+    registry.register("retryable", provider)
+
+    status = registry.mark_for_retry("retryable", error_message="timeout")
+    assert status.consecutive_failures == 1
+    assert status.is_healthy is True
+
+
+def test_mark_unhealthy_immediately_disables_provider() -> None:
+    """mark_unhealthy should mark provider unhealthy regardless of threshold."""
+    registry = create_registry(unhealthy_threshold=5)
+    provider = DummyProvider("permanent")
+    registry.register("permanent", provider)
+
+    status = registry.mark_unhealthy("permanent", error_message="invalid config")
+    assert status.is_healthy is False
+    assert status.consecutive_failures >= 5
+    assert registry.get_unhealthy_providers() == (provider,)
+
+
+def test_get_healthy_entries_returns_identifier_pairs() -> None:
+    """get_healthy_entries should expose identifiers with providers."""
+    registry = create_registry()
+    alpha = DummyProvider("alpha")
+    registry.register("alpha", alpha)
+
+    entries = registry.get_healthy_entries()
+    assert entries == (("alpha", alpha),)

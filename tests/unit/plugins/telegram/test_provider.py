@@ -235,8 +235,34 @@ class TestErrorHandling:
             result = await provider.send_notification(notification_data)
             assert result.success is False
             assert "status=403" in (result.error_message or "")
+            assert result.should_retry is False
 
         health = await provider.health_check()
         assert health.is_healthy is False
         assert provider._consecutive_failures == 3  # pyright: ignore[reportPrivateUsage]  # Testing internal state
         assert "consecutive failures" in (health.error_message or "")
+
+    async def test_rate_limit_error_sets_retry_flag(
+        self,
+        telegram_config: TelegramConfig,
+        http_client: HTTPClient,
+        http_client_recorder: RecordingHTTPClient,
+        notification_data: NotificationData,
+    ) -> None:
+        """Telegram rate limit responses should be marked retryable."""
+        provider = TelegramProvider(
+            config=telegram_config,
+            http_client=http_client,
+            template="Progress {percent}%",
+        )
+        http_client_recorder.response = Response(
+            status=429,
+            body={"description": "Too Many Requests", "parameters": {"retry_after": 5}},
+            headers={},
+        )
+
+        result = await provider.send_notification(notification_data)
+
+        assert result.success is False
+        assert result.should_retry is True
+        assert "status=429" in (result.error_message or "")

@@ -20,6 +20,8 @@ from typing import Final
 from mover_status.plugins.telegram.client import (
     TelegramAPIClient,
     TelegramAPIError,
+    TelegramBotBlockedError,
+    TelegramChatNotFoundError,
 )
 from mover_status.plugins.telegram.config import TelegramConfig
 from mover_status.plugins.telegram.formatter import TelegramFormatter
@@ -33,6 +35,19 @@ _DEFAULT_TEMPLATE: Final[str] = (
     "Progress {percent}% | Remaining {remaining_data} | Rate {rate} | ETA {etc}"
 )
 _PROVIDER_NAME: Final[str] = "Telegram"
+
+
+def _should_retry_telegram_error(error: TelegramAPIError) -> bool:
+    """Return True if the Telegram error should trigger a retry."""
+    if isinstance(error, (TelegramChatNotFoundError, TelegramBotBlockedError)):
+        return False
+    if error.retry_after is not None:
+        return True
+    if error.status in (408, 429):
+        return True
+    if error.status == 0:
+        return True
+    return error.status >= 500
 
 
 @dataclass(slots=True)
@@ -97,6 +112,7 @@ class TelegramProvider:
             self._last_check = datetime.now(timezone.utc)
 
             error_msg = f"Telegram API error (status={exc.status}): {exc}"
+            should_retry = _should_retry_telegram_error(exc)
             self._logger.error(
                 "Telegram notification failed: %s (correlation_id=%s, consecutive_failures=%d)",
                 error_msg,
@@ -109,6 +125,7 @@ class TelegramProvider:
                 provider_name=_PROVIDER_NAME,
                 error_message=error_msg,
                 delivery_time_ms=delivery_time_ms,
+                should_retry=should_retry,
             )
 
         except Exception as exc:  # pragma: no cover - defensive catch-all
@@ -131,6 +148,7 @@ class TelegramProvider:
                 provider_name=_PROVIDER_NAME,
                 error_message=error_msg,
                 delivery_time_ms=delivery_time_ms,
+                should_retry=True,
             )
 
     def validate_config(self) -> bool:
