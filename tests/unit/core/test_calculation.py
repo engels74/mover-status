@@ -537,6 +537,104 @@ class TestPropertyBasedInvariants:
             # Allow small tolerance
             assert etc >= before - timedelta(seconds=1)
 
+    @given(
+        samples=st.lists(
+            st.builds(
+                DiskSample,
+                timestamp=st.datetimes(
+                    min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)
+                ),
+                bytes_used=st.integers(min_value=0, max_value=1024**4),
+                path=st.just("/cache"),
+            ),
+            min_size=0,
+            max_size=20,
+        )
+    )
+    def test_rate_never_nan_or_infinity(self, samples: list[DiskSample]) -> None:
+        """Property: rate calculation never produces NaN or Infinity.
+
+        This test ensures that calculate_rate handles all edge cases gracefully
+        and never returns invalid floating-point values like NaN or Infinity.
+        """
+        import math
+
+        rate = calculate_rate(samples)
+
+        # Rate must be a valid finite number
+        assert not math.isnan(rate), "Rate calculation produced NaN"
+        assert not math.isinf(rate), "Rate calculation produced Infinity"
+        assert rate >= 0.0, "Rate must be non-negative"
+
+    @given(
+        baseline=st.integers(min_value=0, max_value=1024**5),
+        current=st.integers(min_value=0, max_value=1024**5),
+        samples=st.lists(
+            st.builds(
+                DiskSample,
+                timestamp=st.datetimes(
+                    min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)
+                ),
+                bytes_used=st.integers(min_value=0, max_value=1024**4),
+                path=st.just("/cache"),
+            ),
+            min_size=0,
+            max_size=10,
+        ),
+    )
+    def test_progress_data_all_fields_valid(
+        self, baseline: int, current: int, samples: list[DiskSample]
+    ) -> None:
+        """Property: calculate_progress_data produces valid values for all fields.
+
+        This comprehensive test ensures that the aggregate function produces
+        valid, consistent data across all calculated fields.
+        """
+        import math
+
+        progress_data = calculate_progress_data(
+            baseline=baseline, current=current, samples=samples
+        )
+
+        # Progress percentage must be in valid range
+        assert 0.0 <= progress_data.percent <= 100.0
+
+        # Remaining bytes must be non-negative
+        assert progress_data.remaining_bytes >= 0
+
+        # Moved bytes must be non-negative
+        assert progress_data.moved_bytes >= 0
+
+        # Total bytes should match baseline
+        assert progress_data.total_bytes == baseline
+
+        # Rate must be valid (not NaN or Infinity)
+        assert not math.isnan(progress_data.rate_bytes_per_second)
+        assert not math.isinf(progress_data.rate_bytes_per_second)
+        assert progress_data.rate_bytes_per_second >= 0.0
+
+        # ETC must be None or a valid datetime in the future (or very close to now)
+        if progress_data.etc is not None:
+            assert isinstance(progress_data.etc, datetime)
+            # Allow small tolerance for very fast transfers
+            assert progress_data.etc >= datetime.now() - timedelta(seconds=2)
+
+        # Consistency check: moved + remaining should relate to baseline correctly
+        if current < baseline:
+            # Normal case: moved + remaining should equal baseline
+            assert progress_data.moved_bytes + progress_data.remaining_bytes == baseline
+        elif current == baseline:
+            # Edge case: No movement yet
+            # moved should be 0, remaining should be 0 (because remaining = current when current < baseline)
+            # But when current == baseline, remaining is 0 by design
+            assert progress_data.moved_bytes == 0
+            assert progress_data.remaining_bytes == 0
+        else:
+            # Edge case: current > baseline (data added)
+            # In this case, moved should be 0 and remaining should be 0
+            assert progress_data.moved_bytes == 0
+            assert progress_data.remaining_bytes == 0
+
 
 class TestEvaluateThresholdCrossed:
     """Test suite for evaluate_threshold_crossed function."""

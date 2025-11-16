@@ -98,6 +98,79 @@ class TestFormatSize:
         result2 = format_size(bytes_value)
         assert result1 == result2
 
+    @given(st.integers(min_value=0, max_value=1024**5))
+    def test_format_size_monotonic_within_unit(self, bytes_value: int) -> None:
+        """Property test: larger byte values produce larger numeric values within same unit.
+
+        This tests a form of reversibility: if two values format to the same unit,
+        the larger byte value should have a larger numeric component.
+        """
+        # Test with a slightly larger value
+        if bytes_value < 1024**5 - 1024:
+            larger_value = bytes_value + 1024
+            result1 = format_size(bytes_value)
+            result2 = format_size(larger_value)
+
+            # Extract unit from both results
+            unit1 = result1.split()[-1] if "TB" not in result1 else "TB"
+            unit2 = result2.split()[-1] if "TB" not in result2 else "TB"
+
+            # If same unit, numeric value should be larger or equal
+            if unit1 == unit2 and unit1 != "Bytes":
+                # Extract numeric part (handle TB special case with parentheses)
+                if "TB" in result1:
+                    num1 = float(result1.split()[0])
+                    num2 = float(result2.split()[0])
+                else:
+                    num1 = float(result1.split()[0])
+                    num2 = float(result2.split()[0])
+                assert num2 >= num1, f"{bytes_value} -> {result1}, {larger_value} -> {result2}"
+
+    @given(
+        bytes_value=st.integers(min_value=0, max_value=1024**5),
+        precision=st.integers(min_value=0, max_value=5),
+    )
+    def test_format_size_precision_parameter_valid(
+        self, bytes_value: int, precision: int
+    ) -> None:
+        """Property test: precision parameter produces valid output for all values.
+
+        This tests that the precision parameter works correctly across all byte ranges.
+        """
+        result = format_size(bytes_value, precision=precision)
+
+        # Result should always be a valid string
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+        # For TB values, check precision is applied
+        if bytes_value >= 1024**4:
+            # Should contain a decimal point for TB values
+            assert "TB" in result
+            # Extract the TB value
+            tb_part = result.split()[0]
+            if "." in tb_part:
+                decimal_part = tb_part.split(".")[1]
+                # Decimal places should match precision (or be less if trailing zeros removed)
+                assert len(decimal_part) <= precision + 1  # Allow some flexibility
+
+    @given(st.integers(min_value=0, max_value=1024**5))
+    def test_format_size_contains_valid_unit(self, bytes_value: int) -> None:
+        """Property test: formatted size always contains exactly one valid unit."""
+        result = format_size(bytes_value)
+
+        # Count how many units appear in the result
+        units = ["Bytes", "KB", "MB", "GB", "TB"]
+        unit_count = sum(1 for unit in units if unit in result)
+
+        # Should contain exactly one unit (TB case has both TB and GB, so special handling)
+        if "TB" in result and "GB" in result:
+            # TB format includes GB in parentheses, which is valid
+            assert unit_count == 2
+            assert "(" in result and ")" in result
+        else:
+            assert unit_count == 1
+
 
 class TestFormatDuration:
     """Test suite for format_duration function."""
@@ -299,3 +372,142 @@ class TestCrossFunction:
         duration_str = format_duration(estimated_seconds)
         # Should show hours and minutes
         assert "h" in duration_str
+
+
+class TestPropertyBasedFormattingInvariants:
+    """Property-based tests for formatting function invariants using Hypothesis.
+
+    These tests ensure that formatting functions maintain critical invariants:
+    - Never produce NaN or Infinity
+    - Always produce valid, parseable output
+    - Maintain consistency and determinism
+    - Handle edge cases gracefully
+    """
+
+    @given(st.integers(min_value=0, max_value=1024**5))
+    def test_format_size_never_produces_invalid_output(self, bytes_value: int) -> None:
+        """Property: format_size never produces NaN, Infinity, or invalid strings.
+
+        This test ensures format_size handles all valid byte values gracefully
+        and produces well-formed output strings.
+        """
+        result = format_size(bytes_value)
+
+        # Must be a valid non-empty string
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+        # Must not contain invalid float representations
+        assert "nan" not in result.lower()
+        assert "inf" not in result.lower()
+
+        # Must contain a valid unit
+        valid_units = ["Bytes", "KB", "MB", "GB", "TB"]
+        assert any(unit in result for unit in valid_units)
+
+        # Must be parseable (contains numeric component)
+        # Extract first token which should be numeric
+        first_token = result.split()[0]
+        try:
+            numeric_value = float(first_token)
+            # Numeric value must be finite
+            import math
+
+            assert not math.isnan(numeric_value)
+            assert not math.isinf(numeric_value)
+            assert numeric_value >= 0
+        except ValueError:
+            pytest.fail(f"format_size produced non-numeric first token: {first_token}")
+
+    @given(st.floats(min_value=0.0, max_value=1024.0**5, allow_nan=False, allow_infinity=False))
+    def test_format_rate_never_produces_invalid_output(self, rate: float) -> None:
+        """Property: format_rate never produces NaN, Infinity, or invalid strings.
+
+        This test ensures format_rate handles all valid rate values gracefully
+        and produces well-formed output strings.
+        """
+        result = format_rate(rate)
+
+        # Must be a valid non-empty string
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+        # Must not contain invalid float representations
+        assert "nan" not in result.lower()
+        assert "inf" not in result.lower()
+
+        # Must contain "/s" suffix
+        assert "/s" in result
+
+        # Must contain a valid unit
+        valid_units = ["Bytes/s", "KB/s", "MB/s", "GB/s", "TB/s"]
+        assert any(unit in result for unit in valid_units)
+
+        # Must be parseable (contains numeric component)
+        first_token = result.split()[0]
+        try:
+            numeric_value = float(first_token)
+            import math
+
+            assert not math.isnan(numeric_value)
+            assert not math.isinf(numeric_value)
+            assert numeric_value >= 0
+        except ValueError:
+            pytest.fail(f"format_rate produced non-numeric first token: {first_token}")
+
+    @given(st.floats(min_value=0.0, max_value=86400.0 * 365, allow_nan=False, allow_infinity=False))
+    def test_format_duration_never_produces_invalid_output(self, seconds: float) -> None:
+        """Property: format_duration never produces NaN, Infinity, or invalid strings.
+
+        This test ensures format_duration handles all valid duration values gracefully
+        and produces well-formed output strings.
+        """
+        result = format_duration(seconds)
+
+        # Must be a valid non-empty string
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+        # Must not contain invalid float representations
+        assert "nan" not in result.lower()
+        assert "inf" not in result.lower()
+
+        # Must contain a valid time unit
+        valid_units = ["s", "m", "h", "d"]
+        assert any(unit in result for unit in valid_units)
+
+        # All numeric components must be valid integers
+        import re
+
+        # Extract all numeric values from the result
+        numbers: list[str] = re.findall(r"\d+", result)
+        assert len(numbers) > 0, f"No numeric values found in: {result}"
+
+        for num_str in numbers:
+            num: int = int(num_str)
+            assert num >= 0
+
+    @given(
+        bytes_value=st.integers(min_value=0, max_value=1024**5),
+        precision1=st.integers(min_value=0, max_value=3),
+        precision2=st.integers(min_value=0, max_value=3),
+    )
+    def test_format_size_precision_consistency(
+        self, bytes_value: int, precision1: int, precision2: int
+    ) -> None:
+        """Property: format_size with same precision always produces same output.
+
+        This tests that the precision parameter is deterministic and consistent.
+        """
+        result1 = format_size(bytes_value, precision=precision1)
+        result2 = format_size(bytes_value, precision=precision1)
+
+        # Same precision should always produce identical output
+        assert result1 == result2
+
+        # Different precisions may produce different output for TB values
+        if bytes_value >= 1024**4:
+            result3 = format_size(bytes_value, precision=precision2)
+            # All results should be valid
+            assert isinstance(result3, str)
+            assert len(result3) > 0

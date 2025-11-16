@@ -105,7 +105,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Support configurable threshold percentages
     - _Requirements: 2.1, 2.2, 2.3_
   
-  - [ ] 5.3 Write property-based tests for calculation invariants
+  - [x] 5.3 Write property-based tests for calculation invariants
     - Use Hypothesis to test progress percentage always between 0-100
     - Test remaining data always non-negative
     - Test ETC always in future
