@@ -2,9 +2,10 @@
 
 This module provides stateless, side-effect-free functions for calculating:
 - Progress percentage from baseline and current disk usage
-- Data movement rate from historical samples  
+- Data movement rate from historical samples
 - Estimated time of completion (ETC) based on current rate
 - Remaining data to be transferred
+- Threshold evaluation for notification triggering
 
 All functions use immutable dataclasses for inputs and outputs to ensure
 predictable behavior and comprehensive testability.
@@ -287,3 +288,99 @@ def calculate_progress_data(
         rate_bytes_per_second=rate_bytes_per_second,
         etc=etc,
     )
+
+
+def evaluate_threshold_crossed(
+    *,
+    current_percent: float,
+    thresholds: Sequence[float],
+    notified_thresholds: Sequence[float],
+) -> float | None:
+    """Evaluate if a notification threshold has been crossed.
+
+    Determines if the current progress percentage has crossed any configured
+    threshold that has not already been notified. Returns the highest crossed
+    threshold that hasn't been notified yet, or None if no new threshold crossed.
+
+    This function enables notification dispatch only when progress crosses a new
+    threshold, preventing duplicate notifications for the same threshold.
+
+    Args:
+        current_percent: Current progress percentage (0.0 to 100.0)
+        thresholds: Sequence of threshold percentages to evaluate (0.0 to 100.0)
+        notified_thresholds: Sequence of thresholds already notified (0.0 to 100.0)
+
+    Returns:
+        The highest crossed threshold not yet notified, or None if no new threshold
+
+    Edge cases:
+        - If current_percent < 0 or > 100, raises ValueError
+        - If any threshold < 0 or > 100, raises ValueError
+        - If thresholds is empty, returns None (no thresholds to evaluate)
+        - If all crossed thresholds already notified, returns None
+        - If multiple thresholds crossed, returns the highest one
+        - Thresholds are evaluated with >= comparison (inclusive)
+
+    Examples:
+        >>> # First notification at 25%
+        >>> evaluate_threshold_crossed(
+        ...     current_percent=25.0,
+        ...     thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+        ...     notified_thresholds=[0.0]
+        ... )
+        25.0
+
+        >>> # No new threshold crossed (already notified 25%)
+        >>> evaluate_threshold_crossed(
+        ...     current_percent=30.0,
+        ...     thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+        ...     notified_thresholds=[0.0, 25.0]
+        ... )
+
+        >>> # Multiple thresholds crossed, returns highest
+        >>> evaluate_threshold_crossed(
+        ...     current_percent=60.0,
+        ...     thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+        ...     notified_thresholds=[0.0]
+        ... )
+        50.0
+    """
+    # Validate current_percent is in valid range
+    if not 0.0 <= current_percent <= 100.0:
+        msg = f"current_percent must be between 0.0 and 100.0, got: {current_percent}"
+        raise ValueError(msg)
+
+    # Validate all thresholds are in valid range
+    for threshold in thresholds:
+        if not 0.0 <= threshold <= 100.0:
+            msg = f"threshold must be between 0.0 and 100.0, got: {threshold}"
+            raise ValueError(msg)
+
+    # Validate all notified_thresholds are in valid range
+    for threshold in notified_thresholds:
+        if not 0.0 <= threshold <= 100.0:
+            msg = f"notified threshold must be between 0.0 and 100.0, got: {threshold}"
+            raise ValueError(msg)
+
+    # Edge case: No thresholds to evaluate
+    if not thresholds:
+        return None
+
+    # Convert to sets for efficient lookup
+    notified_set = set(notified_thresholds)
+
+    # Find all crossed thresholds that haven't been notified
+    # A threshold is "crossed" when current_percent >= threshold
+    crossed_unnotified: list[float] = [
+        threshold
+        for threshold in thresholds
+        if current_percent >= threshold and threshold not in notified_set
+    ]
+
+    # Edge case: No new thresholds crossed
+    if not crossed_unnotified:
+        return None
+
+    # Return the highest crossed threshold
+    # This ensures we notify for the most significant progress milestone
+    return max(crossed_unnotified)

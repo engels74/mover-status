@@ -21,6 +21,7 @@ from mover_status.core.calculation import (
     calculate_progress_data,
     calculate_rate,
     calculate_remaining,
+    evaluate_threshold_crossed,
 )
 from mover_status.types.models import DiskSample
 
@@ -535,3 +536,209 @@ class TestPropertyBasedInvariants:
         if etc is not None:
             # Allow small tolerance
             assert etc >= before - timedelta(seconds=1)
+
+
+class TestEvaluateThresholdCrossed:
+    """Test suite for evaluate_threshold_crossed function."""
+
+    @pytest.mark.parametrize(
+        ("current_percent", "thresholds", "notified", "expected"),
+        [
+            # Standard case: First threshold crossed
+            (25.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0], 25.0),
+            # No new threshold crossed (already notified)
+            (30.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0, 25.0], None),
+            # Multiple thresholds crossed, returns highest
+            (60.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0], 50.0),
+            # Exact threshold match
+            (50.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0, 25.0], 50.0),
+            # Progress at 100%
+            (100.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0, 25.0, 50.0, 75.0], 100.0),
+            # Progress at 0%
+            (0.0, [0.0, 25.0, 50.0, 75.0, 100.0], [], 0.0),
+            # All thresholds already notified
+            (100.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0, 25.0, 50.0, 75.0, 100.0], None),
+            # Empty notified list
+            (75.0, [0.0, 25.0, 50.0, 75.0, 100.0], [], 75.0),
+            # Progress between thresholds
+            (35.0, [0.0, 25.0, 50.0, 75.0, 100.0], [0.0, 25.0], None),
+            # Custom thresholds
+            (15.0, [10.0, 20.0, 30.0], [10.0], None),
+            (20.0, [10.0, 20.0, 30.0], [10.0], 20.0),
+            # Single threshold
+            (50.0, [50.0], [], 50.0),
+            (50.0, [50.0], [50.0], None),
+        ],
+    )
+    def test_evaluate_threshold_crossed_standard_cases(
+        self,
+        current_percent: float,
+        thresholds: list[float],
+        notified: list[float],
+        expected: float | None,
+    ) -> None:
+        """Test evaluate_threshold_crossed with standard cases."""
+        result = evaluate_threshold_crossed(
+            current_percent=current_percent,
+            thresholds=thresholds,
+            notified_thresholds=notified,
+        )
+        assert result == expected
+
+    def test_evaluate_threshold_crossed_empty_thresholds(self) -> None:
+        """Test that empty thresholds returns None."""
+        result = evaluate_threshold_crossed(
+            current_percent=50.0,
+            thresholds=[],
+            notified_thresholds=[],
+        )
+        assert result is None
+
+    def test_evaluate_threshold_crossed_invalid_current_percent_negative(self) -> None:
+        """Test that negative current_percent raises ValueError."""
+        with pytest.raises(ValueError, match="current_percent must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=-1.0,
+                thresholds=[0.0, 50.0, 100.0],
+                notified_thresholds=[],
+            )
+
+    def test_evaluate_threshold_crossed_invalid_current_percent_over_100(self) -> None:
+        """Test that current_percent > 100 raises ValueError."""
+        with pytest.raises(ValueError, match="current_percent must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=101.0,
+                thresholds=[0.0, 50.0, 100.0],
+                notified_thresholds=[],
+            )
+
+    def test_evaluate_threshold_crossed_invalid_threshold_negative(self) -> None:
+        """Test that negative threshold raises ValueError."""
+        with pytest.raises(ValueError, match="threshold must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=50.0,
+                thresholds=[-1.0, 50.0, 100.0],
+                notified_thresholds=[],
+            )
+
+    def test_evaluate_threshold_crossed_invalid_threshold_over_100(self) -> None:
+        """Test that threshold > 100 raises ValueError."""
+        with pytest.raises(ValueError, match="threshold must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=50.0,
+                thresholds=[0.0, 50.0, 101.0],
+                notified_thresholds=[],
+            )
+
+    def test_evaluate_threshold_crossed_invalid_notified_threshold_negative(
+        self,
+    ) -> None:
+        """Test that negative notified threshold raises ValueError."""
+        with pytest.raises(ValueError, match="notified threshold must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=50.0,
+                thresholds=[0.0, 50.0, 100.0],
+                notified_thresholds=[-1.0],
+            )
+
+    def test_evaluate_threshold_crossed_invalid_notified_threshold_over_100(
+        self,
+    ) -> None:
+        """Test that notified threshold > 100 raises ValueError."""
+        with pytest.raises(ValueError, match="notified threshold must be between"):
+            _ = evaluate_threshold_crossed(
+                current_percent=50.0,
+                thresholds=[0.0, 50.0, 100.0],
+                notified_thresholds=[101.0],
+            )
+
+    def test_evaluate_threshold_crossed_multiple_unnotified_returns_highest(
+        self,
+    ) -> None:
+        """Test that when multiple thresholds crossed, highest is returned."""
+        result = evaluate_threshold_crossed(
+            current_percent=80.0,
+            thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+            notified_thresholds=[0.0],
+        )
+        # Should return 75.0 (highest crossed), not 25.0 or 50.0
+        assert result == 75.0
+
+    def test_evaluate_threshold_crossed_duplicate_prevention(self) -> None:
+        """Test that already notified thresholds are not returned again."""
+        # First call: 25% crossed
+        result1 = evaluate_threshold_crossed(
+            current_percent=25.0,
+            thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+            notified_thresholds=[0.0],
+        )
+        assert result1 == 25.0
+
+        # Second call: Still at 25%, should return None
+        result2 = evaluate_threshold_crossed(
+            current_percent=25.0,
+            thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+            notified_thresholds=[0.0, 25.0],
+        )
+        assert result2 is None
+
+        # Third call: Progress to 26%, still no new threshold
+        result3 = evaluate_threshold_crossed(
+            current_percent=26.0,
+            thresholds=[0.0, 25.0, 50.0, 75.0, 100.0],
+            notified_thresholds=[0.0, 25.0],
+        )
+        assert result3 is None
+
+    @given(
+        current_percent=st.floats(min_value=0.0, max_value=100.0),
+        thresholds=st.lists(
+            st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10
+        ),
+        notified=st.lists(
+            st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10
+        ),
+    )
+    def test_evaluate_threshold_crossed_result_is_valid(
+        self,
+        current_percent: float,
+        thresholds: list[float],
+        notified: list[float],
+    ) -> None:
+        """Property test: result is either None or a valid threshold."""
+        result = evaluate_threshold_crossed(
+            current_percent=current_percent,
+            thresholds=thresholds,
+            notified_thresholds=notified,
+        )
+
+        if result is not None:
+            # Result must be one of the configured thresholds
+            assert result in thresholds
+            # Result must be <= current_percent (threshold was crossed)
+            assert result <= current_percent
+            # Result must not be in notified list
+            assert result not in notified
+
+    @given(
+        current_percent=st.floats(min_value=0.0, max_value=100.0),
+        thresholds=st.lists(
+            st.floats(min_value=0.0, max_value=100.0), min_size=1, max_size=10
+        ),
+    )
+    def test_evaluate_threshold_crossed_idempotent(
+        self, current_percent: float, thresholds: list[float]
+    ) -> None:
+        """Property test: same input always produces same output."""
+        notified: list[float] = []
+        result1 = evaluate_threshold_crossed(
+            current_percent=current_percent,
+            thresholds=thresholds,
+            notified_thresholds=notified,
+        )
+        result2 = evaluate_threshold_crossed(
+            current_percent=current_percent,
+            thresholds=thresholds,
+            notified_thresholds=notified,
+        )
+        assert result1 == result2
