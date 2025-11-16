@@ -39,7 +39,8 @@ from mover_status.core.monitoring import (
     monitor_mover_lifecycle,
 )
 from mover_status.plugins import LoadedPlugin, PluginLoader, ProviderRegistry
-from mover_status.types import DiskSample, NotificationProvider, ProgressData
+from mover_status.types import DiskSample, NotificationData, NotificationProvider, ProgressData
+from mover_status.utils.formatting import format_rate, format_size
 
 __all__ = ["Orchestrator"]
 
@@ -264,6 +265,9 @@ class Orchestrator:
         self._lifecycle_state = MoverState.MONITORING
         self._active_cycle_id = uuid4().hex
 
+        # Dispatch "started" notification
+        await self._dispatch_started_notification()
+
         _ = self._cycle_active.set()
         if self._task_group is None:
             msg = "Task group is not initialized"
@@ -281,6 +285,10 @@ class Orchestrator:
 
         self._lifecycle_state = MoverState.COMPLETED
         await self._stop_sampling_loop()
+
+        # Dispatch "completed" notification before finalizing cycle
+        await self._dispatch_completed_notification()
+
         await self._finalize_cycle()
         self._lifecycle_state = MoverState.WAITING
 
@@ -327,6 +335,8 @@ class Orchestrator:
         if threshold is not None:
             _ = self._notified_thresholds.add(threshold)
             self._last_threshold_crossed = threshold
+            # Dispatch progress notification when threshold is crossed
+            await self._dispatch_progress_notification(threshold, progress)
 
     async def _stop_sampling_loop(self) -> None:
         if self._sampling_task is None:
@@ -407,6 +417,144 @@ class Orchestrator:
             extra={"provider_identifier": plugin.identifier},
         )
         return True
+
+    def _create_notification_data(
+        self,
+        event_type: str,
+        progress: ProgressData | None = None,
+    ) -> NotificationData:
+        """Create NotificationData from ProgressData with formatted strings.
+
+        Args:
+            event_type: Type of event ("started", "progress", "completed")
+            progress: Progress data to format. If None, uses baseline and latest progress.
+
+        Returns:
+            NotificationData with human-readable formatted strings.
+        """
+        if self._active_cycle_id is None:
+            msg = "Cannot create notification without active cycle"
+            raise RuntimeError(msg)
+
+        # Use provided progress or latest available
+        prog = progress or self._latest_progress
+
+        # For "started" event, we may not have progress data yet
+        if prog is None:
+            if self._baseline is None:
+                msg = "Cannot create notification without baseline"
+                raise RuntimeError(msg)
+            # Create minimal progress data showing 0% progress
+            percent = 0.0
+            total_bytes = self._baseline.bytes_used
+            moved_bytes = 0
+            remaining_bytes = total_bytes
+            rate_bytes_per_second = 0.0
+            etc_timestamp = None
+        else:
+            percent = prog.percent
+            total_bytes = prog.total_bytes
+            moved_bytes = prog.moved_bytes
+            remaining_bytes = prog.remaining_bytes
+            rate_bytes_per_second = prog.rate_bytes_per_second
+            etc_timestamp = prog.etc
+
+        return NotificationData(
+            event_type=event_type,
+            percent=percent,
+            remaining_data=format_size(remaining_bytes),
+            moved_data=format_size(moved_bytes),
+            total_data=format_size(total_bytes),
+            rate=format_rate(rate_bytes_per_second),
+            etc_timestamp=etc_timestamp,
+            correlation_id=self._active_cycle_id,
+        )
+
+    async def _dispatch_started_notification(self) -> None:
+        """Dispatch notification when mover process starts."""
+        try:
+            notification_data = self._create_notification_data(event_type="started")
+            results = await self._dispatcher.dispatch_notification(notification_data)
+
+            # Log results for monitoring
+            success_count = sum(1 for r in results if r.success)
+            self._logger.info(
+                "Dispatched mover started notification",
+                extra={
+                    "correlation_id": self._active_cycle_id,
+                    "providers_notified": len(results),
+                    "successful_deliveries": success_count,
+                },
+            )
+        except Exception as exc:
+            self._logger.exception(
+                "Failed to dispatch started notification",
+                extra={"correlation_id": self._active_cycle_id, "error": str(exc)},
+            )
+
+    async def _dispatch_progress_notification(
+        self,
+        threshold: float,
+        progress: ProgressData,
+    ) -> None:
+        """Dispatch notification when progress threshold is crossed.
+
+        Args:
+            threshold: The threshold percentage that was crossed
+            progress: Current progress data
+        """
+        try:
+            notification_data = self._create_notification_data(
+                event_type="progress",
+                progress=progress,
+            )
+            results = await self._dispatcher.dispatch_notification(notification_data)
+
+            success_count = sum(1 for r in results if r.success)
+            self._logger.info(
+                "Dispatched progress threshold notification",
+                extra={
+                    "correlation_id": self._active_cycle_id,
+                    "threshold_percent": threshold,
+                    "current_percent": progress.percent,
+                    "providers_notified": len(results),
+                    "successful_deliveries": success_count,
+                },
+            )
+        except Exception as exc:
+            self._logger.exception(
+                "Failed to dispatch progress notification",
+                extra={
+                    "correlation_id": self._active_cycle_id,
+                    "threshold": threshold,
+                    "error": str(exc),
+                },
+            )
+
+    async def _dispatch_completed_notification(self) -> None:
+        """Dispatch notification when mover process completes."""
+        try:
+            # Use latest progress for final stats
+            notification_data = self._create_notification_data(
+                event_type="completed",
+                progress=self._latest_progress,
+            )
+            results = await self._dispatcher.dispatch_notification(notification_data)
+
+            success_count = sum(1 for r in results if r.success)
+            self._logger.info(
+                "Dispatched mover completed notification",
+                extra={
+                    "correlation_id": self._active_cycle_id,
+                    "providers_notified": len(results),
+                    "successful_deliveries": success_count,
+                },
+            )
+        except Exception as exc:
+            self._logger.exception(
+                "Failed to dispatch completed notification",
+                extra={"correlation_id": self._active_cycle_id, "error": str(exc)},
+            )
 
     @staticmethod
     def _default_progress_calculator(
