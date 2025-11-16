@@ -1,0 +1,39 @@
+# Discord Provider Configuration Template
+# =======================================
+#
+# Copy this file to `config/providers/discord.yaml`, fill in your webhook
+# details, and reference the resulting file from the main configuration by
+# setting `providers.discord_enabled` to `true`.
+#
+# Environment variables may be referenced using `${VARIABLE_NAME}` syntax for
+# secrets such as the webhook URL. Example:
+#   webhook_url: ${MOVER_STATUS_DISCORD_WEBHOOK}
+# The configuration loader resolves these references before validation.
+
+# Discord webhook URL (required)
+# ------------------------------
+# Create a webhook in the target channel via Server Settings → Integrations
+# → Webhooks, then copy the URL. It must:
+#   - use HTTPS
+#   - point to discord.com or discordapp.com domains (including canary/ptb)
+#   - include the /api/webhooks/<id>/<token> path
+# Example direct value:
+webhook_url: "https://discord.com/api/webhooks/123456789012345678/your-token"
+# Example environment variable reference:
+# webhook_url: ${MOVER_STATUS_DISCORD_WEBHOOK}
+
+# Display name override (optional)
+# --------------------------------
+# Specify a string between 1 and 80 characters to override the webhook's
+# default username. Leave null to use the name configured in Discord.
+username: null
+# username: "Mover Status"
+
+# Embed accent color (optional)
+# -----------------------------
+# Provide a 24-bit RGB color for embed sidebars. Accepts:
+#   - decimal integer (e.g., 3447003)
+#   - hex string with # or 0x prefix (e.g., "#5865F2")
+# Leave null to use provider defaults.
+embed_color: null
+# embed_color: "#5865F2"

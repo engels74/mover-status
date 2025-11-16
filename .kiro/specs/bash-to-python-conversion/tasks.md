@@ -323,7 +323,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Use mock components for isolation
     - _Requirements: 12.3_
 
-- [ ] 13. Create application entry point and CLI
+- [x] 13. Create application entry point and CLI
   - [x] 13.1 Implement __main__.py entry point
     - Create main() function as application entry point
     - Parse command-line arguments (config path, dry-run mode, log level)
@@ -338,7 +338,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Log all notification data for verification
     - _Requirements: 10.1_
   
-  - [ ] 13.3 Create configuration templates
+  - [x] 13.3 Create configuration templates
     - Generate mover-status.yaml.template with commented examples
     - Generate discord.yaml.template with commented examples
     - Generate telegram.yaml.template with commented examples

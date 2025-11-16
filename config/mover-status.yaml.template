@@ -1,0 +1,87 @@
+# Mover Status Main Configuration Template
+# ========================================
+#
+# Copy this file to `config/mover-status.yaml` (or a path of your choice) and
+# adjust the values for your Unraid environment. Every field below documents
+# what it controls, acceptable values, and default behaviors enforced by the
+# Pydantic configuration models described in `.kiro/specs/.../requirements.md`.
+#
+# Environment Variable References
+# -------------------------------
+# Any string value may reference an environment variable using
+# `${VARIABLE_NAME}` syntax. The configuration loader resolves these placeholders
+# before validation. This is typically used for secrets like webhook URLs.
+# Example:
+#   webhook_url: ${MOVER_STATUS_DISCORD_WEBHOOK}
+#
+# Provider Configuration
+# ----------------------
+# Enabling a provider here requires its own YAML file under
+# `config/providers/<provider>.yaml`. Use the provided *.template files for each
+# provider and copy them to real files without the `.template` suffix.
+
+monitoring:
+  # Path to the mover PID file. Parent directory must exist.
+  pid_file: "/var/run/mover.pid"
+
+  # Interval (seconds) between PID file checks while waiting for mover to start.
+  # Must be a positive integer. Defaults to 1 second for near real-time detection.
+  pid_check_interval: 1
+
+  # Interval (seconds) between disk usage samples while mover is running.
+  # Higher values reduce disk I/O at the cost of less frequent updates.
+  sampling_interval: 60
+
+  # Maximum time (seconds) to wait for the mover process to appear after the PID
+  # file is detected. If exceeded, the run is considered stalled.
+  process_timeout: 300
+
+  # Paths excluded from disk usage measurement. Provide absolute paths that
+  # should not count toward mover progress (e.g., download staging areas).
+  # Each path must exist or validation will fail. Leave the list empty to
+  # include all directories on the cache volume.
+  exclusion_paths:
+    - "/mnt/cache/downloads"
+    # - "/mnt/cache/system"
+
+notifications:
+  # Progress thresholds (percentages) that trigger notifications.
+  # Values must be between 0 and 100, inclusive. The default matches the legacy
+  # bash script behavior. Sort from lowest to highest.
+  thresholds:
+    - 0.0
+    - 25.0
+    - 50.0
+    - 75.0
+    - 100.0
+
+  # Whether to send a completion notification after mover finishes even if 100%
+  # threshold is already covered. Defaults to true.
+  completion_enabled: true
+
+  # Maximum number of retry attempts for failed notifications. Applies to all
+  # providers uniformly. Set to 0 to disable retries entirely.
+  retry_attempts: 5
+
+providers:
+  # Enable Discord webhook notifications. Requires
+  # `config/providers/discord.yaml`.
+  discord_enabled: true
+
+  # Enable Telegram bot notifications. Requires
+  # `config/providers/telegram.yaml`.
+  telegram_enabled: false
+
+application:
+  # Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+  log_level: "INFO"
+
+  # Dry-run mode logs notification payloads without sending them. Useful for
+  # verifying configuration before production use.
+  dry_run: false
+
+  # Enable automatic version checks at startup to receive update notifications.
+  version_check: true
+
+  # Enable syslog integration for sending structured logs to Unraid's syslog.
+  syslog_enabled: true

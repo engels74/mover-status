@@ -1,0 +1,43 @@
+# Telegram Provider Configuration Template
+# ========================================
+#
+# Copy this file to `config/providers/telegram.yaml` and update the values with
+# the credentials provided by @BotFather. Enable the provider by setting
+# `providers.telegram_enabled: true` in `mover-status.yaml`.
+#
+# Environment variables may be referenced using `${VARIABLE_NAME}` syntax to
+# keep secrets out of version control. Example:
+#   bot_token: ${MOVER_STATUS_TELEGRAM_BOT_TOKEN}
+
+# Bot token (required)
+# --------------------
+# Format: <numeric_id>:<token> where <token> contains 35+ characters from
+# [A-Za-z0-9_-]. Obtain it via @BotFather.
+bot_token: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz-1234567"
+# bot_token: ${MOVER_STATUS_TELEGRAM_BOT_TOKEN}
+
+# Target chat ID (required)
+# -------------------------
+# Examples:
+#   - User chat: "123456789"
+#   - Supergroup: "-1001234567890"
+#   - Channel username: "@my_channel"
+chat_id: "-1001234567890"
+# chat_id: ${MOVER_STATUS_TELEGRAM_CHAT_ID}
+
+# Message formatting mode (optional)
+# ----------------------------------
+# Allowed values: HTML, Markdown, MarkdownV2, null. Defaults to HTML for
+# compatibility with the legacy script. Set to null for plain text messages.
+parse_mode: "HTML"
+
+# Message thread ID (optional)
+# ----------------------------
+# Positive integer targeting a specific topic/thread in a forum supergroup.
+# Leave null to post to the chat root.
+message_thread_id: null
+
+# Silent delivery (optional)
+# --------------------------
+# Set to true to suppress notification sounds for recipients.
+disable_notification: false
