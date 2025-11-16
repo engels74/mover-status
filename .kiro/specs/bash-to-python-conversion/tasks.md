@@ -310,13 +310,13 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Evaluate thresholds and trigger notifications
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5_
   
-  - [ ] 12.3 Implement notification event handling
+  - [x] 12.3 Implement notification event handling
     - Create notification events for mover started, progress, completed
     - Populate notification data with current progress metrics
     - Dispatch to notification dispatcher
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
   
-  - [ ] 12.4 Write integration tests for orchestrator
+  - [x] 12.4 Write integration tests for orchestrator
     - Test full monitoring cycle (waiting → started → monitoring → completed)
     - Test notification triggering at thresholds
     - Test graceful shutdown
