@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import pytest
+from _pytest.logging import LogCaptureFixture
 
 from mover_status.core.dispatcher import NotificationDispatcher
 from mover_status.plugins import ProviderRegistry
@@ -136,7 +138,9 @@ async def test_unhealthy_providers_are_skipped() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_failure_does_not_block_other_providers() -> None:
+async def test_timeout_failure_does_not_block_other_providers(
+    caplog: LogCaptureFixture,
+) -> None:
     """Per-provider timeout should mark one provider unhealthy and allow others to succeed."""
     registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
         unhealthy_threshold=1
@@ -148,6 +152,7 @@ async def test_timeout_failure_does_not_block_other_providers() -> None:
 
     dispatcher = NotificationDispatcher(registry, provider_timeout_seconds=0.01)
     data = _make_notification_data()
+    caplog.set_level(logging.WARNING)
 
     results = await dispatcher.dispatch_notification(data)
 
@@ -161,3 +166,35 @@ async def test_timeout_failure_does_not_block_other_providers() -> None:
     slow_health = registry.get_health("slow")
     assert slow_health is not None
     assert slow_health.is_healthy is False
+    timeout_logs = [record for record in caplog.records if "timed out" in record.message]
+    assert timeout_logs, "Timeout warning should be logged"
+
+
+@pytest.mark.asyncio
+async def test_exception_group_logs_runtime_failure(
+    caplog: LogCaptureFixture,
+) -> None:
+    """Provider runtime exception should be logged while other providers succeed."""
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
+        unhealthy_threshold=1
+    )
+    failing = StubProvider("failing", fail_with=RuntimeError("boom"))
+    healthy = StubProvider("healthy")
+    registry.register("failing", failing)
+    registry.register("healthy", healthy)
+    dispatcher = NotificationDispatcher(registry, provider_timeout_seconds=1.0)
+    data = _make_notification_data()
+    caplog.set_level(logging.ERROR)
+
+    results = await dispatcher.dispatch_notification(data)
+
+    assert len(results) == 2
+    failing_result = next(result for result in results if result.provider_name == "failing")
+    healthy_result = next(result for result in results if result.provider_name == "healthy")
+    assert failing_result.success is False
+    assert "RuntimeError" in (failing_result.error_message or "")
+    assert healthy_result.success is True
+    failure_logs = [
+        record for record in caplog.records if "Provider raised exception" in record.message
+    ]
+    assert failure_logs, "Exception dispatch should be logged"
