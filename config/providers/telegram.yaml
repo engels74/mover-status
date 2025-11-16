@@ -1,0 +1,62 @@
+# Telegram Provider Configuration
+# ================================
+#
+# This file configures the Telegram notification provider for mover status updates.
+# Get your bot token from @BotFather on Telegram.
+#
+# Required fields:
+#   - bot_token: Telegram bot token (format: <numeric_id>:<35_char_token>)
+#   - chat_id: Target chat identifier (user/group/channel)
+#
+# Optional fields:
+#   - parse_mode: Message formatting mode (HTML, Markdown, MarkdownV2, or null)
+#   - message_thread_id: Thread ID for forum topics (null for regular chats)
+#   - disable_notification: Send silently without notification sound
+
+# --- Required Configuration ---
+
+# Telegram bot token from @BotFather
+# Format: <numeric_id>:<alphanumeric_token>
+# Example: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz-1234567
+#
+# You can use either:
+# 1. Direct value (default):
+bot_token: "YOUR_BOT_TOKEN_HERE"
+#
+# 2. Environment variable reference:
+# bot_token: ${MOVER_STATUS_TELEGRAM_BOT_TOKEN}
+
+# Target chat ID
+# Can be:
+#   - Positive integer for user chats: "123456789"
+#   - Negative integer for group chats: "-1001234567890"
+#   - Channel username with @ prefix: "@mychannel"
+#
+# You can use either:
+# 1. Direct value (default):
+chat_id: "YOUR_CHAT_ID_HERE"
+#
+# 2. Environment variable reference:
+# chat_id: ${MOVER_STATUS_TELEGRAM_CHAT_ID}
+
+# --- Optional Configuration ---
+
+# Message formatting mode
+# Allowed values: HTML, Markdown, MarkdownV2, null
+# Default: HTML (matches bash script behavior)
+#
+# HTML example: "<b>bold</b>, <i>italic</i>, <code>code</code>"
+# Markdown example: "*bold*, _italic_, `code`"
+# Use null for plain text messages
+parse_mode: HTML
+
+# Message thread ID for forum topics
+# Set to a positive integer to send to a specific topic/thread in a forum chat
+# Set to null for regular chats (default)
+# Default: null
+message_thread_id: null
+
+# Disable notification sound
+# Set to true to send messages silently without triggering notification sounds
+# Default: false
+disable_notification: false
