@@ -5,19 +5,30 @@ This module provides functions for calculating disk usage with support for:
 - Baseline disk usage capture at mover process start
 - Current usage sampling during mover execution
 - Robust error handling for inaccessible paths
+- Async integration using asyncio.to_thread for CPU-bound operations
+- Caching mechanism to prevent excessive disk I/O
+- Configurable sampling intervals
+- Context variable preservation across thread boundaries
 
-All functions are designed to be offloaded to thread pools using asyncio.to_thread
-to prevent blocking the main event loop during CPU-bound disk traversal operations.
+All synchronous functions are designed to be offloaded to thread pools using
+asyncio.to_thread to prevent blocking the main event loop during CPU-bound
+disk traversal operations.
 """
 
+import asyncio
 import logging
 from collections.abc import Iterable, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Final
 
 from mover_status.types.models import DiskSample
 
 logger = logging.getLogger(__name__)
+
+# Cache duration for disk usage samples to prevent excessive I/O
+# Samples are cached for this duration to avoid redundant calculations
+CACHE_DURATION_SECONDS: Final[int] = 30
 
 
 def is_excluded(path: Path, exclusion_paths: Sequence[Path]) -> bool:
@@ -321,3 +332,198 @@ def sample_current_usage(
     )
 
     return sample
+
+
+# Cache for disk usage samples to prevent excessive I/O
+# Maps tuple of (paths, exclusion_paths) to (sample, expiry_time)
+_sample_cache: dict[tuple[tuple[Path, ...], tuple[Path, ...]], tuple[DiskSample, datetime]] = {}
+
+
+def _get_cache_key(
+    paths: Iterable[Path],
+    exclusion_paths: Sequence[Path] | None,
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Generate cache key from paths and exclusion paths.
+
+    Args:
+        paths: Iterable of paths to calculate disk usage for
+        exclusion_paths: Optional sequence of paths to exclude
+
+    Returns:
+        Tuple of (paths_tuple, exclusions_tuple) for use as cache key
+    """
+    paths_tuple = tuple(paths)
+    exclusions_tuple = tuple(exclusion_paths) if exclusion_paths else ()
+    return (paths_tuple, exclusions_tuple)
+
+
+def _is_cache_valid(expiry_time: datetime) -> bool:
+    """Check if cached sample is still valid.
+
+    Args:
+        expiry_time: Expiry timestamp for cached sample
+
+    Returns:
+        True if cache is still valid, False if expired
+    """
+    return datetime.now() < expiry_time
+
+
+async def capture_baseline_async(
+    paths: Iterable[Path],
+    *,
+    exclusion_paths: Sequence[Path] | None = None,
+) -> DiskSample:
+    """Async wrapper for baseline disk usage capture using asyncio.to_thread.
+
+    Offloads CPU-bound disk traversal to thread pool to prevent blocking the
+    event loop. Preserves context variables across the thread boundary for
+    proper correlation ID tracking and logging context.
+
+    This function does NOT use caching since baseline is captured only once
+    at mover process start and represents the initial state.
+
+    Args:
+        paths: Iterable of paths to calculate disk usage for
+        exclusion_paths: Optional sequence of paths to exclude from calculation
+
+    Returns:
+        DiskSample containing timestamp, total bytes, and consolidated path info
+
+    Examples:
+        >>> from pathlib import Path
+        >>> baseline = await capture_baseline_async(
+        ...     paths=[Path("/mnt/cache")],
+        ...     exclusion_paths=[Path("/mnt/cache/appdata")]
+        ... )
+        >>> baseline.bytes_used >= 0
+        True
+    """
+    logger.info("Capturing baseline disk usage snapshot (async)")
+
+    # Offload CPU-bound calculation to thread pool
+    # Context is automatically copied by asyncio.to_thread
+    baseline = await asyncio.to_thread(
+        capture_baseline,
+        paths,
+        exclusion_paths=exclusion_paths,
+    )
+
+    logger.info(
+        "Baseline snapshot captured (async)",
+        extra={
+            "bytes_used": baseline.bytes_used,
+            "timestamp": baseline.timestamp.isoformat(),
+        },
+    )
+
+    return baseline
+
+
+async def sample_current_usage_async(
+    paths: Iterable[Path],
+    *,
+    exclusion_paths: Sequence[Path] | None = None,
+    cache_duration_seconds: int = CACHE_DURATION_SECONDS,
+) -> DiskSample:
+    """Async wrapper for current usage sampling with caching support.
+
+    Offloads CPU-bound disk traversal to thread pool to prevent blocking the
+    event loop. Implements caching mechanism to prevent excessive disk I/O
+    during frequent sampling. Preserves context variables across the thread
+    boundary for proper correlation ID tracking and logging context.
+
+    Caching behavior:
+    - Cache key is based on paths and exclusion_paths
+    - Cache entries expire after cache_duration_seconds
+    - Expired entries are automatically removed and recalculated
+    - Cache is shared across all calls with same paths/exclusions
+
+    Args:
+        paths: Iterable of paths to calculate disk usage for
+        exclusion_paths: Optional sequence of paths to exclude from calculation
+        cache_duration_seconds: Duration in seconds to cache samples (default: 30)
+
+    Returns:
+        DiskSample containing timestamp, total bytes, and consolidated path info
+
+    Examples:
+        >>> from pathlib import Path
+        >>> # First call performs disk traversal
+        >>> sample1 = await sample_current_usage_async(
+        ...     paths=[Path("/mnt/cache")],
+        ...     exclusion_paths=[Path("/mnt/cache/appdata")]
+        ... )
+        >>> # Second call within cache duration returns cached result
+        >>> sample2 = await sample_current_usage_async(
+        ...     paths=[Path("/mnt/cache")],
+        ...     exclusion_paths=[Path("/mnt/cache/appdata")]
+        ... )
+        >>> sample1.bytes_used == sample2.bytes_used
+        True
+    """
+    logger.debug("Sampling current disk usage (async)")
+
+    # Generate cache key
+    cache_key = _get_cache_key(paths, exclusion_paths)
+
+    # Check cache for valid entry
+    if cache_key in _sample_cache:
+        cached_sample, expiry_time = _sample_cache[cache_key]
+        if _is_cache_valid(expiry_time):
+            logger.debug(
+                "Using cached disk usage sample",
+                extra={
+                    "bytes_used": cached_sample.bytes_used,
+                    "cached_at": cached_sample.timestamp.isoformat(),
+                    "expires_at": expiry_time.isoformat(),
+                },
+            )
+            return cached_sample
+        else:
+            logger.debug(
+                "Cache expired, recalculating disk usage",
+                extra={
+                    "expired_at": expiry_time.isoformat(),
+                },
+            )
+
+    # Cache miss or expired - perform disk traversal
+    # Offload CPU-bound calculation to thread pool
+    # Context is automatically copied by asyncio.to_thread
+    sample = await asyncio.to_thread(
+        sample_current_usage,
+        paths,
+        exclusion_paths=exclusion_paths,
+    )
+
+    # Update cache with new sample and expiry time
+    expiry_time = datetime.now() + timedelta(seconds=cache_duration_seconds)
+    _sample_cache[cache_key] = (sample, expiry_time)
+
+    logger.debug(
+        "Current usage sample complete (async)",
+        extra={
+            "bytes_used": sample.bytes_used,
+            "timestamp": sample.timestamp.isoformat(),
+            "cache_expires_at": expiry_time.isoformat(),
+        },
+    )
+
+    return sample
+
+
+def clear_sample_cache() -> None:
+    """Clear the disk usage sample cache.
+
+    This function is useful for testing and for forcing fresh calculations
+    when needed (e.g., after configuration changes or when starting a new
+    monitoring cycle).
+
+    Examples:
+        >>> clear_sample_cache()
+        >>> # Next sample_current_usage_async call will perform fresh calculation
+    """
+    global _sample_cache
+    _sample_cache.clear()
+    logger.debug("Disk usage sample cache cleared")

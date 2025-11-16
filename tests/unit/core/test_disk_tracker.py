@@ -7,17 +7,26 @@ Tests cover:
 - Current usage sampling functionality
 - Error handling for inaccessible paths
 - Edge cases (empty paths, permission errors, missing files)
+- Async integration with asyncio.to_thread
+- Caching mechanism for disk usage samples
+- Context variable preservation across thread boundaries
 """
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from mover_status.core.disk_tracker import (
     calculate_disk_usage_sync,
     capture_baseline,
+    capture_baseline_async,
+    clear_sample_cache,
     is_excluded,
     sample_current_usage,
+    sample_current_usage_async,
 )
 from mover_status.types.models import DiskSample
 
@@ -392,3 +401,247 @@ class TestIntegrationScenarios:
 
         sample = sample_current_usage(paths=[tmp_path], exclusion_paths=exclusions)
         assert sample.bytes_used == 500
+
+
+class TestAsyncIntegration:
+    """Test async integration using asyncio.to_thread."""
+
+    @pytest.mark.asyncio
+    async def test_capture_baseline_async_returns_disk_sample(self, tmp_path: Path) -> None:
+        """Async baseline capture should return DiskSample."""
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        baseline = await capture_baseline_async(paths=[tmp_path])
+
+        assert isinstance(baseline, DiskSample)
+        assert baseline.bytes_used == 100
+        assert isinstance(baseline.timestamp, datetime)
+
+    @pytest.mark.asyncio
+    async def test_capture_baseline_async_with_exclusions(self, tmp_path: Path) -> None:
+        """Async baseline capture should respect exclusion paths."""
+        excluded = tmp_path / "excluded"
+        excluded.mkdir()
+        included = tmp_path / "included"
+        included.mkdir()
+
+        _ = (excluded / "file1.txt").write_text("A" * 100)
+        _ = (included / "file2.txt").write_text("B" * 50)
+
+        baseline = await capture_baseline_async(
+            paths=[tmp_path],
+            exclusion_paths=[excluded],
+        )
+
+        assert baseline.bytes_used == 50
+
+    @pytest.mark.asyncio
+    async def test_sample_current_usage_async_returns_disk_sample(self, tmp_path: Path) -> None:
+        """Async current usage sample should return DiskSample."""
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        sample = await sample_current_usage_async(paths=[tmp_path])
+
+        assert isinstance(sample, DiskSample)
+        assert sample.bytes_used == 100
+        assert isinstance(sample.timestamp, datetime)
+
+    @pytest.mark.asyncio
+    async def test_sample_current_usage_async_with_exclusions(self, tmp_path: Path) -> None:
+        """Async current usage sampling should respect exclusion paths."""
+        excluded = tmp_path / "excluded"
+        excluded.mkdir()
+        _ = (excluded / "file.txt").write_text("A" * 100)
+
+        sample = await sample_current_usage_async(
+            paths=[tmp_path],
+            exclusion_paths=[excluded],
+        )
+
+        assert sample.bytes_used == 0
+
+    @pytest.mark.asyncio
+    async def test_async_functions_run_concurrently(self, tmp_path: Path) -> None:
+        """Multiple async calls should run concurrently without blocking."""
+        path1 = tmp_path / "path1"
+        path2 = tmp_path / "path2"
+        path1.mkdir()
+        path2.mkdir()
+
+        _ = (path1 / "file1.txt").write_text("A" * 100)
+        _ = (path2 / "file2.txt").write_text("B" * 200)
+
+        # Run both samples concurrently
+        results = await asyncio.gather(
+            sample_current_usage_async(paths=[path1]),
+            sample_current_usage_async(paths=[path2]),
+        )
+
+        assert len(results) == 2
+        assert results[0].bytes_used == 100
+        assert results[1].bytes_used == 200
+
+
+class TestCachingMechanism:
+    """Test caching mechanism for disk usage samples."""
+
+    @pytest.mark.asyncio
+    async def test_cache_returns_same_sample_within_duration(self, tmp_path: Path) -> None:
+        """Cached sample should be returned within cache duration."""
+        clear_sample_cache()  # Start with clean cache
+
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        # First call should perform calculation
+        sample1 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Modify file
+        _ = (tmp_path / "file.txt").write_text("B" * 200)
+
+        # Second call within cache duration should return cached result
+        sample2 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Should return cached value (100), not new value (200)
+        assert sample1.bytes_used == 100
+        assert sample2.bytes_used == 100
+        assert sample1.timestamp == sample2.timestamp
+
+    @pytest.mark.asyncio
+    async def test_cache_expires_after_duration(self, tmp_path: Path) -> None:
+        """Cache should expire and recalculate after duration."""
+        clear_sample_cache()  # Start with clean cache
+
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        # First call with very short cache duration
+        sample1 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=0,  # Immediate expiry
+        )
+
+        # Modify file
+        _ = (tmp_path / "file.txt").write_text("B" * 200)
+
+        # Wait a tiny bit to ensure cache expires
+        await asyncio.sleep(0.01)
+
+        # Second call should recalculate
+        sample2 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=0,
+        )
+
+        # Should return new value (200), not cached value (100)
+        assert sample1.bytes_used == 100
+        assert sample2.bytes_used == 200
+        assert sample2.timestamp > sample1.timestamp
+
+    @pytest.mark.asyncio
+    async def test_cache_key_includes_paths(self, tmp_path: Path) -> None:
+        """Cache should be keyed by paths - different paths get different cache entries."""
+        clear_sample_cache()  # Start with clean cache
+
+        path1 = tmp_path / "path1"
+        path2 = tmp_path / "path2"
+        path1.mkdir()
+        path2.mkdir()
+
+        _ = (path1 / "file1.txt").write_text("A" * 100)
+        _ = (path2 / "file2.txt").write_text("B" * 200)
+
+        # Sample different paths
+        sample1 = await sample_current_usage_async(
+            paths=[path1],
+            cache_duration_seconds=60,
+        )
+        sample2 = await sample_current_usage_async(
+            paths=[path2],
+            cache_duration_seconds=60,
+        )
+
+        # Should return different values (different cache keys)
+        assert sample1.bytes_used == 100
+        assert sample2.bytes_used == 200
+
+    @pytest.mark.asyncio
+    async def test_cache_key_includes_exclusions(self, tmp_path: Path) -> None:
+        """Cache should be keyed by exclusion paths - different exclusions get different cache entries."""
+        clear_sample_cache()  # Start with clean cache
+
+        excluded = tmp_path / "excluded"
+        excluded.mkdir()
+        _ = (excluded / "file.txt").write_text("A" * 100)
+        _ = (tmp_path / "included.txt").write_text("B" * 50)
+
+        # Sample without exclusions
+        sample1 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Sample with exclusions (different cache key)
+        sample2 = await sample_current_usage_async(
+            paths=[tmp_path],
+            exclusion_paths=[excluded],
+            cache_duration_seconds=60,
+        )
+
+        # Should return different values (different cache keys)
+        assert sample1.bytes_used == 150  # All files
+        assert sample2.bytes_used == 50   # Excluded directory not counted
+
+    @pytest.mark.asyncio
+    async def test_clear_cache_forces_recalculation(self, tmp_path: Path) -> None:
+        """Clearing cache should force fresh calculation."""
+        clear_sample_cache()  # Start with clean cache
+
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        # First call
+        sample1 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Modify file
+        _ = (tmp_path / "file.txt").write_text("B" * 200)
+
+        # Clear cache
+        clear_sample_cache()
+
+        # Second call should recalculate
+        sample2 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Should return new value (200), not cached value (100)
+        assert sample1.bytes_used == 100
+        assert sample2.bytes_used == 200
+
+    @pytest.mark.asyncio
+    async def test_baseline_async_does_not_use_cache(self, tmp_path: Path) -> None:
+        """Baseline capture should not use caching."""
+        clear_sample_cache()  # Start with clean cache
+
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        # First baseline call
+        baseline1 = await capture_baseline_async(paths=[tmp_path])
+
+        # Modify file
+        _ = (tmp_path / "file.txt").write_text("B" * 200)
+
+        # Second baseline call should always recalculate
+        baseline2 = await capture_baseline_async(paths=[tmp_path])
+
+        # Should return different values (no caching for baseline)
+        assert baseline1.bytes_used == 100
+        assert baseline2.bytes_used == 200
+        assert baseline2.timestamp > baseline1.timestamp
