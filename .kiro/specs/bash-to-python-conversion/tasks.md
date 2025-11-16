@@ -52,7 +52,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Implement post_with_retry with exponential backoff and jitter
     - Add circuit breaker pattern for persistent failures
     - Use async context managers for resource management
-    - _Requirements: 8.3, 14.1, 14.2, 14.3, 14.4, 16.2_
+    - _Requirements: 8.3, 13.1, 13.2, 13.3, 13.4, 15.2_
   
   - [x] 3.3 Create message template system
     - Implement template loading from configuration
@@ -345,137 +345,102 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Include documentation for all configuration fields
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 14. Implement configuration migration tool
-  - [ ] 14.1 Create bash configuration parser
-    - Implement parser for bash script variables
-    - Extract USE_DISCORD, DISCORD_WEBHOOK_URL, etc.
-    - Extract notification message templates
-    - Extract exclusion paths
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
-  
-  - [ ] 14.2 Implement YAML generation
-    - Transform bash variables to main YAML structure
-    - Generate provider-specific YAML files for enabled providers
-    - Transform message templates to new template format
-    - Create backup of original bash configuration
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
-  
-  - [ ] 14.3 Add migration validation
-    - Validate generated YAML against schemas
-    - Verify all required fields present
-    - Generate migration report with any manual actions needed
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
-  
-  - [ ] 14.4 Create migration CLI command
-    - Implement `python -m mover_status.migrate` command
-    - Add --from and --to arguments for paths
-    - Display migration progress and results
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+- [ ] 14. Implement security hardening
+   - [ ] 14.1 Add input validation at API boundaries
+     - Validate all configuration fields with Pydantic
+     - Validate webhook URLs (HTTPS only, format validation)
+     - Validate file paths (existence, accessibility)
+     - Validate percentage ranges and positive intervals
+     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+   
+   - [ ] 14.2 Implement secret protection
+     - Ensure no secrets logged in error messages
+     - Ensure no secrets in diagnostic output
+     - Validate environment variable resolution
+     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+   
+   - [ ] 14.3 Set up dependency scanning
+     - Configure pip-audit for PyPI advisory scanning
+     - Configure bandit for code security analysis
+     - Add pre-commit hooks for security scanning
+     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+   
+   - [ ] 14.4 Implement hash verification for dependencies
+     - Generate requirements.txt with hashes using uv export
+     - Document hash verification installation process
+     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
+- [ ] 15. Create comprehensive documentation
+   - [ ] 15.1 Write README.md
+     - Add project overview and features
+     - Add installation instructions for Unraid
+     - Add quick start guide
+     - Add configuration overview with links
+     - Add troubleshooting section
+     - _Requirements: 10.1, 10.2, 10.3_
+   
+   - [ ] 15.2 Create configuration guide
+     - Document all main configuration fields with examples
+     - Document provider-specific configuration
+     - Document environment variable setup
+     - Add common configuration scenarios
+     - _Requirements: 4.1, 4.2, 4.3, 4.4, 6.1, 6.2, 6.3, 6.4, 6.5_
+   
+   - [ ] 15.3 Write provider setup guides
+     - Create Discord setup guide (webhook creation, configuration)
+     - Create Telegram setup guide (bot creation, chat ID retrieval)
+     - Document message formatting options per provider
+     - _Requirements: 9.1, 9.2, 9.3, 9.4_
+   
+   - [ ] 15.4 Generate API documentation
+     - Add comprehensive docstrings to all public functions and classes
+     - Use Google-style or NumPy-style docstrings
+     - Document Protocol interfaces with usage examples
+     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 15. Implement security hardening
-  - [ ] 15.1 Add input validation at API boundaries
-    - Validate all configuration fields with Pydantic
-    - Validate webhook URLs (HTTPS only, format validation)
-    - Validate file paths (existence, accessibility)
-    - Validate percentage ranges and positive intervals
-    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-  
-  - [ ] 15.2 Implement secret protection
-    - Ensure no secrets logged in error messages
-    - Ensure no secrets in diagnostic output
-    - Validate environment variable resolution
-    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-  
-  - [ ] 15.3 Set up dependency scanning
-    - Configure pip-audit for PyPI advisory scanning
-    - Configure bandit for code security analysis
-    - Add pre-commit hooks for security scanning
-    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
-  
-  - [ ] 15.4 Implement hash verification for dependencies
-    - Generate requirements.txt with hashes using uv export
-    - Document hash verification installation process
-    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+- [ ] 16. Set up CI/CD pipeline
+   - [ ] 16.1 Create GitHub Actions workflow
+     - Set up workflow for pull requests and main branch
+     - Add fast checks (ruff linting and formatting)
+     - Add comprehensive checks (basedpyright type checking)
+     - Add test suite with coverage reporting
+     - Add security scanning (pip-audit, bandit)
+     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+   
+   - [ ] 16.2 Configure multi-environment testing
+     - Test on Python 3.14
+     - Test on multiple platforms (Linux, macOS)
+     - Use matrix strategy for combinations
+     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+   
+   - [ ] 16.3 Add release automation
+     - Create workflow for release tags
+     - Build package with uv build
+     - Generate requirements with hash verification
+     - Create GitHub release with artifacts
+     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
-- [ ] 16. Create comprehensive documentation
-  - [ ] 16.1 Write README.md
-    - Add project overview and features
-    - Add installation instructions for Unraid
-    - Add quick start guide
-    - Add configuration overview with links
-    - Add troubleshooting section
-    - _Requirements: 10.1, 10.2, 10.3_
-  
-  - [ ] 16.2 Create configuration guide
-    - Document all main configuration fields with examples
-    - Document provider-specific configuration
-    - Document environment variable setup
-    - Add common configuration scenarios
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 6.1, 6.2, 6.3, 6.4, 6.5_
-  
-  - [ ] 16.3 Write provider setup guides
-    - Create Discord setup guide (webhook creation, configuration)
-    - Create Telegram setup guide (bot creation, chat ID retrieval)
-    - Document message formatting options per provider
-    - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  
-  - [ ] 16.4 Create migration guide
-    - Document migration process from bash script
-    - Provide step-by-step instructions
-    - Include configuration field mapping table
-    - Add troubleshooting for common migration issues
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
-  
-  - [ ] 16.5 Generate API documentation
-    - Add comprehensive docstrings to all public functions and classes
-    - Use Google-style or NumPy-style docstrings
-    - Document Protocol interfaces with usage examples
-    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
-
-- [ ] 17. Set up CI/CD pipeline
-  - [ ] 17.1 Create GitHub Actions workflow
-    - Set up workflow for pull requests and main branch
-    - Add fast checks (ruff linting and formatting)
-    - Add comprehensive checks (basedpyright type checking)
-    - Add test suite with coverage reporting
-    - Add security scanning (pip-audit, bandit)
-    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
-  
-  - [ ] 17.2 Configure multi-environment testing
-    - Test on Python 3.14
-    - Test on multiple platforms (Linux, macOS)
-    - Use matrix strategy for combinations
-    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
-  
-  - [ ] 17.3 Add release automation
-    - Create workflow for release tags
-    - Build package with uv build
-    - Generate requirements with hash verification
-    - Create GitHub release with artifacts
-    - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
-
-- [ ] 18. Perform feature parity validation
-  - [ ] 18.1 Create feature parity checklist
-    - Verify mover process detection matches bash script
-    - Verify progress calculation matches bash script
-    - Verify ETC calculation matches bash script
-    - Verify notification timing matches bash script
-    - Verify message content matches bash script
-    - _Requirements: 10.1, 10.2, 10.3_
-  
-  - [ ] 18.2 Perform parallel deployment testing
-    - Run Python application alongside bash script
-    - Compare notification outputs for consistency
-    - Identify and document any behavioral differences
-    - _Requirements: 10.1, 10.2, 10.3_
-  
-  - [ ] 18.3 Write end-to-end integration tests
-    - Test full mover cycle with mock mover process
-    - Test notification delivery to all providers
-    - Test configuration loading and validation
-    - Test error handling and recovery
-    - _Requirements: 12.3_
+- [ ] 17. Perform feature parity validation
+   - [ ] 17.1 Create feature parity checklist
+     - Verify mover process detection matches bash script
+     - Verify progress calculation matches bash script
+     - Verify ETC calculation matches bash script
+     - Verify notification timing matches bash script
+     - Verify message content matches bash script
+     - _Requirements: 10.1, 10.2, 10.3_
+   
+   - [ ] 17.2 Perform parallel deployment testing
+     - Run Python application alongside bash script
+     - Compare notification outputs for consistency
+     - Identify and document any behavioral differences
+     - _Requirements: 10.1, 10.2, 10.3_
+   
+   - [ ] 17.3 Write end-to-end integration tests
+     - Test full mover cycle with mock mover process
+     - Test notification delivery to all providers
+     - Test configuration loading and validation
+     - Test error handling and recovery
+     - _Requirements: 12.3_
 
 ## Implementation Notes
 
@@ -490,10 +455,9 @@ Tasks should be executed in the order listed, as each task builds on previous ta
 6. Plugin system and providers (Tasks 8-10)
 7. Notification dispatch and orchestration (Tasks 11-12)
 8. Application entry point (Task 13)
-9. Migration tool (Task 14)
-10. Security hardening (Task 15)
-11. Documentation (Task 16)
-12. CI/CD and validation (Tasks 17-18)
+9. Security hardening (Task 14)
+10. Documentation (Task 15)
+11. CI/CD and validation (Tasks 16-17)
 
 ### Comprehensive Approach
 

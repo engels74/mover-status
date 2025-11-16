@@ -180,7 +180,6 @@ Pure functions in `core/calculation.py` enable comprehensive property-based test
 This Python application replaces `.old_script/moverStatus.sh` (bash). Key migration requirements:
 - **Feature parity**: All bash script functionality preserved
 - **Behavioral parity**: Same notification timing, message content, calculation logic
-- **Configuration migration**: Automated tool converts bash variables → YAML
 - **Rollback plan**: Bash script preserved during migration phase
 
 ## Common Gotchas

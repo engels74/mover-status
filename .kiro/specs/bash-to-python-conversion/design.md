@@ -624,13 +624,6 @@ def test_rate_non_negative(samples: list[DiskSample]):
 - Exception group handling validation
 - Correlation ID tracking across providers
 
-**Configuration Migration:**
-- Test bash config parsing
-- Test YAML generation
-- Test validation of migrated config
-- Test backup creation
-
-
 ### Test Structure
 
 Following pytest best practices with fixture-based testing:
@@ -908,44 +901,6 @@ mover-status/
 - Configuration in persistent location (survives reboots)
 - Environment variables via User Scripts UI
 - Automatic startup with array start (configurable)
-
-### Configuration Migration
-
-**Automated Migration Tool:**
-
-**Discovery Phase:**
-- Locate existing bash script configuration
-- Parse bash variables (USE_DISCORD, DISCORD_WEBHOOK_URL, etc.)
-- Identify enabled providers from boolean variables
-- Extract notification message templates
-
-**Transformation Phase:**
-- Convert bash variables to main YAML structure
-- Generate provider-specific YAML files for enabled providers
-- Transform message templates to new template format
-- Map exclusion paths to list format
-
-**Validation Phase:**
-- Validate generated YAML against schemas
-- Verify all required fields present
-- Check for configuration conflicts
-- Generate migration report with any manual actions needed
-
-**Migration Script:**
-```bash
-# Run migration tool
-python -m mover_status.migrate --from /path/to/moverStatus.sh --to /path/to/config/
-
-# Output:
-# ✓ Parsed bash configuration
-# ✓ Generated config/mover-status.yaml
-# ✓ Generated config/providers/discord.yaml
-# ✓ Generated config/providers/telegram.yaml
-# ✓ Validated all configurations
-# ✓ Created backup at /path/to/config.backup/
-# 
-# Migration complete! Review generated files and start application.
-```
 
 ## Logging and Observability
 

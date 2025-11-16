@@ -144,18 +144,6 @@ This document specifies the requirements for converting the legacy moverStatus.s
 
 ### Requirement 11
 
-**User Story:** As a system administrator, I want automated configuration migration from the bash script, so that I can transition to the Python application without manual reconfiguration
-
-#### Acceptance Criteria
-
-1. THE Configuration Validator SHALL provide a migration tool that reads bash script configuration variables
-2. THE Configuration Validator SHALL transform bash variables into main YAML configuration format
-3. THE Configuration Validator SHALL generate provider-specific YAML files for enabled providers based on bash configuration
-4. THE Configuration Validator SHALL validate generated YAML files against schemas
-5. THE Configuration Validator SHALL create backups of original bash configuration before migration
-
-### Requirement 12
-
 **User Story:** As a developer, I want comprehensive test coverage with multiple testing strategies, so that I can confidently refactor and extend the application
 
 #### Acceptance Criteria
@@ -166,7 +154,7 @@ This document specifies the requirements for converting the legacy moverStatus.s
 4. THE Application Core SHALL include parametrized tests for edge cases in progress calculation
 5. THE Application Core SHALL achieve minimum 80% code coverage measured by pytest-cov
 
-### Requirement 13
+### Requirement 12
 
 **User Story:** As a system administrator, I want structured logging with contextual information, so that I can troubleshoot issues effectively
 
@@ -178,7 +166,7 @@ This document specifies the requirements for converting the legacy moverStatus.s
 4. THE Application Core SHALL integrate with Unraid syslog for operational transparency
 5. THE Application Core SHALL log errors with full context without exposing secrets
 
-### Requirement 14
+### Requirement 13
 
 **User Story:** As a system administrator, I want the application to retry transient failures automatically, so that temporary network issues don't cause missed notifications
 
@@ -190,7 +178,7 @@ This document specifies the requirements for converting the legacy moverStatus.s
 4. THE HTTP Client SHALL add random jitter to backoff intervals to prevent thundering herd
 5. WHEN a provider returns a 4xx client error (except 429), THE HTTP Client SHALL NOT retry and SHALL mark the request as permanently failed
 
-### Requirement 15
+### Requirement 14
 
 **User Story:** As a developer, I want high-level abstraction and modularity throughout the codebase, so that components are maintainable, testable, and extensible without tight coupling
 
@@ -202,7 +190,7 @@ This document specifies the requirements for converting the legacy moverStatus.s
 4. THE Application Core SHALL implement pure functions for all calculation logic to enable isolated testing
 5. THE Application Core SHALL use dependency injection for all component interactions to enable easy mocking and testing
 
-### Requirement 16
+### Requirement 15
 
 **User Story:** As a developer, I want utility functions and common infrastructure to be reusable across all components, so that code duplication is minimized and consistency is maintained
 
@@ -214,7 +202,7 @@ This document specifies the requirements for converting the legacy moverStatus.s
 4. THE Application Core SHALL ensure utility functions are pure and stateless to enable reuse without side effects
 5. THE Application Core SHALL ensure no provider-specific logic exists in shared utility modules
 
-### Requirement 17
+### Requirement 16
 
 **User Story:** As a developer, I want the application to use modern Python tooling, so that development is fast and maintainable
 

@@ -1459,12 +1459,6 @@ Following uv best practices (`.claude/python-313-pro.md:246-256`):
 - Prompt user to populate required fields
 - Validate before allowing application to run
 
-**Configuration Migration:**
-- Automated migration from bash script configuration
-- Read existing bash variables from old script
-- Convert to YAML format with validation
-- Preserve all settings and behavior
-
 ### 13.4 Unraid Integration Approach
 
 **User Scripts Plugin Integration:**
@@ -1623,8 +1617,7 @@ Adding a new notification provider (e.g., Slack, Microsoft Teams, PagerDuty, ema
 **Configuration Compatibility:**
 - New configuration fields added with sensible defaults
 - Old configuration files continue working
-- Migration warnings for deprecated fields
-- Automated migration utilities for breaking changes
+- Deprecation warnings for breaking changes
 
 **API Compatibility:**
 - Semantic versioning for application and Protocol versions
@@ -1676,41 +1669,7 @@ Adding a new notification provider (e.g., Slack, Microsoft Teams, PagerDuty, ema
 - ✓ Continuous monitoring loop (wait → monitor → wait cycle)
 - ✓ Process priority respect (nice/ionice) via Unraid User Scripts
 
-### 15.2 Configuration Migration Strategy
-
-**Automated Migration Tool:**
-
-**Discovery Phase:**
-- Locate existing bash script configuration
-- Parse bash variables (USE_DISCORD, DISCORD_WEBHOOK_URL, etc.)
-- Identify enabled providers from boolean variables
-- Extract notification message templates
-
-**Transformation Phase:**
-- Convert bash variables to main YAML structure
-- Generate provider-specific YAML files for enabled providers
-- Transform message templates to new template format
-- Map exclusion paths to list format
-
-**Validation Phase:**
-- Validate generated YAML against schemas
-- Verify all required fields present
-- Check for configuration conflicts or deprecated settings
-- Generate migration report with any manual actions needed
-
-**Migration Script:**
-- Standalone Python script for one-time migration
-- Reads old bash configuration, writes new YAML files
-- Idempotent: safe to run multiple times
-- Backup creation before modification
-
-**Manual Migration Documentation:**
-- Step-by-step guide for manual migration
-- Configuration field mapping table (bash variable → YAML field)
-- Example configurations for common scenarios
-- Troubleshooting guide for validation errors
-
-### 15.3 Behavioral Preservation
+### 15.2 Behavioral Preservation
 
 **Notification Timing:**
 - Identical threshold evaluation logic
@@ -1743,7 +1702,7 @@ Adding a new notification provider (e.g., Slack, Microsoft Teams, PagerDuty, ema
 - Same logging verbosity levels
 - Same dry-run behavior (logging without sending)
 
-### 15.4 Incremental Migration Approach
+### 15.3 Incremental Migration Approach
 
 **Phase 1: Parallel Deployment**
 - Run Python application alongside bash script
