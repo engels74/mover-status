@@ -9,7 +9,6 @@ This package provides:
 from mover_status.types.aliases import (
     NotificationEvent,
     ProviderConfig,
-    ProviderRegistry,
 )
 from mover_status.types.models import (
     DiskSample,
@@ -29,7 +28,6 @@ __all__ = [
     # Type aliases
     "NotificationEvent",
     "ProviderConfig",
-    "ProviderRegistry",
     # Data models
     "DiskSample",
     "HealthStatus",

@@ -18,8 +18,3 @@ type ProviderConfig = Mapping[str, object]
 # Represents notification event data sent to providers
 # Currently aliases the NotificationData dataclass
 type NotificationEvent = NotificationData
-
-# Provider registry type
-# Generic dictionary type for storing provider instances by name
-# Example: ProviderRegistry[NotificationProvider] = {"provider_a": provider1, "provider_b": provider2, ...}
-type ProviderRegistry[T] = dict[str, T]
