@@ -21,10 +21,14 @@ from pathlib import Path
 import pytest
 
 from mover_status.core.monitoring import (
+    MoverLifecycleEvent,
+    MoverLifecycleStateMachine,
+    MoverState,
     PIDFileEvent,
     check_pid_file_state,
     get_process_executable,
     is_process_running,
+    monitor_mover_lifecycle,
     read_pid_from_file,
     validate_process_with_timeout,
     watch_pid_file,
@@ -605,3 +609,506 @@ class TestPIDFileEvent:
             timestamp=datetime.now(),
         )
         assert deleted.event_type == "deleted"
+
+
+class TestMoverState:
+    """Test MoverState enum properties and values."""
+
+    def test_all_states_exist(self) -> None:
+        """All expected lifecycle states should exist."""
+        assert hasattr(MoverState, "WAITING")
+        assert hasattr(MoverState, "STARTED")
+        assert hasattr(MoverState, "MONITORING")
+        assert hasattr(MoverState, "COMPLETED")
+
+    def test_state_values(self) -> None:
+        """State values should be lowercase strings."""
+        assert MoverState.WAITING.value == "waiting"
+        assert MoverState.STARTED.value == "started"
+        assert MoverState.MONITORING.value == "monitoring"
+        assert MoverState.COMPLETED.value == "completed"
+
+    def test_state_equality(self) -> None:
+        """States should be comparable."""
+        state1 = MoverState.WAITING
+        state2 = MoverState.WAITING
+        state3 = MoverState.STARTED
+
+        assert state1 == state2
+        assert state1 != state3
+
+    def test_state_is_enum(self) -> None:
+        """MoverState should be an Enum."""
+        from enum import Enum
+
+        assert issubclass(MoverState, Enum)
+
+
+class TestMoverLifecycleEvent:
+    """Test MoverLifecycleEvent dataclass properties."""
+
+    def test_event_is_frozen(self) -> None:
+        """MoverLifecycleEvent should be immutable (frozen)."""
+        event = MoverLifecycleEvent(
+            previous_state=MoverState.WAITING,
+            new_state=MoverState.STARTED,
+            pid=12345,
+            timestamp=datetime.now(),
+            message="Test message",
+        )
+
+        with pytest.raises(AttributeError):
+            event.pid = 67890  # pyright: ignore[reportAttributeAccessIssue]  # Testing immutability
+
+    def test_event_has_slots(self) -> None:
+        """MoverLifecycleEvent should use __slots__ for memory efficiency."""
+        event = MoverLifecycleEvent(
+            previous_state=MoverState.WAITING,
+            new_state=MoverState.STARTED,
+            pid=12345,
+            timestamp=datetime.now(),
+            message="Test message",
+        )
+
+        assert hasattr(event, "__slots__")
+        assert not hasattr(event, "__dict__")
+
+    def test_event_with_all_fields(self) -> None:
+        """Event should accept all required fields."""
+        timestamp = datetime.now()
+        event = MoverLifecycleEvent(
+            previous_state=MoverState.WAITING,
+            new_state=MoverState.STARTED,
+            pid=12345,
+            timestamp=timestamp,
+            message="Mover process started",
+        )
+
+        assert event.previous_state == MoverState.WAITING
+        assert event.new_state == MoverState.STARTED
+        assert event.pid == 12345
+        assert event.timestamp == timestamp
+        assert event.message == "Mover process started"
+
+    def test_event_with_none_pid(self) -> None:
+        """Event should accept None for PID."""
+        event = MoverLifecycleEvent(
+            previous_state=MoverState.COMPLETED,
+            new_state=MoverState.WAITING,
+            pid=None,
+            timestamp=datetime.now(),
+            message="Ready for next cycle",
+        )
+
+        assert event.pid is None
+
+
+class TestMoverLifecycleStateMachine:
+    """Test lifecycle state machine transitions and validation."""
+
+    def test_initial_state_is_waiting(self) -> None:
+        """State machine should initialize in WAITING state."""
+        sm = MoverLifecycleStateMachine()
+
+        assert sm.current_state == MoverState.WAITING
+        assert sm.current_pid is None
+
+    def test_transition_to_started_from_waiting(self) -> None:
+        """Should successfully transition from WAITING to STARTED."""
+        sm = MoverLifecycleStateMachine()
+
+        event = sm.transition_to_started(12345)
+
+        assert sm.current_state == MoverState.STARTED
+        assert sm.current_pid == 12345
+        assert event.previous_state == MoverState.WAITING
+        assert event.new_state == MoverState.STARTED
+        assert event.pid == 12345
+        assert "started" in event.message.lower()
+
+    def test_transition_to_started_from_completed(self) -> None:
+        """Should allow STARTED transition from COMPLETED (new cycle)."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(100)
+        _ = sm.transition_to_completed()
+
+        # Now in COMPLETED, should allow new START
+        event = sm.transition_to_started(200)
+
+        assert sm.current_state == MoverState.STARTED
+        assert sm.current_pid == 200
+        assert event.previous_state == MoverState.COMPLETED
+        assert event.new_state == MoverState.STARTED
+
+    def test_transition_to_started_from_invalid_state_raises(self) -> None:
+        """Should raise ValueError when transitioning to STARTED from invalid states."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(100)
+
+        # Already in STARTED - cannot transition to STARTED again
+        with pytest.raises(ValueError, match="Invalid transition"):
+            _ = sm.transition_to_started(200)
+
+    def test_transition_to_monitoring_from_started(self) -> None:
+        """Should successfully transition from STARTED to MONITORING."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        event = sm.transition_to_monitoring()
+
+        assert sm.current_state == MoverState.MONITORING
+        assert sm.current_pid == 12345  # PID preserved
+        assert event.previous_state == MoverState.STARTED
+        assert event.new_state == MoverState.MONITORING
+        assert event.pid == 12345
+        assert "monitoring" in event.message.lower()
+
+    def test_transition_to_monitoring_from_invalid_state_raises(self) -> None:
+        """Should raise ValueError when transitioning to MONITORING from invalid states."""
+        sm = MoverLifecycleStateMachine()
+
+        # Cannot go from WAITING to MONITORING directly
+        with pytest.raises(ValueError, match="Invalid transition"):
+            _ = sm.transition_to_monitoring()
+
+    def test_transition_to_completed_from_started(self) -> None:
+        """Should successfully transition from STARTED to COMPLETED."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        event = sm.transition_to_completed(reason="Test completion")
+
+        assert sm.current_state == MoverState.COMPLETED
+        assert sm.current_pid == 12345  # PID preserved until reset
+        assert event.previous_state == MoverState.STARTED
+        assert event.new_state == MoverState.COMPLETED
+        assert event.pid == 12345
+        assert "Test completion" in event.message
+
+    def test_transition_to_completed_from_monitoring(self) -> None:
+        """Should successfully transition from MONITORING to COMPLETED."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+        _ = sm.transition_to_monitoring()
+
+        event = sm.transition_to_completed()
+
+        assert sm.current_state == MoverState.COMPLETED
+        assert event.previous_state == MoverState.MONITORING
+        assert event.new_state == MoverState.COMPLETED
+        assert "terminated normally" in event.message.lower()
+
+    def test_transition_to_completed_from_waiting_raises(self) -> None:
+        """Should raise ValueError when transitioning to COMPLETED from WAITING."""
+        sm = MoverLifecycleStateMachine()
+
+        with pytest.raises(ValueError, match="Invalid transition"):
+            _ = sm.transition_to_completed()
+
+    def test_transition_to_completed_from_completed_raises(self) -> None:
+        """Should raise ValueError when already in COMPLETED state."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(100)
+        _ = sm.transition_to_completed()
+
+        with pytest.raises(ValueError, match="Invalid transition"):
+            _ = sm.transition_to_completed()
+
+    def test_reset_from_completed(self) -> None:
+        """Should successfully reset from COMPLETED to WAITING."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+        _ = sm.transition_to_completed()
+
+        event = sm.reset()
+
+        assert sm.current_state == MoverState.WAITING
+        assert sm.current_pid is None
+        assert event.previous_state == MoverState.COMPLETED
+        assert event.new_state == MoverState.WAITING
+        assert event.pid is None
+        assert "ready" in event.message.lower()
+
+    def test_reset_from_invalid_state_raises(self) -> None:
+        """Should raise ValueError when resetting from non-COMPLETED state."""
+        sm = MoverLifecycleStateMachine()
+
+        # Cannot reset from WAITING
+        with pytest.raises(ValueError, match="Cannot reset"):
+            _ = sm.reset()
+
+        # Cannot reset from STARTED
+        _ = sm.transition_to_started(100)
+        with pytest.raises(ValueError, match="Cannot reset"):
+            _ = sm.reset()
+
+    def test_full_lifecycle_sequence(self) -> None:
+        """Should successfully complete full lifecycle: WAITING → STARTED → MONITORING → COMPLETED → WAITING."""
+        sm = MoverLifecycleStateMachine()
+
+        # Initial state
+        assert sm.current_state == MoverState.WAITING
+
+        # Start
+        _ = sm.transition_to_started(12345)
+        assert sm.current_state == MoverState.STARTED
+
+        # Monitor
+        _ = sm.transition_to_monitoring()
+        assert sm.current_state == MoverState.MONITORING
+
+        # Complete
+        _ = sm.transition_to_completed()
+        assert sm.current_state == MoverState.COMPLETED
+
+        # Reset
+        _ = sm.reset()
+        assert sm.current_state == MoverState.WAITING
+        assert sm.current_pid is None
+
+    def test_edge_case_unexpected_termination_from_started(self) -> None:
+        """Should handle unexpected termination from STARTED state."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        # Process crashes before monitoring begins
+        event = sm.transition_to_completed(reason="Process crashed unexpectedly")
+
+        assert sm.current_state == MoverState.COMPLETED
+        assert "crashed unexpectedly" in event.message
+
+    def test_custom_completion_reason(self) -> None:
+        """Should accept custom completion reason."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        event = sm.transition_to_completed(reason="PID file deleted")
+
+        assert "PID file deleted" in event.message
+
+    def test_multiple_cycles(self) -> None:
+        """Should support multiple mover cycles."""
+        sm = MoverLifecycleStateMachine()
+
+        # Cycle 1
+        _ = sm.transition_to_started(100)
+        _ = sm.transition_to_monitoring()
+        _ = sm.transition_to_completed()
+        _ = sm.reset()
+
+        # Cycle 2
+        _ = sm.transition_to_started(200)
+        _ = sm.transition_to_monitoring()
+        _ = sm.transition_to_completed()
+        _ = sm.reset()
+
+        # Cycle 3
+        _ = sm.transition_to_started(300)
+
+        assert sm.current_state == MoverState.STARTED
+        assert sm.current_pid == 300
+
+
+class TestMonitorMoverLifecycle:
+    """Test high-level lifecycle monitoring integration."""
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_detects_process_start(self, tmp_path: Path) -> None:
+        """Should detect process start and transition to STARTED."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()  # Use valid PID
+
+        async def create_pid_file() -> None:
+            """Create PID file after delay."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text(str(current_pid))
+
+        # Start file creation
+        _ = asyncio.create_task(create_pid_file())
+
+        # Monitor lifecycle
+        events: list[MoverLifecycleEvent] = []
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            events.append(event)
+            if event.new_state == MoverState.STARTED:
+                break
+
+        # Verify STARTED event
+        assert len(events) == 1
+        assert events[0].new_state == MoverState.STARTED
+        assert events[0].previous_state == MoverState.WAITING
+        assert events[0].pid == current_pid
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_detects_process_termination(self, tmp_path: Path) -> None:
+        """Should detect process termination and transition to COMPLETED."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+        _ = pid_file.write_text(str(current_pid))
+
+        async def delete_pid_file() -> None:
+            """Delete PID file after delay."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.unlink()
+
+        # Start file deletion
+        _ = asyncio.create_task(delete_pid_file())
+
+        # Monitor lifecycle
+        events: list[MoverLifecycleEvent] = []
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            events.append(event)
+            if event.new_state == MoverState.WAITING:
+                break
+
+        # Should get STARTED (file exists at start), COMPLETED, and WAITING (auto-reset)
+        assert len(events) == 3
+        assert events[0].new_state == MoverState.STARTED
+        assert events[0].previous_state == MoverState.WAITING
+        assert events[0].pid == current_pid
+        assert events[1].new_state == MoverState.COMPLETED
+        assert events[1].previous_state == MoverState.STARTED
+        assert events[2].new_state == MoverState.WAITING
+        assert events[2].previous_state == MoverState.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_handles_pid_change(self, tmp_path: Path) -> None:
+        """Should handle PID file modification (process restart)."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+        _ = pid_file.write_text(str(current_pid))
+
+        async def change_pid() -> None:
+            """Modify PID file after delay."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text(str(current_pid + 1))
+
+        # Start PID change (note: new PID won't be running, so won't start)
+        _ = asyncio.create_task(change_pid())
+
+        # Monitor lifecycle
+        events: list[MoverLifecycleEvent] = []
+        try:
+            async with asyncio.timeout(3):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+                    events.append(event)
+                    # Wait for COMPLETED and WAITING from PID change
+                    if len(events) >= 2 and event.new_state == MoverState.WAITING:
+                        break
+        except TimeoutError:
+            pass
+
+        # Should complete previous process and reset
+        assert len(events) >= 2
+        # Find COMPLETED event
+        completed_events = [e for e in events if e.new_state == MoverState.COMPLETED]
+        assert len(completed_events) > 0
+        assert "changed unexpectedly" in completed_events[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_handles_invalid_pid_gracefully(
+        self, tmp_path: Path
+    ) -> None:
+        """Should handle PID file with invalid content gracefully."""
+        pid_file = tmp_path / "mover.pid"
+
+        async def create_invalid_pid_file() -> None:
+            """Create PID file with invalid content."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text("invalid_pid")
+
+        # Start file creation
+        _ = asyncio.create_task(create_invalid_pid_file())
+
+        # Monitor lifecycle
+        events: list[MoverLifecycleEvent] = []
+        try:
+            async with asyncio.timeout(2):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+                    events.append(event)
+        except TimeoutError:
+            pass
+
+        # Should not emit any lifecycle events (PID invalid, process not validated)
+        assert len(events) == 0
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_full_cycle(self, tmp_path: Path) -> None:
+        """Should handle complete lifecycle: start → complete → reset."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+
+        async def simulate_mover_cycle() -> None:
+            """Simulate complete mover cycle."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text(str(current_pid))  # Start
+
+            await asyncio.sleep(1.5)
+            _ = pid_file.unlink()  # Complete
+
+        # Start simulation
+        _ = asyncio.create_task(simulate_mover_cycle())
+
+        # Monitor lifecycle
+        events: list[MoverLifecycleEvent] = []
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            events.append(event)
+            if event.new_state == MoverState.WAITING and len(events) > 1:
+                break
+
+        # Verify complete cycle: STARTED → COMPLETED → WAITING
+        assert len(events) == 3
+        assert events[0].new_state == MoverState.STARTED
+        assert events[1].new_state == MoverState.COMPLETED
+        assert events[2].new_state == MoverState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_respects_check_interval(self, tmp_path: Path) -> None:
+        """Should respect check_interval parameter."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+        check_interval = 2
+
+        async def create_pid_file() -> None:
+            """Create PID file after delay."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text(str(current_pid))
+
+        # Start file creation
+        _ = asyncio.create_task(create_pid_file())
+
+        # Monitor lifecycle with custom interval
+        start_time = asyncio.get_event_loop().time()
+        events: list[MoverLifecycleEvent] = []
+        async for event in monitor_mover_lifecycle(
+            pid_file, check_interval=check_interval
+        ):
+            events.append(event)
+            if event.new_state == MoverState.STARTED:
+                break
+
+        elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Should detect within check_interval time (with margin)
+        assert elapsed < (check_interval + 2)
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_cancellation(self, tmp_path: Path) -> None:
+        """Should handle cancellation gracefully."""
+        pid_file = tmp_path / "mover.pid"
+
+        async def monitor_and_cancel() -> None:
+            """Start monitoring and cancel."""
+            monitor = monitor_mover_lifecycle(pid_file, check_interval=1)
+            task = asyncio.create_task(anext(monitor))
+
+            await asyncio.sleep(1)
+            _ = task.cancel()
+
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass  # Expected
+
+        # Should complete without error
+        await monitor_and_cancel()

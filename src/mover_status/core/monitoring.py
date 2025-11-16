@@ -17,10 +17,33 @@ import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 
 logger = logging.getLogger(__name__)
+
+
+class MoverState(Enum):
+    """Lifecycle states for the mover process.
+
+    Represents the distinct phases of mover operation:
+    - WAITING: No mover process detected, waiting for PID file creation
+    - STARTED: PID file created and process validated, awaiting baseline
+    - MONITORING: Actively monitoring disk usage and calculating progress
+    - COMPLETED: Mover process terminated, cycle complete
+
+    State transitions:
+        WAITING → STARTED: PID file created, process validated
+        STARTED → MONITORING: Baseline disk usage captured
+        MONITORING → COMPLETED: PID file deleted or process terminated
+        COMPLETED → WAITING: Ready for next mover cycle
+    """
+
+    WAITING = "waiting"
+    STARTED = "started"
+    MONITORING = "monitoring"
+    COMPLETED = "completed"
 
 
 @dataclass(slots=True, frozen=True)
@@ -35,6 +58,28 @@ class PIDFileEvent:
     event_type: Literal["created", "modified", "deleted"]
     pid: int | None
     timestamp: datetime
+
+
+@dataclass(slots=True, frozen=True)
+class MoverLifecycleEvent:
+    """Immutable event emitted when mover lifecycle state changes.
+
+    Represents a state transition in the mover lifecycle state machine,
+    capturing the previous state, new state, associated PID, and a
+    descriptive message for logging and debugging.
+
+    This event is emitted by the lifecycle state machine on all state
+    transitions and is used for:
+    - Syslog logging of operational events (Requirement 13.1)
+    - Orchestrator coordination and decision-making
+    - Audit trail of mover lifecycle progression
+    """
+
+    previous_state: MoverState
+    new_state: MoverState
+    pid: int | None
+    timestamp: datetime
+    message: str
 
 
 def read_pid_from_file(pid_file_path: Path) -> int | None:
@@ -247,6 +292,262 @@ async def check_pid_file_state(
     return (True, pid)
 
 
+class MoverLifecycleStateMachine:
+    """State machine for tracking mover process lifecycle.
+
+    Manages state transitions for the mover process lifecycle, tracking
+    progression through WAITING → STARTED → MONITORING → COMPLETED states.
+    Enforces valid state transitions, logs lifecycle events to syslog, and
+    handles edge cases like unexpected termination.
+
+    This implements Requirements 1.1, 1.2, 1.3, 1.5, and 13.1 by:
+    - Tracking process state throughout its lifecycle (1.5)
+    - Validating state transitions based on process events (1.1, 1.2, 1.3)
+    - Logging all lifecycle events to syslog at INFO level (13.1)
+
+    State transitions:
+        WAITING → STARTED: PID file created, process validated
+        STARTED → MONITORING: Baseline disk usage captured
+        MONITORING → COMPLETED: Process terminated normally
+        COMPLETED → WAITING: Ready for next mover cycle
+        * → COMPLETED: Emergency transition for unexpected termination
+
+    Attributes:
+        current_state: Current lifecycle state
+        current_pid: PID of tracked process (None if no process)
+    """
+
+    def __init__(self) -> None:
+        """Initialize state machine in WAITING state."""
+        self._state: MoverState = MoverState.WAITING
+        self._pid: int | None = None
+        logger.info(
+            "Lifecycle state machine initialized",
+            extra={"state": self._state.value},
+        )
+
+    @property
+    def current_state(self) -> MoverState:
+        """Get current lifecycle state."""
+        return self._state
+
+    @property
+    def current_pid(self) -> int | None:
+        """Get PID of currently tracked process."""
+        return self._pid
+
+    def transition_to_started(self, pid: int) -> MoverLifecycleEvent:
+        """Transition to STARTED state when mover process is detected.
+
+        Called when PID file is created and process is validated in the
+        process table. This implements Requirements 1.1 and 1.2.
+
+        Args:
+            pid: Validated PID of the mover process
+
+        Returns:
+            MoverLifecycleEvent describing the state transition
+
+        Raises:
+            ValueError: If transition from current state to STARTED is invalid
+        """
+        # Validate transition is allowed
+        if self._state not in {MoverState.WAITING, MoverState.COMPLETED}:
+            error_msg = f"Invalid transition from {self._state.value} to STARTED"
+            logger.error(
+                error_msg,
+                extra={
+                    "current_state": self._state.value,
+                    "target_state": MoverState.STARTED.value,
+                    "pid": pid,
+                },
+            )
+            raise ValueError(error_msg)
+
+        # Create transition event
+        previous_state = self._state
+        self._state = MoverState.STARTED
+        self._pid = pid
+
+        event = MoverLifecycleEvent(
+            previous_state=previous_state,
+            new_state=self._state,
+            pid=pid,
+            timestamp=datetime.now(),
+            message=f"Mover process started (PID {pid})",
+        )
+
+        # Log to syslog (Requirement 13.1)
+        logger.info(
+            event.message,
+            extra={
+                "previous_state": previous_state.value,
+                "new_state": self._state.value,
+                "pid": pid,
+            },
+        )
+
+        return event
+
+    def transition_to_monitoring(self) -> MoverLifecycleEvent:
+        """Transition to MONITORING state when baseline is captured.
+
+        Called after baseline disk usage is captured and active monitoring
+        can begin. This implements Requirement 1.5 (state tracking during
+        monitoring phase).
+
+        Returns:
+            MoverLifecycleEvent describing the state transition
+
+        Raises:
+            ValueError: If transition from current state to MONITORING is invalid
+        """
+        # Validate transition is allowed
+        if self._state != MoverState.STARTED:
+            error_msg = f"Invalid transition from {self._state.value} to MONITORING"
+            logger.error(
+                error_msg,
+                extra={
+                    "current_state": self._state.value,
+                    "target_state": MoverState.MONITORING.value,
+                    "pid": self._pid,
+                },
+            )
+            raise ValueError(error_msg)
+
+        # Create transition event
+        previous_state = self._state
+        self._state = MoverState.MONITORING
+
+        event = MoverLifecycleEvent(
+            previous_state=previous_state,
+            new_state=self._state,
+            pid=self._pid,
+            timestamp=datetime.now(),
+            message=f"Monitoring mover progress (PID {self._pid})",
+        )
+
+        # Log to syslog (Requirement 13.1)
+        logger.info(
+            event.message,
+            extra={
+                "previous_state": previous_state.value,
+                "new_state": self._state.value,
+                "pid": self._pid,
+            },
+        )
+
+        return event
+
+    def transition_to_completed(
+        self,
+        *,
+        reason: str = "Process terminated normally",
+    ) -> MoverLifecycleEvent:
+        """Transition to COMPLETED state when mover process terminates.
+
+        Called when PID file is deleted or process terminates. This
+        implements Requirement 1.3 (termination detection).
+
+        This transition is allowed from any state to handle edge cases:
+        - Normal completion from MONITORING
+        - Unexpected termination from STARTED (mover never fully initialized)
+        - Process crash before monitoring begins
+
+        Args:
+            reason: Description of why completion occurred (keyword-only)
+
+        Returns:
+            MoverLifecycleEvent describing the state transition
+        """
+        # This transition is allowed from any state except WAITING and COMPLETED
+        if self._state in {MoverState.WAITING, MoverState.COMPLETED}:
+            error_msg = f"Invalid transition from {self._state.value} to COMPLETED"
+            logger.error(
+                error_msg,
+                extra={
+                    "current_state": self._state.value,
+                    "target_state": MoverState.COMPLETED.value,
+                    "reason": reason,
+                },
+            )
+            raise ValueError(error_msg)
+
+        # Create transition event
+        previous_state = self._state
+        previous_pid = self._pid
+        self._state = MoverState.COMPLETED
+        # Keep PID until reset to allow final queries
+
+        event = MoverLifecycleEvent(
+            previous_state=previous_state,
+            new_state=self._state,
+            pid=previous_pid,
+            timestamp=datetime.now(),
+            message=f"Mover process completed: {reason} (PID {previous_pid})",
+        )
+
+        # Log to syslog (Requirement 13.1)
+        logger.info(
+            event.message,
+            extra={
+                "previous_state": previous_state.value,
+                "new_state": self._state.value,
+                "pid": previous_pid,
+                "reason": reason,
+            },
+        )
+
+        return event
+
+    def reset(self) -> MoverLifecycleEvent:
+        """Reset state machine to WAITING for next mover cycle.
+
+        Called after a completed mover cycle to prepare for the next
+        invocation. Clears PID and returns to WAITING state.
+
+        Returns:
+            MoverLifecycleEvent describing the state transition
+
+        Raises:
+            ValueError: If reset is called from invalid state
+        """
+        # Reset is only valid from COMPLETED state
+        if self._state != MoverState.COMPLETED:
+            error_msg = f"Cannot reset from {self._state.value} state"
+            logger.error(
+                error_msg,
+                extra={"current_state": self._state.value},
+            )
+            raise ValueError(error_msg)
+
+        # Create transition event
+        previous_state = self._state
+        previous_pid = self._pid
+        self._state = MoverState.WAITING
+        self._pid = None
+
+        event = MoverLifecycleEvent(
+            previous_state=previous_state,
+            new_state=self._state,
+            pid=None,
+            timestamp=datetime.now(),
+            message="Ready for next mover cycle",
+        )
+
+        # Log to syslog (Requirement 13.1)
+        logger.info(
+            event.message,
+            extra={
+                "previous_state": previous_state.value,
+                "new_state": self._state.value,
+                "previous_pid": previous_pid,
+            },
+        )
+
+        return event
+
+
 async def watch_pid_file(
     pid_file_path: Path,
     *,
@@ -419,6 +720,218 @@ async def watch_pid_file(
             "Unexpected error in PID file watcher",
             extra={
                 "pid_file": str(pid_file_path),
+                "error": str(exc),
+            },
+        )
+        raise
+
+
+async def monitor_mover_lifecycle(
+    pid_file_path: Path,
+    *,
+    check_interval: int = 1,
+) -> AsyncGenerator[MoverLifecycleEvent, None]:
+    """Monitor mover process lifecycle and yield state transition events.
+
+    High-level interface for monitoring the mover process lifecycle. Watches
+    the PID file for changes, manages a lifecycle state machine, and yields
+    MoverLifecycleEvent instances on each state transition.
+
+    This function orchestrates the complete lifecycle monitoring by:
+    - Creating and managing the lifecycle state machine
+    - Watching PID file for process start/stop events
+    - Validating process existence
+    - Transitioning state machine based on events
+    - Yielding lifecycle events for orchestrator consumption
+
+    The generator runs indefinitely until cancelled, automatically handling:
+    - Process detection (WAITING → STARTED)
+    - Process termination (STARTED/MONITORING → COMPLETED)
+    - Cycle reset (COMPLETED → WAITING)
+    - Edge cases (unexpected termination, validation failures)
+
+    Note: The STARTED → MONITORING transition is NOT handled here, as it
+    requires baseline disk usage capture by the orchestrator. The orchestrator
+    must call state_machine.transition_to_monitoring() when ready.
+
+    Args:
+        pid_file_path: Path to mover PID file
+        check_interval: PID file polling interval in seconds (keyword-only, default: 1)
+
+    Yields:
+        MoverLifecycleEvent for each state transition
+
+    Examples:
+        >>> from pathlib import Path
+        >>> async for event in monitor_mover_lifecycle(Path("/var/run/mover.pid")):
+        ...     print(f"{event.new_state.value}: {event.message}")
+        ...     if event.new_state == MoverState.COMPLETED:
+        ...         break
+    """
+    logger.info(
+        "Starting mover lifecycle monitoring",
+        extra={
+            "pid_file": str(pid_file_path),
+            "check_interval": check_interval,
+        },
+    )
+
+    # Create state machine instance
+    state_machine = MoverLifecycleStateMachine()
+
+    try:
+        # Check if PID file already exists at start (handle edge case where
+        # mover is already running when monitoring begins)
+        exists, pid = await check_pid_file_state(pid_file_path)
+        if exists and pid is not None:
+            # PID file exists - validate process and transition to STARTED
+            process_exists = await asyncio.to_thread(is_process_running, pid)
+            if process_exists:
+                lifecycle_event = state_machine.transition_to_started(pid)
+                yield lifecycle_event
+                logger.info(
+                    "Mover process already running at monitor start",
+                    extra={"pid": pid},
+                )
+
+        # Watch PID file for events
+        async for pid_event in watch_pid_file(
+            pid_file_path,
+            check_interval=check_interval,
+        ):
+            # Handle PID file events and transition state machine
+            if pid_event.event_type == "created":
+                # PID file created - attempt transition to STARTED
+                if pid_event.pid is not None:
+                    try:
+                        # Validate process exists (already done in watch_pid_file,
+                        # but state machine requires valid PID)
+                        process_exists = await asyncio.to_thread(
+                            is_process_running,
+                            pid_event.pid,
+                        )
+
+                        if process_exists:
+                            # Transition to STARTED state
+                            lifecycle_event = state_machine.transition_to_started(
+                                pid_event.pid
+                            )
+                            yield lifecycle_event
+                        else:
+                            logger.warning(
+                                "PID file created but process not running, staying in WAITING",
+                                extra={"pid": pid_event.pid},
+                            )
+                    except ValueError as exc:
+                        # Invalid state transition - log and continue
+                        logger.error(
+                            "Failed to transition to STARTED",
+                            extra={
+                                "pid": pid_event.pid,
+                                "current_state": state_machine.current_state.value,
+                                "error": str(exc),
+                            },
+                        )
+                else:
+                    logger.warning(
+                        "PID file created but PID could not be read",
+                        extra={"path": str(pid_file_path)},
+                    )
+
+            elif pid_event.event_type == "deleted":
+                # PID file deleted - transition to COMPLETED (if not already)
+                if state_machine.current_state in {
+                    MoverState.STARTED,
+                    MoverState.MONITORING,
+                }:
+                    try:
+                        lifecycle_event = state_machine.transition_to_completed(
+                            reason="PID file deleted"
+                        )
+                        yield lifecycle_event
+
+                        # Auto-reset for next cycle
+                        reset_event = state_machine.reset()
+                        yield reset_event
+
+                    except ValueError as exc:
+                        # Invalid state transition - log and continue
+                        logger.error(
+                            "Failed to transition to COMPLETED",
+                            extra={
+                                "current_state": state_machine.current_state.value,
+                                "error": str(exc),
+                            },
+                        )
+
+            elif pid_event.event_type == "modified":
+                # PID file modified (PID changed) - log warning
+                # This is rare and indicates mover restarted with different PID
+                logger.warning(
+                    "PID file modified during monitoring - process may have restarted",
+                    extra={
+                        "new_pid": pid_event.pid,
+                        "current_state": state_machine.current_state.value,
+                        "current_pid": state_machine.current_pid,
+                    },
+                )
+
+                # If process changed during STARTED/MONITORING, treat as completion
+                # followed by new start
+                if state_machine.current_state in {
+                    MoverState.STARTED,
+                    MoverState.MONITORING,
+                }:
+                    try:
+                        # Complete previous process
+                        completion_event = state_machine.transition_to_completed(
+                            reason="Process PID changed unexpectedly"
+                        )
+                        yield completion_event
+
+                        # Reset for new process
+                        reset_event = state_machine.reset()
+                        yield reset_event
+
+                        # Start new process if PID is valid
+                        if pid_event.pid is not None:
+                            process_exists = await asyncio.to_thread(
+                                is_process_running,
+                                pid_event.pid,
+                            )
+                            if process_exists:
+                                start_event = state_machine.transition_to_started(
+                                    pid_event.pid
+                                )
+                                yield start_event
+
+                    except ValueError as exc:
+                        logger.error(
+                            "Failed to handle PID change",
+                            extra={
+                                "new_pid": pid_event.pid,
+                                "error": str(exc),
+                            },
+                        )
+
+    except asyncio.CancelledError:
+        # Generator cancelled - clean shutdown
+        logger.info(
+            "Mover lifecycle monitoring cancelled",
+            extra={
+                "pid_file": str(pid_file_path),
+                "final_state": state_machine.current_state.value,
+            },
+        )
+        raise
+
+    except Exception as exc:
+        # Unexpected error - log and propagate
+        logger.error(
+            "Unexpected error in lifecycle monitoring",
+            extra={
+                "pid_file": str(pid_file_path),
+                "current_state": state_machine.current_state.value,
                 "error": str(exc),
             },
         )
