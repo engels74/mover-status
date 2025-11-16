@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from uuid import uuid4
 
 from mover_status.plugins.registry import ProviderRegistry
@@ -89,6 +89,7 @@ class NotificationDispatcher:
         provider_timeout_seconds: float = 15.0,
         correlation_id_factory: CorrelationIDFactory | None = None,
         logger_obj: logging.Logger | None = None,
+        dry_run_enabled: bool = False,
     ) -> None:
         if provider_timeout_seconds <= 0:
             msg = "provider_timeout_seconds must be greater than zero"
@@ -100,6 +101,7 @@ class NotificationDispatcher:
             correlation_id_factory or (lambda: uuid4().hex)
         )
         self._logger: logging.Logger = logger_obj or get_logger(__name__)
+        self._dry_run_enabled: bool = dry_run_enabled
 
     async def dispatch_notification(self, data: NotificationData) -> tuple[NotificationResult, ...]:
         """Dispatch notification data to all healthy providers concurrently."""
@@ -202,6 +204,8 @@ class NotificationDispatcher:
                     results[identifier] = result
 
         try:
+            if self._dry_run_enabled:
+                return self._handle_dry_run(data, ordered_identifiers)
             async with asyncio.TaskGroup() as task_group:
                 for identifier, provider in providers:
                     _ = task_group.create_task(_dispatch_single(identifier, provider))
@@ -215,6 +219,33 @@ class NotificationDispatcher:
 
     def _collect_healthy_providers(self) -> list[tuple[str, NotificationProvider]]:
         return list(self._registry.get_healthy_entries())
+
+    def _handle_dry_run(
+        self,
+        data: NotificationData,
+        ordered_identifiers: Sequence[str],
+    ) -> tuple[NotificationResult, ...]:
+        """Return synthetic results while logging payload details."""
+        log_with_context(
+            self._logger,
+            logging.INFO,
+            "Dry-run notification recorded",
+            extra={
+                "event_type": data.event_type,
+                "percent": data.percent,
+                "providers_requested": len(ordered_identifiers),
+                "notification_payload": _snapshot_notification_data(data),
+            },
+        )
+        return tuple(
+            NotificationResult(
+                success=True,
+                provider_name=identifier,
+                error_message=None,
+                delivery_time_ms=0.0,
+            )
+            for identifier in ordered_identifiers
+        )
 
     def _handle_provider_success(
         self,
@@ -340,3 +371,17 @@ class NotificationDispatcher:
                 yield from self._flatten_exceptions(exc.exceptions, target_type)
             elif isinstance(exc, target_type):
                 yield exc
+
+
+def _snapshot_notification_data(data: NotificationData) -> dict[str, object]:
+    """Create a log-friendly copy of NotificationData values."""
+    return {
+        "event_type": data.event_type,
+        "percent": data.percent,
+        "remaining_data": data.remaining_data,
+        "moved_data": data.moved_data,
+        "total_data": data.total_data,
+        "rate": data.rate,
+        "etc_timestamp": data.etc_timestamp.isoformat() if data.etc_timestamp else None,
+        "correlation_id": data.correlation_id,
+    }

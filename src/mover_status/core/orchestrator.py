@@ -111,14 +111,20 @@ class Orchestrator:
         self.baseline_sampler: BaselineSampler = baseline_sampler
         self.usage_sampler: UsageSampler = usage_sampler
         self.rate_window_size: int = rate_window_size
+        self._dry_run_enabled: bool = bool(config.application.dry_run)
 
         self._monitor_paths: tuple[Path, ...] = self.monitored_paths
         self._exclusion_paths: tuple[Path, ...] = tuple(config.monitoring.exclusion_paths)
         self._plugin_loader: PluginLoader = plugin_loader or PluginLoader()
         self._registry: ProviderRegistry[NotificationProvider] = registry or ProviderRegistry()
-        self._dispatcher: NotificationDispatcher = dispatcher or NotificationDispatcher(
-            self._registry
-        )
+        self._dispatcher: NotificationDispatcher
+        if dispatcher is not None:
+            self._dispatcher = dispatcher
+        else:
+            self._dispatcher = NotificationDispatcher(
+                self._registry,
+                dry_run_enabled=self._dry_run_enabled,
+            )
         self._provider_init_kwargs: ProviderInitKwargs | None = provider_init_kwargs
         self._progress_calculator: ProgressCalculator = (
             progress_calculator or self._default_progress_calculator
@@ -138,6 +144,10 @@ class Orchestrator:
         )
 
         self._logger: logging.Logger = logging.getLogger(__name__)
+        if self._dry_run_enabled:
+            self._logger.info(
+                "Dry-run mode enabled: notifications will be logged without sending"
+            )
         self._shutdown_event: asyncio.Event = asyncio.Event()
         self._ready_event: asyncio.Event = asyncio.Event()
         self._task_group: asyncio.TaskGroup | None = None

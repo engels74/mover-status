@@ -11,6 +11,7 @@ Tests cover:
 """
 
 import asyncio
+import logging
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
@@ -18,7 +19,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import aiohttp
 import pytest
 
-from mover_status.utils.http_client import AIOHTTPClient, CircuitState
+from mover_status.utils.http_client import AIOHTTPClient, CircuitState, DryRunHTTPClient
 
 
 @pytest.fixture
@@ -454,3 +455,28 @@ class TestRetryableStatus:
         assert not client.is_retryable_status(401)
         assert not client.is_retryable_status(404)
 
+
+class TestDryRunHTTPClient:
+    """Dry-run HTTP client behavior."""
+
+    @pytest.mark.asyncio
+    async def test_post_logs_payload_and_returns_success(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        client = DryRunHTTPClient()
+        caplog.set_level(logging.INFO)
+
+        response = await client.post("https://example.com/hook", {"value": 1}, timeout=1.0)
+
+        assert response.status == 204
+        assert response.body == {}
+        assert any("Dry-run HTTP POST" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_post_with_retry_delegates_to_post(self) -> None:
+        client = DryRunHTTPClient()
+
+        response = await client.post_with_retry("https://example.com/hook", {"value": 2})
+
+        assert response.status == 204

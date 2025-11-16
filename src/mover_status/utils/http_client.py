@@ -527,3 +527,51 @@ class AIOHTTPClient:
                     self._circuit_breaker_threshold,
                 )
 
+
+class DryRunHTTPClient:
+    """HTTP client used when dry-run mode disables outbound requests.
+
+    Instead of issuing network requests this client logs payload metadata
+    for verification while returning a synthetic success response. This
+    mirrors the bash script's dry-run behavior (Requirement 10.1).
+    """
+
+    def __init__(self, *, logger_obj: logging.Logger | None = None) -> None:
+        self._logger: logging.Logger = logger_obj or logging.getLogger(__name__)
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        _ = exc_type, exc_val, exc_tb
+
+    async def post(
+        self,
+        url: str,
+        payload: Mapping[str, object],
+        *,
+        timeout: float,
+    ) -> Response:
+        """Log payload metadata and skip the HTTP call."""
+        _ = (url, timeout)
+        self._logger.info(
+            "Dry-run HTTP POST skipped network delivery",
+            extra={
+                "dry_run": True,
+                "payload_keys": tuple(sorted(str(key) for key in payload.keys())),
+            },
+        )
+        return Response(status=204, body={}, headers={})
+
+    async def post_with_retry(
+        self,
+        url: str,
+        payload: Mapping[str, object],
+    ) -> Response:
+        """Reuse post() implementation to satisfy HTTPClient Protocol."""
+        return await self.post(url, payload, timeout=0.0)

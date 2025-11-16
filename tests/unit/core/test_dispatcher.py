@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 from _pytest.logging import LogCaptureFixture
@@ -115,6 +116,40 @@ async def test_dispatch_success_sets_correlation_id_and_records_results() -> Non
     assert provider.calls == 1
     assert data.correlation_id == "generated-id"
     assert get_correlation_id() is None
+
+
+@pytest.mark.asyncio
+async def test_dry_run_logs_payload_and_skips_provider_calls(
+    caplog: LogCaptureFixture,
+) -> None:
+    """Dry-run mode should log notification data without invoking providers."""
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
+        unhealthy_threshold=1
+    )
+    provider = StubProvider("alpha")
+    registry.register("alpha", provider)
+    dispatcher = NotificationDispatcher(
+        registry,
+        provider_timeout_seconds=1.0,
+        dry_run_enabled=True,
+    )
+
+    data = _make_notification_data(event_type="started", correlation_id="")
+    caplog.set_level(logging.INFO)
+
+    results = await dispatcher.dispatch_notification(data)
+
+    assert provider.calls == 0
+    assert len(results) == 1
+    assert results[0].success is True
+    assert data.correlation_id  # correlation ID should still be generated
+    dry_run_logs = [
+        record for record in caplog.records if record.message == "Dry-run notification recorded"
+    ]
+    assert dry_run_logs, "Dry-run dispatch should be logged"
+    payload = cast(dict[str, object], getattr(dry_run_logs[0], "notification_payload"))
+    assert payload["event_type"] == "started"
+    assert payload["correlation_id"] == data.correlation_id
 
 
 @pytest.mark.asyncio
