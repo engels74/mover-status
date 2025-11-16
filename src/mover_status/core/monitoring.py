@@ -551,7 +551,7 @@ class MoverLifecycleStateMachine:
 async def watch_pid_file(
     pid_file_path: Path,
     *,
-    check_interval: int = 1,
+    check_interval: float = 1.0,
 ) -> AsyncGenerator[PIDFileEvent, None]:
     """Watch PID file and yield events on state changes.
 
@@ -729,7 +729,7 @@ async def watch_pid_file(
 async def monitor_mover_lifecycle(
     pid_file_path: Path,
     *,
-    check_interval: int = 1,
+    check_interval: float = 1.0,
 ) -> AsyncGenerator[MoverLifecycleEvent, None]:
     """Monitor mover process lifecycle and yield state transition events.
 

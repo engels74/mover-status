@@ -242,7 +242,7 @@ class TestProcessValidation:
         """Valid process should validate successfully before timeout."""
         current_pid = os.getpid()
 
-        result = await validate_process_with_timeout(current_pid, timeout=1.0)
+        result = await validate_process_with_timeout(current_pid, timeout=0.1)
 
         assert result is True
 
@@ -251,7 +251,7 @@ class TestProcessValidation:
         """Non-existent process should return False."""
         fake_pid = 999999
 
-        result = await validate_process_with_timeout(fake_pid, timeout=1.0)
+        result = await validate_process_with_timeout(fake_pid, timeout=0.1)
 
         assert result is False
 
@@ -261,8 +261,8 @@ class TestProcessValidation:
         current_pid = os.getpid()
 
         # Test with different timeout values
-        result_short = await validate_process_with_timeout(current_pid, timeout=0.5)
-        result_long = await validate_process_with_timeout(current_pid, timeout=2.0)
+        result_short = await validate_process_with_timeout(current_pid, timeout=0.05)
+        result_long = await validate_process_with_timeout(current_pid, timeout=0.2)
 
         assert result_short is True
         assert result_long is True
@@ -277,8 +277,8 @@ class TestWatchPidFile:
         pid_file = tmp_path / "mover.pid"
 
         async def create_file_after_delay() -> None:
-            """Create PID file after 0.5 seconds."""
-            await asyncio.sleep(0.5)
+            """Create PID file after 0.01 seconds."""
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("12345")
 
         # Start file creation task
@@ -286,7 +286,7 @@ class TestWatchPidFile:
 
         # Watch for events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "created":
                 break
@@ -304,8 +304,8 @@ class TestWatchPidFile:
         _ = pid_file.write_text("12345")
 
         async def delete_file_after_delay() -> None:
-            """Delete PID file after 0.5 seconds."""
-            await asyncio.sleep(0.5)
+            """Delete PID file after 0.01 seconds."""
+            await asyncio.sleep(0.01)
             _ = pid_file.unlink()
 
         # Start file deletion task
@@ -313,7 +313,7 @@ class TestWatchPidFile:
 
         # Watch for events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "deleted":
                 break
@@ -331,8 +331,8 @@ class TestWatchPidFile:
         _ = pid_file.write_text("12345")
 
         async def modify_file_after_delay() -> None:
-            """Modify PID file after 0.5 seconds."""
-            await asyncio.sleep(0.5)
+            """Modify PID file after 0.01 seconds."""
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("67890")
 
         # Start file modification task
@@ -340,7 +340,7 @@ class TestWatchPidFile:
 
         # Watch for events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "modified":
                 break
@@ -360,8 +360,8 @@ class TestWatchPidFile:
         # Watch for events with timeout
         events: list[PIDFileEvent] = []
         try:
-            async with asyncio.timeout(2):
-                async for event in watch_pid_file(pid_file, check_interval=1):
+            async with asyncio.timeout(0.1):
+                async for event in watch_pid_file(pid_file, check_interval=0.01):
                     events.append(event)
         except TimeoutError:
             pass
@@ -376,13 +376,13 @@ class TestWatchPidFile:
 
         async def simulate_lifecycle() -> None:
             """Simulate mover lifecycle: create, modify, delete."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("12345")  # Create
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.03)
             _ = pid_file.write_text("67890")  # Modify
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.03)
             _ = pid_file.unlink()  # Delete
 
         # Start lifecycle simulation
@@ -390,7 +390,7 @@ class TestWatchPidFile:
 
         # Collect events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "deleted":
                 break
@@ -411,11 +411,11 @@ class TestWatchPidFile:
     async def test_polling_interval_respected(self, tmp_path: Path) -> None:
         """Watcher should respect check_interval parameter."""
         pid_file = tmp_path / "mover.pid"
-        check_interval = 2  # 2 seconds
+        check_interval = 0.02  # 20 milliseconds
 
         async def create_file_after_delay() -> None:
-            """Create PID file after 0.5 seconds."""
-            await asyncio.sleep(0.5)
+            """Create PID file after 0.01 seconds."""
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("12345")
 
         # Start file creation task
@@ -433,7 +433,7 @@ class TestWatchPidFile:
 
         # Event should be detected around check_interval time
         # Allow generous margin for test timing variability
-        assert elapsed < (check_interval + 2)
+        assert elapsed < (check_interval + 0.1)
 
     @pytest.mark.asyncio
     async def test_watcher_cancellation(self, tmp_path: Path) -> None:
@@ -441,11 +441,11 @@ class TestWatchPidFile:
         pid_file = tmp_path / "mover.pid"
 
         async def watch_and_cancel() -> None:
-            """Start watching and cancel after 1 second."""
-            watcher = watch_pid_file(pid_file, check_interval=1)
+            """Start watching and cancel after 0.01 seconds."""
+            watcher = watch_pid_file(pid_file, check_interval=0.01)
             task = asyncio.create_task(anext(watcher))
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.01)
             _ = task.cancel()
 
             try:
@@ -465,7 +465,7 @@ class TestWatchPidFile:
 
         async def create_invalid_file() -> None:
             """Create file with invalid PID content."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("invalid_pid")
 
         # Start file creation task
@@ -473,7 +473,7 @@ class TestWatchPidFile:
 
         # Watch for events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "created":
                 break
@@ -492,8 +492,8 @@ class TestWatchPidFile:
         # Watch for events with timeout
         events: list[PIDFileEvent] = []
         try:
-            async with asyncio.timeout(2):
-                async for event in watch_pid_file(pid_file, check_interval=1):
+            async with asyncio.timeout(0.1):
+                async for event in watch_pid_file(pid_file, check_interval=0.01):
                     events.append(event)
         except TimeoutError:
             pass
@@ -509,10 +509,10 @@ class TestWatchPidFile:
 
         async def rapid_modifications() -> None:
             """Make rapid PID modifications."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("200")
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.03)
             _ = pid_file.write_text("300")
 
         # Start modifications
@@ -521,7 +521,7 @@ class TestWatchPidFile:
         # Collect events
         events: list[PIDFileEvent] = []
         event_count = 0
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             event_count += 1
             if event_count >= 2:  # Expect 2 modification events
@@ -543,7 +543,7 @@ class TestWatchPidFile:
 
         async def create_file_with_valid_pid() -> None:
             """Create PID file with current process PID."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid))
 
         # Start file creation task
@@ -551,7 +551,7 @@ class TestWatchPidFile:
 
         # Watch for events
         events: list[PIDFileEvent] = []
-        async for event in watch_pid_file(pid_file, check_interval=1):
+        async for event in watch_pid_file(pid_file, check_interval=0.01):
             events.append(event)
             if event.event_type == "created":
                 break
@@ -922,7 +922,7 @@ class TestMonitorMoverLifecycle:
 
         async def create_pid_file() -> None:
             """Create PID file after delay."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid))
 
         # Start file creation
@@ -930,7 +930,7 @@ class TestMonitorMoverLifecycle:
 
         # Monitor lifecycle
         events: list[MoverLifecycleEvent] = []
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             events.append(event)
             if event.new_state == MoverState.STARTED:
                 break
@@ -950,7 +950,7 @@ class TestMonitorMoverLifecycle:
 
         async def delete_pid_file() -> None:
             """Delete PID file after delay."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.unlink()
 
         # Start file deletion
@@ -958,7 +958,7 @@ class TestMonitorMoverLifecycle:
 
         # Monitor lifecycle
         events: list[MoverLifecycleEvent] = []
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             events.append(event)
             if event.new_state == MoverState.WAITING:
                 break
@@ -982,7 +982,7 @@ class TestMonitorMoverLifecycle:
 
         async def change_pid() -> None:
             """Modify PID file after delay."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid + 1))
 
         # Start PID change (note: new PID won't be running, so won't start)
@@ -991,8 +991,8 @@ class TestMonitorMoverLifecycle:
         # Monitor lifecycle
         events: list[MoverLifecycleEvent] = []
         try:
-            async with asyncio.timeout(3):
-                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            async with asyncio.timeout(0.1):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
                     events.append(event)
                     # Wait for COMPLETED and WAITING from PID change
                     if len(events) >= 2 and event.new_state == MoverState.WAITING:
@@ -1016,7 +1016,7 @@ class TestMonitorMoverLifecycle:
 
         async def create_invalid_pid_file() -> None:
             """Create PID file with invalid content."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("invalid_pid")
 
         # Start file creation
@@ -1025,8 +1025,8 @@ class TestMonitorMoverLifecycle:
         # Monitor lifecycle
         events: list[MoverLifecycleEvent] = []
         try:
-            async with asyncio.timeout(2):
-                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            async with asyncio.timeout(0.1):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
                     events.append(event)
         except TimeoutError:
             pass
@@ -1042,10 +1042,10 @@ class TestMonitorMoverLifecycle:
 
         async def simulate_mover_cycle() -> None:
             """Simulate complete mover cycle."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid))  # Start
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.03)
             _ = pid_file.unlink()  # Complete
 
         # Start simulation
@@ -1053,7 +1053,7 @@ class TestMonitorMoverLifecycle:
 
         # Monitor lifecycle
         events: list[MoverLifecycleEvent] = []
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             events.append(event)
             if event.new_state == MoverState.WAITING and len(events) > 1:
                 break
@@ -1069,11 +1069,11 @@ class TestMonitorMoverLifecycle:
         """Should respect check_interval parameter."""
         pid_file = tmp_path / "mover.pid"
         current_pid = os.getpid()
-        check_interval = 2
+        check_interval = 0.02
 
         async def create_pid_file() -> None:
             """Create PID file after delay."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid))
 
         # Start file creation
@@ -1092,7 +1092,7 @@ class TestMonitorMoverLifecycle:
         elapsed = asyncio.get_event_loop().time() - start_time
 
         # Should detect within check_interval time (with margin)
-        assert elapsed < (check_interval + 2)
+        assert elapsed < (check_interval + 0.1)
 
     @pytest.mark.asyncio
     async def test_lifecycle_cancellation(self, tmp_path: Path) -> None:
@@ -1101,10 +1101,10 @@ class TestMonitorMoverLifecycle:
 
         async def monitor_and_cancel() -> None:
             """Start monitoring and cancel."""
-            monitor = monitor_mover_lifecycle(pid_file, check_interval=1)
+            monitor = monitor_mover_lifecycle(pid_file, check_interval=0.01)
             task = asyncio.create_task(anext(monitor))
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.01)
             _ = task.cancel()
 
             try:
@@ -1148,8 +1148,8 @@ class TestPIDFileWatchingWithMocks:
         ):
             events: list[PIDFileEvent] = []
             try:
-                async with asyncio.timeout(2):
-                    async for event in watch_pid_file(pid_file, check_interval=1):
+                async with asyncio.timeout(0.1):
+                    async for event in watch_pid_file(pid_file, check_interval=0.01):
                         events.append(event)
             except TimeoutError:
                 pass
@@ -1439,9 +1439,9 @@ class TestEdgeCasesParametrized:
             assert exception_raised
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("check_interval", [1, 2, 3, 5])
+    @pytest.mark.parametrize("check_interval", [0.01, 0.05])
     async def test_watch_respects_different_intervals(
-        self, tmp_path: Path, check_interval: int
+        self, tmp_path: Path, check_interval: float
     ) -> None:
         """Should respect various check interval values."""
         pid_file = tmp_path / "mover.pid"
@@ -1449,7 +1449,7 @@ class TestEdgeCasesParametrized:
 
         async def create_file_after_delay() -> None:
             """Create PID file after short delay."""
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.005)
             _ = pid_file.write_text(str(current_pid))
 
         _ = asyncio.create_task(create_file_after_delay())
@@ -1464,7 +1464,7 @@ class TestEdgeCasesParametrized:
         elapsed = asyncio.get_event_loop().time() - start_time
 
         # Should detect within interval (with generous margin for test timing)
-        assert elapsed < (check_interval + 3)
+        assert elapsed < (check_interval + 0.1)
         assert len(events) == 1
 
     @pytest.mark.parametrize(
@@ -1502,19 +1502,19 @@ class TestLifecycleIntegration:
 
         async def simulate_three_cycles() -> None:
             """Simulate 3 complete mover cycles."""
-            for cycle in range(3):
-                await asyncio.sleep(0.5)
-                _ = pid_file.write_text(str(current_pid + cycle))
-                await asyncio.sleep(1.0)
+            for _cycle in range(3):
+                await asyncio.sleep(0.01)
+                _ = pid_file.write_text(str(current_pid))
+                await asyncio.sleep(0.01)
                 _ = pid_file.unlink()
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.01)
 
         _ = asyncio.create_task(simulate_three_cycles())
 
         events: list[MoverLifecycleEvent] = []
         cycle_count = 0
 
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             events.append(event)
             if event.new_state == MoverState.WAITING and len(events) > 1:
                 cycle_count += 1
@@ -1532,10 +1532,10 @@ class TestLifecycleIntegration:
 
         async def monitor_with_cancellation() -> None:
             """Start monitoring and cancel after delay."""
-            monitor = monitor_mover_lifecycle(pid_file, check_interval=1)
+            monitor = monitor_mover_lifecycle(pid_file, check_interval=0.01)
             task = asyncio.create_task(anext(monitor))
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.02)
             _ = task.cancel()
 
             try:
@@ -1544,7 +1544,7 @@ class TestLifecycleIntegration:
                 pass  # Expected
 
         # Should complete without hanging or leaking resources
-        await asyncio.wait_for(monitor_with_cancellation(), timeout=5.0)
+        await asyncio.wait_for(monitor_with_cancellation(), timeout=0.5)
 
     @pytest.mark.asyncio
     async def test_recovery_from_invalid_pid_then_valid(self, tmp_path: Path) -> None:
@@ -1554,17 +1554,17 @@ class TestLifecycleIntegration:
 
         async def simulate_invalid_then_valid() -> None:
             """Create invalid PID, then valid PID."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text("invalid")
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.01)
             _ = pid_file.unlink()
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.01)
             _ = pid_file.write_text(str(current_pid))
 
         _ = asyncio.create_task(simulate_invalid_then_valid())
 
         events: list[MoverLifecycleEvent] = []
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             events.append(event)
             if event.new_state == MoverState.STARTED:
                 break
@@ -1584,16 +1584,16 @@ class TestLifecycleIntegration:
             """Rapidly create and delete PID file."""
             for _ in range(3):
                 _ = pid_file.write_text(str(current_pid))
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.01)
                 _ = pid_file.unlink()
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.01)
 
         _ = asyncio.create_task(rapid_changes())
 
         events: list[MoverLifecycleEvent] = []
         try:
-            async with asyncio.timeout(5):
-                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            async with asyncio.timeout(0.5):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
                     events.append(event)
         except TimeoutError:
             pass
@@ -1614,12 +1614,12 @@ class TestLifecycleIntegration:
 
         async def delete_after_delay() -> None:
             """Delete PID file after delay."""
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.01)
             _ = pid_file.unlink()
 
         _ = asyncio.create_task(delete_after_delay())
 
-        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
             states_seen.append(event.new_state)
             if event.new_state == MoverState.WAITING and len(states_seen) > 1:
                 break
@@ -1640,9 +1640,9 @@ class TestLifecycleIntegration:
             """Monitor a PID file and collect events."""
             events: list[MoverLifecycleEvent] = []
             try:
-                async with asyncio.timeout(3):
+                async with asyncio.timeout(0.3):
                     async for event in monitor_mover_lifecycle(
-                        pid_file, check_interval=1
+                        pid_file, check_interval=0.01
                     ):
                         events.append(event)
                         if event.new_state == MoverState.STARTED:
@@ -1653,9 +1653,9 @@ class TestLifecycleIntegration:
 
         async def create_pid_files() -> None:
             """Create both PID files with delays."""
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file1.write_text(str(current_pid))
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
             _ = pid_file2.write_text(str(current_pid))
 
         _ = asyncio.create_task(create_pid_files())
