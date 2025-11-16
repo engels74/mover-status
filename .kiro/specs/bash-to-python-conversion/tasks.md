@@ -113,7 +113,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Test reversibility of size formatting
     - _Requirements: 12.1, 12.2_
 
-- [ ] 6. Implement disk usage tracker
+- [x] 6. Implement disk usage tracker
   - [x] 6.1 Create disk usage calculation functions
     - Implement synchronous disk traversal with exclusion path filtering
     - Implement baseline capture function
@@ -136,7 +136,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - _Requirements: 12.1_
 
 - [ ] 7. Implement monitoring engine
-  - [ ] 7.1 Create PID file watcher
+  - [x] 7.1 Create PID file watcher
     - Implement async file watching for /var/run/mover.pid
     - Create async generator yielding PID file events
     - Add polling with configurable interval

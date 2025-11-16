@@ -38,6 +38,13 @@ class MonitoringConfig(BaseModel):
     """
 
     pid_file: Annotated[Path, Field(description="Path to mover PID file")]
+    pid_check_interval: Annotated[
+        int,
+        Field(
+            gt=0,
+            description="PID file polling interval in seconds",
+        ),
+    ] = 1
     sampling_interval: Annotated[
         int,
         Field(
