@@ -20,7 +20,7 @@ from mover_status.types.models import DiskSample
 logger = logging.getLogger(__name__)
 
 
-def _is_excluded(path: Path, exclusion_paths: Sequence[Path]) -> bool:
+def is_excluded(path: Path, exclusion_paths: Sequence[Path]) -> bool:
     """Check if a path should be excluded from disk usage calculation.
 
     A path is excluded if it is a subdirectory of any exclusion path or
@@ -34,12 +34,12 @@ def _is_excluded(path: Path, exclusion_paths: Sequence[Path]) -> bool:
         True if the path should be excluded, False otherwise
 
     Examples:
-        >>> _is_excluded(
+        >>> is_excluded(
         ...     Path("/mnt/cache/appdata/qbittorrent"),
         ...     [Path("/mnt/cache/appdata")]
         ... )
         True
-        >>> _is_excluded(
+        >>> is_excluded(
         ...     Path("/mnt/cache/downloads"),
         ...     [Path("/mnt/cache/appdata")]
         ... )
@@ -112,7 +112,7 @@ def calculate_disk_usage_sync(
                 continue
 
             # Check if the entire base path is excluded
-            if _is_excluded(base_path, exclusion_paths):
+            if is_excluded(base_path, exclusion_paths):
                 logger.debug(
                     "Base path is excluded, skipping",
                     extra={"path": str(base_path)},
@@ -147,7 +147,7 @@ def calculate_disk_usage_sync(
             for entry in base_path.rglob("*"):
                 try:
                     # Skip if path is excluded
-                    if _is_excluded(entry, exclusion_paths):
+                    if is_excluded(entry, exclusion_paths):
                         excluded_paths_count += 1
                         continue
 

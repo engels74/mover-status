@@ -13,10 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from mover_status.core import disk_tracker
 from mover_status.core.disk_tracker import (
     calculate_disk_usage_sync,
     capture_baseline,
+    is_excluded,
     sample_current_usage,
 )
 from mover_status.types.models import DiskSample
@@ -30,28 +30,28 @@ class TestIsExcluded:
         path = Path("/mnt/cache/appdata")
         exclusions = [Path("/mnt/cache/appdata")]
 
-        assert disk_tracker._is_excluded(path, exclusions) is True
+        assert is_excluded(path, exclusions) is True
 
     def test_subdirectory_is_excluded(self) -> None:
         """Path that is subdirectory of exclusion should be excluded."""
         path = Path("/mnt/cache/appdata/qbittorrent/downloads")
         exclusions = [Path("/mnt/cache/appdata")]
 
-        assert disk_tracker._is_excluded(path, exclusions) is True
+        assert is_excluded(path, exclusions) is True
 
     def test_parent_directory_not_excluded(self) -> None:
         """Path that is parent of exclusion should not be excluded."""
         path = Path("/mnt/cache")
         exclusions = [Path("/mnt/cache/appdata")]
 
-        assert disk_tracker._is_excluded(path, exclusions) is False
+        assert is_excluded(path, exclusions) is False
 
     def test_sibling_directory_not_excluded(self) -> None:
         """Path that is sibling of exclusion should not be excluded."""
         path = Path("/mnt/cache/downloads")
         exclusions = [Path("/mnt/cache/appdata")]
 
-        assert disk_tracker._is_excluded(path, exclusions) is False
+        assert is_excluded(path, exclusions) is False
 
     def test_multiple_exclusions(self) -> None:
         """Path matching any exclusion should be excluded."""
@@ -62,21 +62,21 @@ class TestIsExcluded:
             Path("/mnt/cache/system"),
         ]
 
-        assert disk_tracker._is_excluded(path, exclusions) is True
+        assert is_excluded(path, exclusions) is True
 
     def test_no_exclusions(self) -> None:
         """Path with empty exclusion list should not be excluded."""
         path = Path("/mnt/cache/downloads")
         exclusions: list[Path] = []
 
-        assert disk_tracker._is_excluded(path, exclusions) is False
+        assert is_excluded(path, exclusions) is False
 
     def test_different_root_not_excluded(self) -> None:
         """Path with completely different root should not be excluded."""
         path = Path("/mnt/array/media")
         exclusions = [Path("/mnt/cache/appdata")]
 
-        assert disk_tracker._is_excluded(path, exclusions) is False
+        assert is_excluded(path, exclusions) is False
 
 
 class TestCalculateDiskUsageSync:
@@ -91,7 +91,7 @@ class TestCalculateDiskUsageSync:
     def test_single_file(self, tmp_path: Path) -> None:
         """Calculating usage for single file should return file size."""
         test_file = tmp_path / "test.txt"
-        test_file.write_text("Hello, World!")  # 13 bytes
+        _ = test_file.write_text("Hello, World!")  # 13 bytes
 
         result = calculate_disk_usage_sync(paths=[test_file])
 
@@ -99,9 +99,9 @@ class TestCalculateDiskUsageSync:
 
     def test_directory_with_multiple_files(self, tmp_path: Path) -> None:
         """Calculating usage for directory should sum all file sizes."""
-        (tmp_path / "file1.txt").write_text("A" * 100)  # 100 bytes
-        (tmp_path / "file2.txt").write_text("B" * 200)  # 200 bytes
-        (tmp_path / "file3.txt").write_text("C" * 50)   # 50 bytes
+        _ = (tmp_path / "file1.txt").write_text("A" * 100)  # 100 bytes
+        _ = (tmp_path / "file2.txt").write_text("B" * 200)  # 200 bytes
+        _ = (tmp_path / "file3.txt").write_text("C" * 50)   # 50 bytes
 
         result = calculate_disk_usage_sync(paths=[tmp_path])
 
@@ -113,9 +113,9 @@ class TestCalculateDiskUsageSync:
         subdir2 = subdir1 / "level2"
         subdir2.mkdir(parents=True)
 
-        (tmp_path / "root.txt").write_text("A" * 100)
-        (subdir1 / "level1.txt").write_text("B" * 50)
-        (subdir2 / "level2.txt").write_text("C" * 25)
+        _ = (tmp_path / "root.txt").write_text("A" * 100)
+        _ = (subdir1 / "level1.txt").write_text("B" * 50)
+        _ = (subdir2 / "level2.txt").write_text("C" * 25)
 
         result = calculate_disk_usage_sync(paths=[tmp_path])
 
@@ -128,8 +128,8 @@ class TestCalculateDiskUsageSync:
         included_dir = tmp_path / "included"
         included_dir.mkdir()
 
-        (excluded_dir / "file1.txt").write_text("A" * 100)  # Should be excluded
-        (included_dir / "file2.txt").write_text("B" * 50)   # Should be included
+        _ = (excluded_dir / "file1.txt").write_text("A" * 100)  # Should be excluded
+        _ = (included_dir / "file2.txt").write_text("B" * 50)   # Should be included
 
         result = calculate_disk_usage_sync(
             paths=[tmp_path],
@@ -148,9 +148,9 @@ class TestCalculateDiskUsageSync:
         excluded2.mkdir()
         included.mkdir()
 
-        (excluded1 / "file1.txt").write_text("A" * 100)
-        (excluded2 / "file2.txt").write_text("B" * 200)
-        (included / "file3.txt").write_text("C" * 50)
+        _ = (excluded1 / "file1.txt").write_text("A" * 100)
+        _ = (excluded2 / "file2.txt").write_text("B" * 200)
+        _ = (included / "file3.txt").write_text("C" * 50)
 
         result = calculate_disk_usage_sync(
             paths=[tmp_path],
@@ -163,7 +163,7 @@ class TestCalculateDiskUsageSync:
         """Nonexistent paths should be skipped without error."""
         nonexistent = tmp_path / "does_not_exist"
         existing = tmp_path / "exists.txt"
-        existing.write_text("Hello")
+        _ = existing.write_text("Hello")
 
         result = calculate_disk_usage_sync(paths=[nonexistent, existing])
 
@@ -172,7 +172,7 @@ class TestCalculateDiskUsageSync:
     def test_symlinks_not_counted(self, tmp_path: Path) -> None:
         """Symbolic links should not be counted to avoid double-counting."""
         real_file = tmp_path / "real.txt"
-        real_file.write_text("A" * 100)
+        _ = real_file.write_text("A" * 100)
 
         symlink = tmp_path / "link.txt"
         symlink.symlink_to(real_file)
@@ -184,7 +184,7 @@ class TestCalculateDiskUsageSync:
     def test_permission_error_handling(self, tmp_path: Path) -> None:
         """Permission errors should be logged and skipped."""
         accessible = tmp_path / "accessible.txt"
-        accessible.write_text("A" * 50)
+        _ = accessible.write_text("A" * 50)
 
         with patch.object(Path, "rglob") as mock_rglob:
             def mock_iterator() -> list[Path]:
@@ -211,8 +211,8 @@ class TestCalculateDiskUsageSync:
         path1.mkdir()
         path2.mkdir()
 
-        (path1 / "file1.txt").write_text("A" * 100)
-        (path2 / "file2.txt").write_text("B" * 200)
+        _ = (path1 / "file1.txt").write_text("A" * 100)
+        _ = (path2 / "file2.txt").write_text("B" * 200)
 
         result = calculate_disk_usage_sync(paths=[path1, path2])
 
@@ -231,7 +231,7 @@ class TestCalculateDiskUsageSync:
         """If base path itself is excluded, should return zero."""
         base = tmp_path / "base"
         base.mkdir()
-        (base / "file.txt").write_text("A" * 100)
+        _ = (base / "file.txt").write_text("A" * 100)
 
         result = calculate_disk_usage_sync(
             paths=[base],
@@ -246,7 +246,7 @@ class TestCaptureBaseline:
 
     def test_baseline_returns_disk_sample(self, tmp_path: Path) -> None:
         """Baseline capture should return DiskSample with current timestamp."""
-        (tmp_path / "file.txt").write_text("A" * 100)
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
 
         baseline = capture_baseline(paths=[tmp_path])
 
@@ -256,7 +256,7 @@ class TestCaptureBaseline:
 
     def test_baseline_includes_path_info(self, tmp_path: Path) -> None:
         """Baseline should include consolidated path information."""
-        (tmp_path / "file.txt").write_text("A" * 50)
+        _ = (tmp_path / "file.txt").write_text("A" * 50)
 
         baseline = capture_baseline(paths=[tmp_path])
 
@@ -269,8 +269,8 @@ class TestCaptureBaseline:
         included = tmp_path / "included"
         included.mkdir()
 
-        (excluded / "file1.txt").write_text("A" * 100)
-        (included / "file2.txt").write_text("B" * 50)
+        _ = (excluded / "file1.txt").write_text("A" * 100)
+        _ = (included / "file2.txt").write_text("B" * 50)
 
         baseline = capture_baseline(
             paths=[tmp_path],
@@ -286,8 +286,8 @@ class TestCaptureBaseline:
         path1.mkdir()
         path2.mkdir()
 
-        (path1 / "file1.txt").write_text("A" * 100)
-        (path2 / "file2.txt").write_text("B" * 200)
+        _ = (path1 / "file1.txt").write_text("A" * 100)
+        _ = (path2 / "file2.txt").write_text("B" * 200)
 
         baseline = capture_baseline(paths=[path1, path2])
 
@@ -301,7 +301,7 @@ class TestSampleCurrentUsage:
 
     def test_sample_returns_disk_sample(self, tmp_path: Path) -> None:
         """Current usage sample should return DiskSample."""
-        (tmp_path / "file.txt").write_text("A" * 100)
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
 
         sample = sample_current_usage(paths=[tmp_path])
 
@@ -313,7 +313,7 @@ class TestSampleCurrentUsage:
         """Current usage sampling should respect exclusion paths."""
         excluded = tmp_path / "excluded"
         excluded.mkdir()
-        (excluded / "file.txt").write_text("A" * 100)
+        _ = (excluded / "file.txt").write_text("A" * 100)
 
         sample = sample_current_usage(
             paths=[tmp_path],
@@ -326,10 +326,10 @@ class TestSampleCurrentUsage:
         """Successive samples should reflect disk usage changes."""
         test_file = tmp_path / "file.txt"
 
-        test_file.write_text("A" * 100)
+        _ = test_file.write_text("A" * 100)
         sample1 = sample_current_usage(paths=[tmp_path])
 
-        test_file.write_text("B" * 50)
+        _ = test_file.write_text("B" * 50)
         sample2 = sample_current_usage(paths=[tmp_path])
 
         assert sample1.bytes_used == 100
@@ -343,8 +343,8 @@ class TestSampleCurrentUsage:
         path1.mkdir()
         path2.mkdir()
 
-        (path1 / "file1.txt").write_text("A" * 75)
-        (path2 / "file2.txt").write_text("B" * 125)
+        _ = (path1 / "file1.txt").write_text("A" * 75)
+        _ = (path2 / "file2.txt").write_text("B" * 125)
 
         sample = sample_current_usage(paths=[path1, path2])
 
@@ -356,18 +356,18 @@ class TestIntegrationScenarios:
 
     def test_baseline_and_progress_tracking(self, tmp_path: Path) -> None:
         """Simulate capturing baseline and tracking progress over time."""
-        (tmp_path / "file1.txt").write_text("A" * 1000)
-        (tmp_path / "file2.txt").write_text("B" * 500)
+        _ = (tmp_path / "file1.txt").write_text("A" * 1000)
+        _ = (tmp_path / "file2.txt").write_text("B" * 500)
 
         baseline = capture_baseline(paths=[tmp_path])
         assert baseline.bytes_used == 1500
 
-        (tmp_path / "file1.txt").write_text("A" * 600)
+        _ = (tmp_path / "file1.txt").write_text("A" * 600)
         sample1 = sample_current_usage(paths=[tmp_path])
         assert sample1.bytes_used == 1100
 
-        (tmp_path / "file1.txt").write_text("A" * 200)
-        (tmp_path / "file2.txt").write_text("B" * 100)
+        _ = (tmp_path / "file1.txt").write_text("A" * 200)
+        _ = (tmp_path / "file2.txt").write_text("B" * 100)
         sample2 = sample_current_usage(paths=[tmp_path])
         assert sample2.bytes_used == 300
 
@@ -380,15 +380,15 @@ class TestIntegrationScenarios:
         excluded.mkdir()
         included.mkdir()
 
-        (excluded / "excluded.txt").write_text("E" * 1000)
-        (included / "included.txt").write_text("I" * 500)
+        _ = (excluded / "excluded.txt").write_text("E" * 1000)
+        _ = (included / "included.txt").write_text("I" * 500)
 
         exclusions = [excluded]
 
         baseline = capture_baseline(paths=[tmp_path], exclusion_paths=exclusions)
         assert baseline.bytes_used == 500
 
-        (excluded / "excluded.txt").write_text("E" * 2000)
+        _ = (excluded / "excluded.txt").write_text("E" * 2000)
 
         sample = sample_current_usage(paths=[tmp_path], exclusion_paths=exclusions)
         assert sample.bytes_used == 500
