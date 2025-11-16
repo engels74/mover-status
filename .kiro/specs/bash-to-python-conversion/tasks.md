@@ -128,7 +128,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Preserve context variables across thread boundary
     - _Requirements: 8.2, 8.3_
   
-  - [ ] 6.3 Write unit tests for disk usage calculations
+  - [x] 6.3 Write unit tests for disk usage calculations
     - Test exclusion path filtering
     - Test baseline and delta calculations
     - Test error handling for inaccessible paths

@@ -18,6 +18,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from mover_status.core.disk_tracker import (
     calculate_disk_usage_sync,
@@ -645,3 +647,199 @@ class TestCachingMechanism:
         assert baseline1.bytes_used == 100
         assert baseline2.bytes_used == 200
         assert baseline2.timestamp > baseline1.timestamp
+
+
+class TestPropertyBasedInvariants:
+    """Property-based tests for disk usage calculation invariants using Hypothesis."""
+
+    @given(
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    blacklist_categories=("Cs", "Cc"),
+                    blacklist_characters="/\\",
+                ),
+                min_size=1,
+            ),
+            min_size=0,
+            max_size=10,
+        )
+    )
+    def test_is_excluded_with_empty_exclusions_always_false(
+        self, path_parts: list[str]
+    ) -> None:
+        """Property: is_excluded with empty exclusion list always returns False."""
+        if not path_parts:
+            path_parts = ["tmp"]
+
+        path = Path(*path_parts)
+        exclusions: list[Path] = []
+
+        result = is_excluded(path, exclusions)
+
+        assert result is False
+
+    @given(
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    blacklist_categories=("Cs", "Cc"),
+                    blacklist_characters="/\\",
+                ),
+                min_size=1,
+            ),
+            min_size=1,
+            max_size=10,
+        )
+    )
+    def test_is_excluded_path_equals_self(self, path_parts: list[str]) -> None:
+        """Property: A path is always excluded if it's in the exclusion list."""
+        path = Path(*path_parts)
+        exclusions = [path]
+
+        result = is_excluded(path, exclusions)
+
+        assert result is True
+
+    @given(
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    blacklist_categories=("Cs", "Cc"),
+                    blacklist_characters="/\\",
+                ),
+                min_size=1,
+            ),
+            min_size=1,
+            max_size=5,
+        ),
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    blacklist_categories=("Cs", "Cc"),
+                    blacklist_characters="/\\",
+                ),
+                min_size=1,
+            ),
+            min_size=1,
+            max_size=3,
+        ),
+    )
+    def test_is_excluded_child_of_excluded_parent(
+        self, parent_parts: list[str], child_parts: list[str]
+    ) -> None:
+        """Property: A child path is excluded if its parent is in exclusion list."""
+        parent = Path(*parent_parts)
+        # Create child by appending additional parts to parent
+        child = parent / Path(*child_parts)
+        exclusions = [parent]
+
+        result = is_excluded(child, exclusions)
+
+        assert result is True
+
+    def test_calculate_disk_usage_never_negative(self, tmp_path: Path) -> None:
+        """Property: Disk usage is always non-negative."""
+        # Create some files
+        _ = (tmp_path / "file1.txt").write_text("A" * 100)
+        _ = (tmp_path / "file2.txt").write_text("B" * 200)
+
+        result = calculate_disk_usage_sync(paths=[tmp_path])
+
+        assert result >= 0
+
+    def test_calculate_disk_usage_monotonic_with_additions(
+        self, tmp_path: Path
+    ) -> None:
+        """Property: Disk usage increases or stays same when files are added."""
+        # Initial state
+        _ = (tmp_path / "file1.txt").write_text("A" * 100)
+        usage1 = calculate_disk_usage_sync(paths=[tmp_path])
+
+        # Add more data
+        _ = (tmp_path / "file2.txt").write_text("B" * 200)
+        usage2 = calculate_disk_usage_sync(paths=[tmp_path])
+
+        # Usage should increase
+        assert usage2 >= usage1
+
+    def test_exclusions_reduce_or_maintain_usage(self, tmp_path: Path) -> None:
+        """Property: Adding exclusions never increases total disk usage."""
+        excluded_dir = tmp_path / "excluded"
+        excluded_dir.mkdir()
+
+        _ = (excluded_dir / "file1.txt").write_text("A" * 100)
+        _ = (tmp_path / "file2.txt").write_text("B" * 200)
+
+        # Calculate without exclusions
+        usage_without = calculate_disk_usage_sync(paths=[tmp_path])
+
+        # Calculate with exclusions
+        usage_with = calculate_disk_usage_sync(
+            paths=[tmp_path],
+            exclusion_paths=[excluded_dir],
+        )
+
+        # Exclusions should reduce or maintain usage, never increase
+        assert usage_with <= usage_without
+
+    def test_baseline_and_sample_have_consistent_structure(
+        self, tmp_path: Path
+    ) -> None:
+        """Property: Baseline and sample always return valid DiskSample objects."""
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        baseline = capture_baseline(paths=[tmp_path])
+        sample = sample_current_usage(paths=[tmp_path])
+
+        # Both should be DiskSample instances
+        assert isinstance(baseline, DiskSample)
+        assert isinstance(sample, DiskSample)
+
+        # Both should have valid fields
+        assert baseline.bytes_used >= 0
+        assert sample.bytes_used >= 0
+        assert isinstance(baseline.timestamp, datetime)
+        assert isinstance(sample.timestamp, datetime)
+        assert isinstance(baseline.path, str)
+        assert isinstance(sample.path, str)
+
+    @pytest.mark.asyncio
+    async def test_async_and_sync_return_equivalent_results(
+        self, tmp_path: Path
+    ) -> None:
+        """Property: Async and sync versions return equivalent disk usage values."""
+        _ = (tmp_path / "file1.txt").write_text("A" * 100)
+        _ = (tmp_path / "file2.txt").write_text("B" * 200)
+
+        # Capture using sync version
+        sync_baseline = capture_baseline(paths=[tmp_path])
+
+        # Capture using async version
+        async_baseline = await capture_baseline_async(paths=[tmp_path])
+
+        # Both should report same bytes_used (within small margin for timing)
+        assert sync_baseline.bytes_used == async_baseline.bytes_used
+
+    @pytest.mark.asyncio
+    async def test_cache_preserves_sample_value(self, tmp_path: Path) -> None:
+        """Property: Cached samples preserve the original bytes_used value."""
+        clear_sample_cache()  # Start fresh
+
+        _ = (tmp_path / "file.txt").write_text("A" * 100)
+
+        # First call (uncached)
+        sample1 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Second call (cached) - should return same value
+        sample2 = await sample_current_usage_async(
+            paths=[tmp_path],
+            cache_duration_seconds=60,
+        )
+
+        # Cache should preserve the exact value
+        assert sample1.bytes_used == sample2.bytes_used
+        assert sample1.timestamp == sample2.timestamp
