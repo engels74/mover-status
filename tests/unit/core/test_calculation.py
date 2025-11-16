@@ -52,7 +52,7 @@ class TestCalculateProgress:
     ) -> None:
         """Test calculate_progress with standard and edge cases."""
         result = calculate_progress(baseline=baseline, current=current)
-        assert result == pytest.approx(expected, abs=0.01)
+        assert result == pytest.approx(expected, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_progress_negative_baseline_raises_error(self) -> None:
         """Test that negative baseline raises ValueError."""
@@ -80,7 +80,7 @@ class TestCalculateProgress:
         assert 0.0 <= result <= 100.0
         # Verify calculation is correct
         expected = ((baseline - current) / baseline) * 100.0
-        assert result == pytest.approx(expected, abs=0.01)
+        assert result == pytest.approx(expected, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     @given(
         baseline=st.integers(min_value=0, max_value=1024**5),
@@ -184,7 +184,7 @@ class TestCalculateRate:
             ),  # 100 bytes in 10s = 10 B/s
         ]
         result = calculate_rate(samples)
-        assert result == pytest.approx(10.0, abs=0.01)
+        assert result == pytest.approx(10.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_moving_average(self) -> None:
         """Test rate calculation with moving average over multiple intervals."""
@@ -202,7 +202,7 @@ class TestCalculateRate:
         ]
         # Average of three intervals: (10 + 10 + 10) / 3 = 10 B/s
         result = calculate_rate(samples, window_size=3)
-        assert result == pytest.approx(10.0, abs=0.01)
+        assert result == pytest.approx(10.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_varying_rates(self) -> None:
         """Test rate calculation with varying transfer rates."""
@@ -217,7 +217,7 @@ class TestCalculateRate:
         ]
         # Average: (20 + 10) / 2 = 15 B/s
         result = calculate_rate(samples, window_size=3)
-        assert result == pytest.approx(15.0, abs=0.01)
+        assert result == pytest.approx(15.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_insufficient_samples(self) -> None:
         """Test that fewer than 2 samples returns 0.0."""
@@ -244,7 +244,7 @@ class TestCalculateRate:
         # Window size is 3, so uses all 3 samples but skips invalid interval
         # Valid rate: 900 -> 800 over 10s = 10 B/s
         result = calculate_rate(samples)
-        assert result == pytest.approx(10.0, abs=0.01)
+        assert result == pytest.approx(10.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_negative_delta(self) -> None:
         """Test that negative deltas (disk usage increase) are skipped."""
@@ -261,7 +261,7 @@ class TestCalculateRate:
         # Interval 1: 1000->1100 is negative delta, skip
         # Interval 2: 1100->900 is 200 bytes in 10s = 20 B/s
         result = calculate_rate(samples)
-        assert result == pytest.approx(20.0, abs=0.01)
+        assert result == pytest.approx(20.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_all_invalid_intervals(self) -> None:
         """Test that all invalid intervals returns 0.0."""
@@ -294,7 +294,7 @@ class TestCalculateRate:
         # With window_size=2, should only use last 2 samples
         # Rate from 800->600 in 10s = 20 B/s
         result = calculate_rate(samples, window_size=2)
-        assert result == pytest.approx(20.0, abs=0.01)
+        assert result == pytest.approx(20.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
     def test_calculate_rate_invalid_window_size(self) -> None:
         """Test that window_size < 2 raises ValueError."""
@@ -324,7 +324,7 @@ class TestCalculateRate:
         ]
         result = calculate_rate(samples)
         expected = bytes_per_second
-        assert result == pytest.approx(expected, rel=0.01)
+        assert result == pytest.approx(expected, rel=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
 
 class TestCalculateETC:
@@ -417,11 +417,11 @@ class TestCalculateProgressData:
         result = calculate_progress_data(baseline=baseline, current=current, samples=samples)
 
         # Verify all fields
-        assert result.percent == pytest.approx(50.0, abs=0.01)
+        assert result.percent == pytest.approx(50.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
         assert result.remaining_bytes == 500
         assert result.moved_bytes == 500
         assert result.total_bytes == 1000
-        assert result.rate_bytes_per_second == pytest.approx(10.0, abs=0.01)
+        assert result.rate_bytes_per_second == pytest.approx(10.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
         assert result.etc is not None
 
     def test_calculate_progress_data_no_samples(self) -> None:
@@ -432,7 +432,7 @@ class TestCalculateProgressData:
 
         result = calculate_progress_data(baseline=baseline, current=current, samples=samples)
 
-        assert result.percent == pytest.approx(50.0, abs=0.01)
+        assert result.percent == pytest.approx(50.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
         assert result.remaining_bytes == 500
         assert result.moved_bytes == 500
         assert result.total_bytes == 1000
@@ -470,7 +470,7 @@ class TestCalculateProgressData:
         result = calculate_progress_data(baseline=baseline, current=current, samples=samples, window_size=2)
 
         # Rate should be 20 B/s from the most recent interval
-        assert result.rate_bytes_per_second == pytest.approx(20.0, abs=0.01)
+        assert result.rate_bytes_per_second == pytest.approx(20.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
 
 
 class TestPropertyBasedInvariants:
@@ -494,7 +494,7 @@ class TestPropertyBasedInvariants:
             # So: moved = baseline - current = baseline - remaining
             moved = baseline - remaining
             expected_progress = (moved / baseline) * 100
-            assert progress_percent == pytest.approx(expected_progress, abs=0.01)
+            assert progress_percent == pytest.approx(expected_progress, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
         elif current == baseline:
             # No movement yet, so remaining should be 0
             assert remaining == 0
