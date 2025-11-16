@@ -135,7 +135,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Use mock filesystem for deterministic tests
     - _Requirements: 12.1_
 
-- [ ] 7. Implement monitoring engine
+- [x] 7. Implement monitoring engine
   - [x] 7.1 Create PID file watcher
     - Implement async file watching for /var/run/mover.pid
     - Create async generator yielding PID file events
@@ -156,7 +156,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - Handle edge cases (mover never starts, unexpected termination)
     - _Requirements: 1.1, 1.2, 1.3, 1.5, 13.1_
   
-  - [ ] 7.4 Write unit tests for monitoring engine
+  - [x] 7.4 Write unit tests for monitoring engine
     - Test PID file watching with mock filesystem
     - Test process validation with mock process table
     - Test state machine transitions

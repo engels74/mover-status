@@ -17,8 +17,10 @@ import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from hypothesis import given, strategies as st
 
 from mover_status.core.monitoring import (
     MoverLifecycleEvent,
@@ -1112,3 +1114,558 @@ class TestMonitorMoverLifecycle:
 
         # Should complete without error
         await monitor_and_cancel()
+
+
+class TestPIDFileWatchingWithMocks:
+    """Test PID file watching with mocked filesystem to simulate errors."""
+
+    @pytest.mark.asyncio
+    async def test_watch_handles_file_deletion_race_condition(
+        self, tmp_path: Path
+    ) -> None:
+        """Should handle file deleted between exists check and read."""
+        pid_file = tmp_path / "mover.pid"
+        _ = pid_file.write_text("12345")
+
+        # Simulate race: file exists returns True, but read fails
+        original_read = read_pid_from_file
+        exists_call_count = 0
+
+        def mock_exists(_: Path) -> bool:
+            """Mock exists that returns True."""
+            nonlocal exists_call_count
+            exists_call_count += 1
+            return exists_call_count == 1
+
+        def mock_read(path: Path) -> int | None:
+            """Mock read that returns None (file disappeared)."""
+            if exists_call_count == 1:
+                return None  # File disappeared between exists and read
+            return original_read(path)
+
+        with patch.object(Path, "exists", mock_exists), patch(
+            "mover_status.core.monitoring.read_pid_from_file", side_effect=mock_read
+        ):
+            events: list[PIDFileEvent] = []
+            try:
+                async with asyncio.timeout(2):
+                    async for event in watch_pid_file(pid_file, check_interval=1):
+                        events.append(event)
+            except TimeoutError:
+                pass
+
+        # Should handle race condition gracefully
+        assert exists_call_count >= 1
+
+
+class TestProcessValidationWithMocks:
+    """Test process validation with mocked /proc filesystem."""
+
+    def test_is_process_running_with_mock_proc(self) -> None:
+        """Should check /proc/{pid} directory existence."""
+        test_pid = 99999
+
+        with patch.object(Path, "exists", return_value=True):
+            result = is_process_running(test_pid)
+            assert result is True
+
+        with patch.object(Path, "exists", return_value=False):
+            result = is_process_running(test_pid)
+            assert result is False
+
+    def test_process_disappears_during_validation(self) -> None:
+        """Should handle process disappearing between checks."""
+        test_pid = 99999
+
+        # First check: exists, second check: gone
+        call_count = 0
+
+        def mock_exists_then_gone(_: Path) -> bool:
+            """Mock that returns True then False."""
+            nonlocal call_count
+            call_count += 1
+            return call_count == 1
+
+        with patch.object(Path, "exists", mock_exists_then_gone):
+            # First call
+            result1 = is_process_running(test_pid)
+            assert result1 is True
+
+            # Second call
+            result2 = is_process_running(test_pid)
+            assert result2 is False
+
+
+class TestStateMachineProperties:
+    """Property-based tests for state machine invariants using Hypothesis."""
+
+    @given(pid=st.integers(min_value=1, max_value=2147483647))
+    def test_pid_always_positive_in_started_state(self, pid: int) -> None:
+        """State machine should only accept positive PIDs for STARTED state."""
+        sm = MoverLifecycleStateMachine()
+        event = sm.transition_to_started(pid)
+
+        assert sm.current_pid == pid
+        assert sm.current_pid is not None
+        assert sm.current_pid > 0
+        assert event.pid == pid
+
+    @given(
+        pid1=st.integers(min_value=1, max_value=100000),
+        pid2=st.integers(min_value=1, max_value=100000),
+    )
+    def test_multiple_cycles_preserve_state_invariants(
+        self, pid1: int, pid2: int
+    ) -> None:
+        """Multiple cycles should maintain state machine invariants."""
+        sm = MoverLifecycleStateMachine()
+
+        # Cycle 1
+        _ = sm.transition_to_started(pid1)
+        assert sm.current_state == MoverState.STARTED
+        assert sm.current_pid == pid1
+
+        _ = sm.transition_to_monitoring()
+        assert sm.current_state == MoverState.MONITORING
+        assert sm.current_pid == pid1
+
+        _ = sm.transition_to_completed()
+        assert sm.current_state == MoverState.COMPLETED
+        assert sm.current_pid == pid1
+
+        _ = sm.reset()
+        assert sm.current_state == MoverState.WAITING
+        assert sm.current_pid is None
+
+        # Cycle 2
+        _ = sm.transition_to_started(pid2)
+        assert sm.current_state == MoverState.STARTED
+        assert sm.current_pid == pid2
+
+    @given(reason=st.text(min_size=1, max_size=200))
+    def test_completion_reason_preserved_in_message(self, reason: str) -> None:
+        """Completion reason should be preserved in event message."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        event = sm.transition_to_completed(reason=reason)
+
+        assert reason in event.message
+
+    def test_state_transitions_are_ordered(self) -> None:
+        """State transitions must follow specific order."""
+        sm = MoverLifecycleStateMachine()
+
+        # Valid sequence
+        valid_transitions = [
+            (MoverState.WAITING, lambda: sm.transition_to_started(100)),
+            (MoverState.STARTED, lambda: sm.transition_to_monitoring()),
+            (MoverState.MONITORING, lambda: sm.transition_to_completed()),
+            (MoverState.COMPLETED, lambda: sm.reset()),
+        ]
+
+        for expected_prev_state, transition_fn in valid_transitions:
+            assert sm.current_state == expected_prev_state
+            _ = transition_fn()
+
+    def test_no_invalid_state_transitions_possible(self) -> None:
+        """Invalid state transitions should always raise ValueError."""
+        # From WAITING
+        sm = MoverLifecycleStateMachine()
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_monitoring()
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_completed()
+        with pytest.raises(ValueError):
+            _ = sm.reset()
+
+        # From STARTED
+        _ = sm.transition_to_started(100)
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_started(200)  # Already started
+
+        # From MONITORING
+        _ = sm.transition_to_monitoring()
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_started(300)
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_monitoring()  # Already monitoring
+
+        # From COMPLETED
+        _ = sm.transition_to_completed()
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_monitoring()
+        with pytest.raises(ValueError):
+            _ = sm.transition_to_completed()  # Already completed
+
+    @given(st.lists(st.integers(min_value=1, max_value=100000), min_size=1, max_size=10))
+    def test_event_timestamps_are_monotonic(self, pids: list[int]) -> None:
+        """Event timestamps should be monotonically increasing."""
+        sm = MoverLifecycleStateMachine()
+        events: list[MoverLifecycleEvent] = []
+
+        for pid in pids:
+            # Complete cycle for each PID
+            events.append(sm.transition_to_started(pid))
+            events.append(sm.transition_to_monitoring())
+            events.append(sm.transition_to_completed())
+            events.append(sm.reset())
+
+        # Verify timestamps are monotonic
+        for i in range(len(events) - 1):
+            assert events[i].timestamp <= events[i + 1].timestamp
+
+
+class TestEdgeCasesParametrized:
+    """Parametrized tests for edge cases and boundary conditions."""
+
+    @pytest.mark.parametrize(
+        "invalid_pid_content",
+        [
+            "",
+            "   ",
+            "not_a_number",
+            "-1",
+            "0",
+            "123.456",
+            "1.0",
+            "1e5",
+            "0x123",
+            "12345\n67890",
+            "12345 67890",
+            "\n",
+            "\t",
+            "NaN",
+            "Infinity",
+            "None",
+            "null",
+            "true",
+            "false",
+            "{}",
+            "[]",
+        ],
+    )
+    def test_read_pid_handles_invalid_content(
+        self, tmp_path: Path, invalid_pid_content: str
+    ) -> None:
+        """Should return None for various invalid PID content formats."""
+        pid_file = tmp_path / "test.pid"
+        _ = pid_file.write_text(invalid_pid_content)
+
+        result = read_pid_from_file(pid_file)
+
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "valid_pid,expected",
+        [
+            ("1", 1),  # Minimum valid PID
+            ("99999", 99999),
+            ("2147483647", 2147483647),  # Max 32-bit signed int
+            ("  12345  ", 12345),  # Whitespace
+            ("12345\n", 12345),  # Trailing newline
+            ("\n12345\n", 12345),  # Leading and trailing newline
+            ("\t12345\t", 12345),  # Tabs
+        ],
+    )
+    def test_read_pid_handles_valid_content(
+        self, tmp_path: Path, valid_pid: str, expected: int
+    ) -> None:
+        """Should correctly parse various valid PID formats."""
+        pid_file = tmp_path / "test.pid"
+        _ = pid_file.write_text(valid_pid)
+
+        result = read_pid_from_file(pid_file)
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "invalid_pid",
+        [
+            -1,
+            0,
+            -999999,
+            -2147483648,  # Min 32-bit signed int
+        ],
+    )
+    def test_process_validation_rejects_invalid_pids(self, invalid_pid: int) -> None:
+        """Should return False for invalid PID values."""
+        result = is_process_running(invalid_pid)
+        assert result is False
+
+        exe = get_process_executable(invalid_pid)
+        assert exe is None
+
+    @pytest.mark.parametrize(
+        "state_sequence,should_succeed",
+        [
+            # Valid sequences
+            ([("start", 100), ("monitor", None), ("complete", None), ("reset", None)], True),
+            ([("start", 100), ("complete", None), ("reset", None)], True),  # Skip monitor
+            ([("start", 100)], True),  # Partial sequence
+            # Invalid sequences
+            ([("monitor", None)], False),  # Can't monitor from WAITING
+            ([("complete", None)], False),  # Can't complete from WAITING
+            ([("reset", None)], False),  # Can't reset from WAITING
+            ([("start", 100), ("start", 200)], False),  # Double start
+        ],
+    )
+    def test_state_machine_sequence_validation(
+        self,
+        state_sequence: list[tuple[str, int | None]],
+        should_succeed: bool,
+    ) -> None:
+        """Should validate state transition sequences."""
+        sm = MoverLifecycleStateMachine()
+        exception_raised = False
+
+        try:
+            for action, pid in state_sequence:
+                if action == "start":
+                    assert pid is not None
+                    _ = sm.transition_to_started(pid)
+                elif action == "monitor":
+                    _ = sm.transition_to_monitoring()
+                elif action == "complete":
+                    _ = sm.transition_to_completed()
+                elif action == "reset":
+                    _ = sm.reset()
+        except ValueError:
+            exception_raised = True
+
+        if should_succeed:
+            assert not exception_raised
+        else:
+            assert exception_raised
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("check_interval", [1, 2, 3, 5])
+    async def test_watch_respects_different_intervals(
+        self, tmp_path: Path, check_interval: int
+    ) -> None:
+        """Should respect various check interval values."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+
+        async def create_file_after_delay() -> None:
+            """Create PID file after short delay."""
+            await asyncio.sleep(0.2)
+            _ = pid_file.write_text(str(current_pid))
+
+        _ = asyncio.create_task(create_file_after_delay())
+
+        start_time = asyncio.get_event_loop().time()
+        events: list[PIDFileEvent] = []
+        async for event in watch_pid_file(pid_file, check_interval=check_interval):
+            events.append(event)
+            if event.event_type == "created":
+                break
+
+        elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Should detect within interval (with generous margin for test timing)
+        assert elapsed < (check_interval + 3)
+        assert len(events) == 1
+
+    @pytest.mark.parametrize(
+        "completion_reason",
+        [
+            "Process terminated normally",
+            "PID file deleted",
+            "Process crashed unexpectedly",
+            "Signal received",
+            "Timeout exceeded",
+            "",  # Empty reason
+            "A" * 500,  # Very long reason
+        ],
+    )
+    def test_completion_with_various_reasons(self, completion_reason: str) -> None:
+        """Should handle various completion reasons."""
+        sm = MoverLifecycleStateMachine()
+        _ = sm.transition_to_started(12345)
+
+        event = sm.transition_to_completed(reason=completion_reason)
+
+        assert event.new_state == MoverState.COMPLETED
+        if completion_reason:
+            assert completion_reason in event.message
+
+
+class TestLifecycleIntegration:
+    """Integration tests for multi-cycle monitoring scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_multiple_complete_cycles(self, tmp_path: Path) -> None:
+        """Should handle multiple complete mover cycles."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+
+        async def simulate_three_cycles() -> None:
+            """Simulate 3 complete mover cycles."""
+            for cycle in range(3):
+                await asyncio.sleep(0.5)
+                _ = pid_file.write_text(str(current_pid + cycle))
+                await asyncio.sleep(1.0)
+                _ = pid_file.unlink()
+                await asyncio.sleep(0.5)
+
+        _ = asyncio.create_task(simulate_three_cycles())
+
+        events: list[MoverLifecycleEvent] = []
+        cycle_count = 0
+
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            events.append(event)
+            if event.new_state == MoverState.WAITING and len(events) > 1:
+                cycle_count += 1
+                if cycle_count >= 3:
+                    break
+
+        # Should have 3 complete cycles: STARTED → COMPLETED → WAITING each
+        assert cycle_count == 3
+        assert len(events) >= 9  # At least 3 events per cycle
+
+    @pytest.mark.asyncio
+    async def test_resource_cleanup_after_cancellation(self, tmp_path: Path) -> None:
+        """Should clean up resources when monitoring is cancelled."""
+        pid_file = tmp_path / "mover.pid"
+
+        async def monitor_with_cancellation() -> None:
+            """Start monitoring and cancel after delay."""
+            monitor = monitor_mover_lifecycle(pid_file, check_interval=1)
+            task = asyncio.create_task(anext(monitor))
+
+            await asyncio.sleep(2)
+            _ = task.cancel()
+
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass  # Expected
+
+        # Should complete without hanging or leaking resources
+        await asyncio.wait_for(monitor_with_cancellation(), timeout=5.0)
+
+    @pytest.mark.asyncio
+    async def test_recovery_from_invalid_pid_then_valid(self, tmp_path: Path) -> None:
+        """Should recover from invalid PID and detect valid one later."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+
+        async def simulate_invalid_then_valid() -> None:
+            """Create invalid PID, then valid PID."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text("invalid")
+            await asyncio.sleep(1.5)
+            _ = pid_file.unlink()
+            await asyncio.sleep(1.0)
+            _ = pid_file.write_text(str(current_pid))
+
+        _ = asyncio.create_task(simulate_invalid_then_valid())
+
+        events: list[MoverLifecycleEvent] = []
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            events.append(event)
+            if event.new_state == MoverState.STARTED:
+                break
+
+        # Should eventually detect valid PID
+        assert len(events) >= 1
+        assert events[-1].new_state == MoverState.STARTED
+        assert events[-1].pid == current_pid
+
+    @pytest.mark.asyncio
+    async def test_rapid_sequential_state_changes(self, tmp_path: Path) -> None:
+        """Should handle rapid state changes correctly."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+
+        async def rapid_changes() -> None:
+            """Rapidly create and delete PID file."""
+            for _ in range(3):
+                _ = pid_file.write_text(str(current_pid))
+                await asyncio.sleep(0.3)
+                _ = pid_file.unlink()
+                await asyncio.sleep(0.3)
+
+        _ = asyncio.create_task(rapid_changes())
+
+        events: list[MoverLifecycleEvent] = []
+        try:
+            async with asyncio.timeout(5):
+                async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+                    events.append(event)
+        except TimeoutError:
+            pass
+
+        # Should detect multiple cycles
+        started_events = [e for e in events if e.new_state == MoverState.STARTED]
+        assert len(started_events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_state_machine_integration_with_watcher(self, tmp_path: Path) -> None:
+        """Should integrate state machine with PID file watcher correctly."""
+        pid_file = tmp_path / "mover.pid"
+        current_pid = os.getpid()
+        _ = pid_file.write_text(str(current_pid))
+
+        # Track all state transitions
+        states_seen: list[MoverState] = []
+
+        async def delete_after_delay() -> None:
+            """Delete PID file after delay."""
+            await asyncio.sleep(1.0)
+            _ = pid_file.unlink()
+
+        _ = asyncio.create_task(delete_after_delay())
+
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=1):
+            states_seen.append(event.new_state)
+            if event.new_state == MoverState.WAITING and len(states_seen) > 1:
+                break
+
+        # Should see expected state progression
+        assert MoverState.STARTED in states_seen
+        assert MoverState.COMPLETED in states_seen
+        assert MoverState.WAITING in states_seen
+
+    @pytest.mark.asyncio
+    async def test_concurrent_monitoring_tasks(self, tmp_path: Path) -> None:
+        """Should handle multiple concurrent monitoring tasks on different PID files."""
+        pid_file1 = tmp_path / "mover1.pid"
+        pid_file2 = tmp_path / "mover2.pid"
+        current_pid = os.getpid()
+
+        async def monitor_file(pid_file: Path) -> list[MoverLifecycleEvent]:
+            """Monitor a PID file and collect events."""
+            events: list[MoverLifecycleEvent] = []
+            try:
+                async with asyncio.timeout(3):
+                    async for event in monitor_mover_lifecycle(
+                        pid_file, check_interval=1
+                    ):
+                        events.append(event)
+                        if event.new_state == MoverState.STARTED:
+                            break
+            except TimeoutError:
+                pass
+            return events
+
+        async def create_pid_files() -> None:
+            """Create both PID files with delays."""
+            await asyncio.sleep(0.5)
+            _ = pid_file1.write_text(str(current_pid))
+            await asyncio.sleep(0.5)
+            _ = pid_file2.write_text(str(current_pid))
+
+        _ = asyncio.create_task(create_pid_files())
+
+        # Monitor both files concurrently
+        results = await asyncio.gather(
+            monitor_file(pid_file1),
+            monitor_file(pid_file2),
+        )
+
+        # Both monitors should detect their respective files
+        assert len(results[0]) >= 1
+        assert len(results[1]) >= 1
