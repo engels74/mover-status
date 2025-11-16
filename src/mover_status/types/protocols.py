@@ -6,7 +6,7 @@ contracts for core application components without requiring inheritance.
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from mover_status.types.models import (
     HealthStatus,
@@ -16,6 +16,7 @@ from mover_status.types.models import (
 )
 
 
+@runtime_checkable
 class NotificationProvider(Protocol):
     """Protocol for notification delivery providers.
 
