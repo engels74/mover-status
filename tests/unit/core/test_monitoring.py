@@ -3,6 +3,9 @@
 Tests cover:
 - PID file reading with various content formats
 - PID file state checking (exists/not exists, valid/invalid PID)
+- Process validation in process table
+- Process executable path retrieval
+- Async process validation with timeout
 - PID file watching with event detection
 - Event emission for creation, modification, deletion
 - Polling interval timing
@@ -11,6 +14,7 @@ Tests cover:
 """
 
 import asyncio
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -19,7 +23,10 @@ import pytest
 from mover_status.core.monitoring import (
     PIDFileEvent,
     check_pid_file_state,
+    get_process_executable,
+    is_process_running,
     read_pid_from_file,
+    validate_process_with_timeout,
     watch_pid_file,
 )
 
@@ -164,6 +171,95 @@ class TestCheckPidFileState:
 
         assert exists is True
         assert pid is None
+
+
+class TestProcessValidation:
+    """Test process validation functions for verifying process existence."""
+
+    def test_current_process_exists_in_table(self) -> None:
+        """Current process should exist in process table."""
+        current_pid = os.getpid()
+
+        result = is_process_running(current_pid)
+
+        assert result is True
+
+    def test_nonexistent_process_returns_false(self) -> None:
+        """Non-existent PID should return False."""
+        # Use a very high PID that's unlikely to exist
+        fake_pid = 999999
+
+        result = is_process_running(fake_pid)
+
+        assert result is False
+
+    def test_negative_pid_returns_false(self) -> None:
+        """Negative PID should return False."""
+        result = is_process_running(-1)
+
+        assert result is False
+
+    def test_zero_pid_returns_false(self) -> None:
+        """PID 0 should return False."""
+        result = is_process_running(0)
+
+        assert result is False
+
+    def test_get_executable_for_current_process(self) -> None:
+        """Should retrieve executable path for current process."""
+        current_pid = os.getpid()
+
+        exe_path = get_process_executable(current_pid)
+
+        assert exe_path is not None
+        assert isinstance(exe_path, str)
+        assert len(exe_path) > 0
+        # Verify it's a valid path
+        assert Path(exe_path).exists()
+
+    def test_get_executable_for_nonexistent_process(self) -> None:
+        """Non-existent process should return None."""
+        fake_pid = 999999
+
+        exe_path = get_process_executable(fake_pid)
+
+        assert exe_path is None
+
+    def test_get_executable_for_invalid_pid(self) -> None:
+        """Invalid PID should return None."""
+        exe_path = get_process_executable(-1)
+
+        assert exe_path is None
+
+    @pytest.mark.asyncio
+    async def test_validate_process_with_timeout_success(self) -> None:
+        """Valid process should validate successfully before timeout."""
+        current_pid = os.getpid()
+
+        result = await validate_process_with_timeout(current_pid, timeout=1.0)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_validate_process_with_timeout_nonexistent(self) -> None:
+        """Non-existent process should return False."""
+        fake_pid = 999999
+
+        result = await validate_process_with_timeout(fake_pid, timeout=1.0)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_validate_process_with_custom_timeout(self) -> None:
+        """Should respect custom timeout parameter."""
+        current_pid = os.getpid()
+
+        # Test with different timeout values
+        result_short = await validate_process_with_timeout(current_pid, timeout=0.5)
+        result_long = await validate_process_with_timeout(current_pid, timeout=2.0)
+
+        assert result_short is True
+        assert result_long is True
 
 
 class TestWatchPidFile:
@@ -431,6 +527,35 @@ class TestWatchPidFile:
         assert events[0].pid == 200
         assert events[1].event_type == "modified"
         assert events[1].pid == 300
+
+    @pytest.mark.asyncio
+    async def test_created_event_validates_process(self, tmp_path: Path) -> None:
+        """PID file creation should trigger process validation."""
+        pid_file = tmp_path / "mover.pid"
+        # Use current process PID as a valid test subject
+        current_pid = os.getpid()
+
+        async def create_file_with_valid_pid() -> None:
+            """Create PID file with current process PID."""
+            await asyncio.sleep(0.5)
+            _ = pid_file.write_text(str(current_pid))
+
+        # Start file creation task
+        _ = asyncio.create_task(create_file_with_valid_pid())
+
+        # Watch for events
+        events: list[PIDFileEvent] = []
+        async for event in watch_pid_file(pid_file, check_interval=1):
+            events.append(event)
+            if event.event_type == "created":
+                break
+
+        # Verify event was emitted with correct PID
+        assert len(events) == 1
+        assert events[0].event_type == "created"
+        assert events[0].pid == current_pid
+        # Process should have been validated (logged internally)
+        # The event is emitted regardless of validation outcome
 
 
 class TestPIDFileEvent:

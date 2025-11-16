@@ -112,6 +112,105 @@ def read_pid_from_file(pid_file_path: Path) -> int | None:
         return None
 
 
+def is_process_running(pid: int) -> bool:
+    """Check if process exists in the system process table.
+
+    Uses the /proc filesystem to verify process existence, which is reliable
+    and doesn't require subprocess invocation. This is the standard approach
+    for process validation on Linux systems.
+
+    Args:
+        pid: Process ID to validate
+
+    Returns:
+        True if process exists in process table, False otherwise
+
+    Examples:
+        >>> import os
+        >>> current_pid = os.getpid()
+        >>> is_process_running(current_pid)
+        True
+        >>> is_process_running(999999)
+        False
+    """
+    return Path(f"/proc/{pid}").exists()
+
+
+def get_process_executable(pid: int) -> str | None:
+    """Get executable path for a running process.
+
+    Reads the /proc/{pid}/exe symlink to determine the actual executable
+    path for a process. This can be used to verify the process is one of
+    the expected mover variants (mover.old or age_mover).
+
+    Args:
+        pid: Process ID to query
+
+    Returns:
+        Absolute path to the executable, or None if process doesn't exist
+        or if the executable path cannot be determined (permission errors, etc.)
+
+    Examples:
+        >>> import os
+        >>> current_pid = os.getpid()
+        >>> exe_path = get_process_executable(current_pid)
+        >>> exe_path is not None
+        True
+        >>> get_process_executable(999999) is None
+        True
+    """
+    try:
+        exe_link = Path(f"/proc/{pid}/exe")
+        # resolve(strict=True) will raise FileNotFoundError if symlink doesn't exist
+        return str(exe_link.resolve(strict=True))
+    except (FileNotFoundError, PermissionError, OSError):
+        # Process doesn't exist, permission denied, or other OS error
+        return None
+
+
+async def validate_process_with_timeout(
+    pid: int,
+    *,
+    timeout: float = 5.0,
+) -> bool:
+    """Validate process exists in process table with timeout protection.
+
+    Asynchronously validates that a PID corresponds to a running process,
+    with timeout protection to prevent indefinite blocking. Uses thread
+    pool to offload I/O operations and preserve context variables.
+
+    This implements Requirement 1.1's 5-second detection requirement by
+    providing timeout protection for process validation after PID file
+    creation.
+
+    Args:
+        pid: Process ID to validate
+        timeout: Timeout in seconds (keyword-only, default: 5.0)
+
+    Returns:
+        True if process exists, False otherwise
+
+    Raises:
+        TimeoutError: If validation takes longer than timeout duration
+
+    Examples:
+        >>> import os
+        >>> current_pid = os.getpid()
+        >>> await validate_process_with_timeout(current_pid, timeout=1.0)
+        True
+    """
+    try:
+        async with asyncio.timeout(timeout):
+            # Offload to thread pool to avoid blocking event loop
+            return await asyncio.to_thread(is_process_running, pid)
+    except TimeoutError:
+        logger.warning(
+            "Process validation timed out",
+            extra={"pid": pid, "timeout": timeout},
+        )
+        raise
+
+
 async def check_pid_file_state(
     pid_file_path: Path,
 ) -> tuple[bool, int | None]:
@@ -215,6 +314,42 @@ async def watch_pid_file(
 
             elif not previous_exists and current_exists:
                 # File created (mover started)
+                # Validate process exists in process table (Requirement 1.2)
+                if current_pid is not None:
+                    try:
+                        process_exists = await asyncio.to_thread(
+                            is_process_running,
+                            current_pid,
+                        )
+
+                        if process_exists:
+                            # Optionally get executable path for additional validation
+                            exe_path = await asyncio.to_thread(
+                                get_process_executable,
+                                current_pid,
+                            )
+                            logger.info(
+                                "Process validated in process table",
+                                extra={
+                                    "pid": current_pid,
+                                    "executable": exe_path,
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                "PID file created but process not found in process table",
+                                extra={"pid": current_pid, "path": str(pid_file_path)},
+                            )
+                    except Exception as exc:
+                        # Log validation error but continue - let state machine handle
+                        logger.error(
+                            "Failed to validate process existence",
+                            extra={
+                                "pid": current_pid,
+                                "error": str(exc),
+                            },
+                        )
+
                 event = PIDFileEvent(
                     event_type="created",
                     pid=current_pid,
