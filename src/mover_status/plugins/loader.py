@@ -3,6 +3,9 @@
 This module loads enabled notification provider plugins on demand,
 validates the resulting objects implement the NotificationProvider Protocol,
 and surfaces detailed diagnostics when loading fails (requirements 3.1–3.5).
+
+Requirements:
+    - 6.4: NO logging or exposure of secrets in error messages or diagnostic output
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from typing import Callable, TypeIs, cast
 
 from mover_status.plugins.discovery import PluginMetadata, discover_plugins
 from mover_status.types import NotificationProvider
+from mover_status.utils.sanitization import sanitize_exception
 
 __all__ = ["LoadedPlugin", "PluginLoader", "PluginLoaderError"]
 
@@ -84,7 +88,7 @@ class PluginLoader:
                     extra={
                         "plugin_identifier": metadata.identifier,
                         "plugin_entrypoint": metadata.entrypoint,
-                        "plugin_error": str(exc),
+                        "plugin_error": sanitize_exception(exc),
                     },
                 )
                 continue

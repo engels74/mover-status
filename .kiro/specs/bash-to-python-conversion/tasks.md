@@ -346,14 +346,14 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
 - [ ] 14. Implement security hardening
-   - [ ] 14.1 Add input validation at API boundaries
+   - [x] 14.1 Add input validation at API boundaries
      - Validate all configuration fields with Pydantic
      - Validate webhook URLs (HTTPS only, format validation)
      - Validate file paths (existence, accessibility)
      - Validate percentage ranges and positive intervals
      - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
    
-   - [ ] 14.2 Implement secret protection
+   - [x] 14.2 Implement secret protection
      - Ensure no secrets logged in error messages
      - Ensure no secrets in diagnostic output
      - Validate environment variable resolution

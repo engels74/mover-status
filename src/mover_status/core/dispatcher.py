@@ -21,6 +21,7 @@ from mover_status.utils.logging import (
     log_with_context,
     set_correlation_id,
 )
+from mover_status.utils.sanitization import sanitize_exception
 
 __all__ = ["NotificationDispatcher"]
 
@@ -169,7 +170,7 @@ class NotificationDispatcher:
                 )
             except Exception as exc:
                 delivery_ms = (time.perf_counter() - start) * 1000.0
-                error_message = f"Notification dispatch failed: {type(exc).__name__}: {exc}"
+                error_message = f"Notification dispatch failed: {sanitize_exception(exc)}"
                 result = NotificationResult(
                     success=False,
                     provider_name=identifier,

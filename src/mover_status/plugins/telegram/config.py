@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Final, Literal
+from typing import Annotated, Final, Literal, override
 
 from pydantic import BaseModel, Field, field_validator
+
+from mover_status.utils.sanitization import REDACTED
 
 _BOT_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d+:[A-Za-z0-9_-]{35,}$",
@@ -72,3 +74,22 @@ class TelegramConfig(BaseModel):
             msg = "Chat ID must be numeric (user/group) or @username (channel)"
             raise ValueError(msg)
         return cleaned
+
+    @override
+    def __repr__(self) -> str:
+        """Return sanitized representation preventing bot token exposure.
+
+        Requirements:
+            - 6.4: NO logging or exposure of secrets in error messages or diagnostic output
+
+        Returns:
+            String representation with bot_token sanitized
+        """
+        return (
+            f"TelegramConfig("
+            f"bot_token={REDACTED!r}, "
+            f"chat_id={self.chat_id!r}, "
+            f"parse_mode={self.parse_mode!r}, "
+            f"message_thread_id={self.message_thread_id!r}, "
+            f"disable_notification={self.disable_notification!r})"
+        )

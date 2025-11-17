@@ -10,6 +10,8 @@ Requirements:
 - 13.3: Use correlation IDs to track notifications across multiple providers
 - 13.4: Integrate with Unraid syslog for operational transparency
 - 13.5: Log errors with full context without exposing secrets
+- 6.4: NO logging or exposure of secrets in error messages or diagnostic output
+- 6.5: Authentication failures logged WITHOUT including secret values
 """
 
 import contextvars
@@ -18,6 +20,11 @@ import logging.handlers
 import sys
 from collections.abc import Mapping
 from typing import Final, override
+
+from mover_status.utils.sanitization import (
+    sanitize_args,
+    sanitize_value,
+)
 
 # Correlation ID context variable for tracking notifications across providers
 # Automatically inherited by asyncio tasks and threads in free-threaded Python
@@ -74,37 +81,90 @@ class SecretRedactingFilter(logging.Filter):
     """Logging filter that redacts sensitive information from log messages.
 
     Prevents accidental exposure of secrets (webhook URLs, tokens, API keys)
-    in log output by replacing them with redacted placeholders.
+    in log output by sanitizing:
+    - Log message text (URLs, sensitive patterns)
+    - Log message arguments (args tuple)
+    - Structured logging context (extra dictionary)
 
-    Requirement 13.5: Log errors with full context without exposing secrets
+    This filter uses comprehensive sanitization utilities to ensure secrets
+    never appear in log output regardless of how they are passed to the logger.
+
+    Requirements:
+        - 13.5: Log errors with full context without exposing secrets
+        - 6.4: NO logging or exposure of secrets in error messages or diagnostic output
+        - 6.5: Authentication failures logged WITHOUT including secret values
+
+    Examples:
+        >>> logger.info("POST to %s", "https://discord.com/api/webhooks/123/token")
+        # Logged as: "POST to https://discord.com/api/webhooks/123/<REDACTED>"
+
+        >>> logger.error("Failed", extra={"url": "https://api.telegram.org/bot123/send"})
+        # extra sanitized to: {"url": "https://api.telegram.org/bot<REDACTED>/send"}
     """
-
-    # Patterns to redact (case-insensitive substrings)
-    _REDACT_PATTERNS: Final[tuple[str, ...]] = (
-        "webhook",
-        "token",
-        "api_key",
-        "password",
-        "secret",
-    )
 
     @override
     def filter(self, record: logging.LogRecord) -> bool:
-        """Redact sensitive information from log message.
+        """Sanitize sensitive information from log record.
+
+        This method sanitizes three key areas of the log record:
+        1. Message text: Sanitize the msg attribute directly
+        2. Arguments: Sanitize the args tuple used for % formatting
+        3. Extra context: Sanitize any extra fields passed to logger
 
         Args:
-            record: Log record to check for sensitive information
+            record: Log record to sanitize
 
         Returns:
-            True to allow the record to be logged
+            True to allow the record to be logged (always)
         """
-        # Check if message contains sensitive patterns
-        message_lower = record.getMessage().lower()
-        for pattern in self._REDACT_PATTERNS:
-            if pattern in message_lower:
-                # Add warning that message was redacted
-                record.msg = f"{record.msg} [REDACTED: contains sensitive information]"
-                break
+        # Sanitize the message text itself
+        if isinstance(record.msg, str):
+            sanitized_msg = sanitize_value(record.msg)
+            if isinstance(sanitized_msg, str):
+                record.msg = sanitized_msg
+
+        # Sanitize arguments tuple (used for % formatting in getMessage())
+        if record.args:
+            # record.args can be a tuple or a Mapping (for % formatting)
+            if isinstance(record.args, tuple):
+                record.args = sanitize_args(record.args)
+            # For Mapping args, sanitization happens through extra field processing below
+
+        # Sanitize extra context dictionary
+        # Extra fields are stored as attributes on the LogRecord
+        # We need to sanitize any non-standard attributes that were added via extra={}
+        if hasattr(record, "__dict__"):
+            # Get standard LogRecord attributes to exclude from sanitization
+            standard_attrs = {
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "correlation_id",  # Our custom field added by CorrelationIDFilter
+            }
+
+            # Sanitize any extra fields
+            for attr_name in list(record.__dict__.keys()):
+                if attr_name not in standard_attrs and not attr_name.startswith("_"):
+                    attr_value = getattr(record, attr_name)
+                    sanitized_value = sanitize_value(attr_value, field_name=attr_name)
+                    setattr(record, attr_name, sanitized_value)
 
         return True
 

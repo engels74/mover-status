@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Final
+from typing import Annotated, Final, override
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
+
+from mover_status.utils.sanitization import sanitize_url
 
 _ALLOWED_DOMAINS: Final[tuple[str, ...]] = (
     "discord.com",
@@ -97,3 +99,21 @@ class DiscordConfig(BaseModel):
                 msg = f"Invalid embed color string: {value}"
                 raise ValueError(msg) from exc
         return value
+
+    @override
+    def __repr__(self) -> str:
+        """Return sanitized representation preventing webhook URL exposure.
+
+        Requirements:
+            - 6.4: NO logging or exposure of secrets in error messages or diagnostic output
+
+        Returns:
+            String representation with webhook_url sanitized
+        """
+        sanitized_url = sanitize_url(self.webhook_url)
+        return (
+            f"DiscordConfig("
+            f"webhook_url={sanitized_url!r}, "
+            f"username={self.username!r}, "
+            f"embed_color={self.embed_color!r})"
+        )

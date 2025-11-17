@@ -11,6 +11,7 @@ Requirements:
 - 14.3: Maximum 5 retry attempts with configurable maximum interval
 - 14.4: Add random jitter (±20%) to backoff intervals
 - 16.2: Shared HTTP client abstraction via Protocol interface
+- 6.4: NO logging or exposure of secrets in error messages or diagnostic output
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from typing import Self
 import aiohttp
 
 from mover_status.types.models import Response
+from mover_status.utils.sanitization import sanitize_url
 
 
 class CircuitState(Enum):
@@ -157,7 +159,7 @@ class AIOHTTPClient:
             msg = "HTTP client session not initialized. Use 'async with' context manager."
             raise RuntimeError(msg)
 
-        self._logger.debug("Initiating POST request to %s", url)
+        self._logger.debug("Initiating POST request to %s", sanitize_url(url))
 
         try:
             async with asyncio.timeout(timeout):
@@ -178,13 +180,13 @@ class AIOHTTPClient:
                         headers=headers,
                     )
         except TimeoutError:
-            self._logger.warning("Request to %s timed out after %.1fs", url, timeout)
+            self._logger.warning("Request to %s timed out after %.1fs", sanitize_url(url), timeout)
             raise
         except aiohttp.InvalidURL as exc:
-            self._logger.error("Invalid URL: %s", url)
-            raise ValueError(f"Malformed URL: {url}") from exc
+            self._logger.error("Invalid URL: %s", sanitize_url(url))
+            raise ValueError(f"Malformed URL: {sanitize_url(url)}") from exc
         except aiohttp.ClientError as exc:
-            self._logger.warning("Client error for %s: %s", url, exc)
+            self._logger.warning("Client error for %s: %s", sanitize_url(url), exc)
             raise
 
     async def post_with_retry(
@@ -225,7 +227,7 @@ class AIOHTTPClient:
         """
         # Check circuit breaker before attempting request
         if not self.should_attempt_request(url):
-            msg = f"Circuit breaker is OPEN for {url}"
+            msg = f"Circuit breaker is OPEN for {sanitize_url(url)}"
             self._logger.error(msg)
             raise RuntimeError(msg)
 
@@ -246,7 +248,7 @@ class AIOHTTPClient:
                     self._record_success(url)
                     self._logger.info(
                         "Request to %s succeeded (status=%d, attempt=%d)",
-                        url,
+                        sanitize_url(url),
                         response.status,
                         attempt + 1,
                     )
@@ -261,7 +263,7 @@ class AIOHTTPClient:
                             delay = min(retry_after, self._max_backoff_seconds)
                             self._logger.warning(
                                 "Rate limited by %s (429), retrying after %.1fs (attempt %d/%d)",
-                                url,
+                                sanitize_url(url),
                                 delay,
                                 attempt + 1,
                                 self._max_retries + 1,
@@ -274,7 +276,7 @@ class AIOHTTPClient:
                         delay = self.calculate_backoff_delay(attempt)
                         self._logger.warning(
                             "Server error from %s (status=%d), retrying in %.1fs (attempt %d/%d)",
-                            url,
+                            sanitize_url(url),
                             response.status,
                             delay,
                             attempt + 1,
@@ -285,19 +287,19 @@ class AIOHTTPClient:
 
                     # Exhausted retries for 5xx
                     self._record_failure(url)
-                    msg = f"Server error {response.status} from {url} after {attempt + 1} attempts"
+                    msg = f"Server error {response.status} from {sanitize_url(url)} after {attempt + 1} attempts"
                     raise RuntimeError(msg)
 
                 # Non-retryable 4xx error
                 self._record_failure(url)
-                msg = f"Client error {response.status} from {url} (non-retryable)"
+                msg = f"Client error {response.status} from {sanitize_url(url)} (non-retryable)"
                 raise RuntimeError(msg)
 
             except TimeoutError as exc:
                 last_exception = exc
                 self._logger.warning(
                     "Timeout for %s (attempt %d/%d)",
-                    url,
+                    sanitize_url(url),
                     attempt + 1,
                     self._max_retries + 1,
                 )
@@ -319,7 +321,7 @@ class AIOHTTPClient:
                 last_exception = exc
                 self._logger.warning(
                     "Connection error for %s: %s (attempt %d/%d)",
-                    url,
+                    sanitize_url(url),
                     exc,
                     attempt + 1,
                     self._max_retries + 1,
@@ -340,7 +342,7 @@ class AIOHTTPClient:
                 last_exception = exc
                 self._logger.warning(
                     "Client error for %s: %s (attempt %d/%d)",
-                    url,
+                    sanitize_url(url),
                     exc,
                     attempt + 1,
                     self._max_retries + 1,
@@ -360,7 +362,7 @@ class AIOHTTPClient:
         self._record_failure(url)
         if last_exception:
             raise last_exception
-        msg = f"All retry attempts exhausted for {url}"
+        msg = f"All retry attempts exhausted for {sanitize_url(url)}"
         raise RuntimeError(msg)
 
     def calculate_backoff_delay(self, attempt: int) -> float:
@@ -459,7 +461,7 @@ class AIOHTTPClient:
             if elapsed.total_seconds() >= self._circuit_breaker_cooldown_seconds:
                 # Transition to half-open state
                 breaker.circuit_state = CircuitState.HALF_OPEN
-                self._logger.warning("Circuit breaker for %s transitioned to HALF_OPEN", url)
+                self._logger.warning("Circuit breaker for %s transitioned to HALF_OPEN", sanitize_url(url))
                 return True
 
             # Still in cooldown - reject request
@@ -489,7 +491,7 @@ class AIOHTTPClient:
         breaker.circuit_state = CircuitState.CLOSED
 
         if previous_state != CircuitState.CLOSED:
-            self._logger.info("Circuit breaker for %s transitioned to CLOSED", url)
+            self._logger.info("Circuit breaker for %s transitioned to CLOSED", sanitize_url(url))
 
     def _record_failure(self, url: str) -> None:
         """Record failed request and update circuit breaker state.
@@ -514,7 +516,7 @@ class AIOHTTPClient:
                 breaker.circuit_state = CircuitState.OPEN
                 self._logger.warning(
                     "Circuit breaker for %s transitioned to OPEN (half-open test failed, failures=%d)",
-                    url,
+                    sanitize_url(url),
                     breaker.consecutive_failures,
                 )
             elif breaker.circuit_state == CircuitState.CLOSED:
@@ -522,7 +524,7 @@ class AIOHTTPClient:
                 breaker.circuit_state = CircuitState.OPEN
                 self._logger.warning(
                     "Circuit breaker for %s transitioned to OPEN (failures=%d, threshold=%d)",
-                    url,
+                    sanitize_url(url),
                     breaker.consecutive_failures,
                     self._circuit_breaker_threshold,
                 )
