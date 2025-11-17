@@ -136,23 +136,15 @@ class TelegramAPIClient:
             "chat_id": self.config.chat_id,
             "text": text,
             "disable_notification": (
-                disable_notification
-                if disable_notification is not None
-                else self.config.disable_notification
+                disable_notification if disable_notification is not None else self.config.disable_notification
             ),
         }
 
-        resolved_parse_mode = (
-            parse_mode if parse_mode is not None else self.config.parse_mode
-        )
+        resolved_parse_mode = parse_mode if parse_mode is not None else self.config.parse_mode
         if resolved_parse_mode:
             payload["parse_mode"] = resolved_parse_mode
 
-        resolved_thread_id = (
-            message_thread_id
-            if message_thread_id is not None
-            else self.config.message_thread_id
-        )
+        resolved_thread_id = message_thread_id if message_thread_id is not None else self.config.message_thread_id
         if resolved_thread_id is not None:
             payload["message_thread_id"] = resolved_thread_id
 

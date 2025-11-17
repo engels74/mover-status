@@ -10,13 +10,13 @@ Requirements:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import importlib
 import inspect
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType, ModuleType
-from typing import Callable, TypeIs, cast
+from typing import TypeIs, cast
 
 from mover_status.plugins.discovery import PluginMetadata, discover_plugins
 from mover_status.types import NotificationProvider
@@ -110,10 +110,7 @@ class PluginLoader:
         try:
             module = importlib.import_module(module_name)
         except Exception as exc:  # pragma: no cover - importlib provides detail
-            msg = (
-                f"Unable to import plugin module '{module_name}' "
-                f"for provider '{metadata.identifier}': {exc}"
-            )
+            msg = f"Unable to import plugin module '{module_name}' for provider '{metadata.identifier}': {exc}"
             raise PluginLoaderError(msg, metadata=metadata) from exc
 
         try:
@@ -128,9 +125,7 @@ class PluginLoader:
         try:
             candidate = self._evaluate_entrypoint(target, init_kwargs)
         except Exception as exc:  # pragma: no cover - factory errors bubble up detail
-            msg = (
-                f"Plugin entrypoint call failed for provider '{metadata.identifier}': {exc}"
-            )
+            msg = f"Plugin entrypoint call failed for provider '{metadata.identifier}': {exc}"
             raise PluginLoaderError(msg, metadata=metadata) from exc
 
         if not isinstance(candidate, NotificationProvider):
@@ -146,9 +141,7 @@ class PluginLoader:
         entrypoint = metadata.entrypoint
         if entrypoint:
             module_name, attr_path = (
-                entrypoint.split(":", maxsplit=1)
-                if ":" in entrypoint
-                else (entrypoint, _DEFAULT_FACTORY)
+                entrypoint.split(":", maxsplit=1) if ":" in entrypoint else (entrypoint, _DEFAULT_FACTORY)
             )
         else:
             module_name = f"{metadata.package}.provider"

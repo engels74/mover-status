@@ -109,6 +109,7 @@ class TestPostMethod:
 
     async def test_post_timeout(self, client: AIOHTTPClient, mock_session: AsyncMock) -> None:
         """Test POST request timeout handling."""
+
         # Setup mock to simulate timeout
         async def slow_request(*args: object, **kwargs: object) -> None:  # pyright: ignore[reportUnusedParameter]
             await asyncio.sleep(10)  # Longer than timeout

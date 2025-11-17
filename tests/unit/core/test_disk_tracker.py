@@ -112,7 +112,7 @@ class TestCalculateDiskUsageSync:
         """Calculating usage for directory should sum all file sizes."""
         _ = (tmp_path / "file1.txt").write_text("A" * 100)  # 100 bytes
         _ = (tmp_path / "file2.txt").write_text("B" * 200)  # 200 bytes
-        _ = (tmp_path / "file3.txt").write_text("C" * 50)   # 50 bytes
+        _ = (tmp_path / "file3.txt").write_text("C" * 50)  # 50 bytes
 
         result = calculate_disk_usage_sync(paths=[tmp_path])
 
@@ -140,7 +140,7 @@ class TestCalculateDiskUsageSync:
         included_dir.mkdir()
 
         _ = (excluded_dir / "file1.txt").write_text("A" * 100)  # Should be excluded
-        _ = (included_dir / "file2.txt").write_text("B" * 50)   # Should be included
+        _ = (included_dir / "file2.txt").write_text("B" * 50)  # Should be included
 
         result = calculate_disk_usage_sync(
             paths=[tmp_path],
@@ -198,6 +198,7 @@ class TestCalculateDiskUsageSync:
         _ = accessible.write_text("A" * 50)
 
         with patch.object(Path, "rglob") as mock_rglob:
+
             def mock_iterator() -> list[Path]:
                 return [accessible]
 
@@ -596,7 +597,7 @@ class TestCachingMechanism:
 
         # Should return different values (different cache keys)
         assert sample1.bytes_used == 150  # All files
-        assert sample2.bytes_used == 50   # Excluded directory not counted
+        assert sample2.bytes_used == 50  # Excluded directory not counted
 
     @pytest.mark.asyncio
     async def test_clear_cache_forces_recalculation(self, tmp_path: Path) -> None:
@@ -665,9 +666,7 @@ class TestPropertyBasedInvariants:
             max_size=10,
         )
     )
-    def test_is_excluded_with_empty_exclusions_always_false(
-        self, path_parts: list[str]
-    ) -> None:
+    def test_is_excluded_with_empty_exclusions_always_false(self, path_parts: list[str]) -> None:
         """Property: is_excluded with empty exclusion list always returns False."""
         if not path_parts:
             path_parts = ["tmp"]
@@ -725,9 +724,7 @@ class TestPropertyBasedInvariants:
             max_size=3,
         ),
     )
-    def test_is_excluded_child_of_excluded_parent(
-        self, parent_parts: list[str], child_parts: list[str]
-    ) -> None:
+    def test_is_excluded_child_of_excluded_parent(self, parent_parts: list[str], child_parts: list[str]) -> None:
         """Property: A child path is excluded if its parent is in exclusion list."""
         parent = Path(*parent_parts)
         # Create child by appending additional parts to parent
@@ -748,9 +745,7 @@ class TestPropertyBasedInvariants:
 
         assert result >= 0
 
-    def test_calculate_disk_usage_monotonic_with_additions(
-        self, tmp_path: Path
-    ) -> None:
+    def test_calculate_disk_usage_monotonic_with_additions(self, tmp_path: Path) -> None:
         """Property: Disk usage increases or stays same when files are added."""
         # Initial state
         _ = (tmp_path / "file1.txt").write_text("A" * 100)
@@ -783,9 +778,7 @@ class TestPropertyBasedInvariants:
         # Exclusions should reduce or maintain usage, never increase
         assert usage_with <= usage_without
 
-    def test_baseline_and_sample_have_consistent_structure(
-        self, tmp_path: Path
-    ) -> None:
+    def test_baseline_and_sample_have_consistent_structure(self, tmp_path: Path) -> None:
         """Property: Baseline and sample always return valid DiskSample objects."""
         _ = (tmp_path / "file.txt").write_text("A" * 100)
 
@@ -805,9 +798,7 @@ class TestPropertyBasedInvariants:
         assert isinstance(sample.path, str)
 
     @pytest.mark.asyncio
-    async def test_async_and_sync_return_equivalent_results(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_async_and_sync_return_equivalent_results(self, tmp_path: Path) -> None:
         """Property: Async and sync versions return equivalent disk usage values."""
         _ = (tmp_path / "file1.txt").write_text("A" * 100)
         _ = (tmp_path / "file2.txt").write_text("B" * 200)

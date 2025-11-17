@@ -213,8 +213,7 @@ def sanitize_value(
     # Handle mappings (dict, etc.)
     if _is_mapping(value):
         sanitized_dict: dict[str, object] = {
-            key: sanitize_value(val, field_name=str(key))
-            for key, val in value.items()
+            key: sanitize_value(val, field_name=str(key)) for key, val in value.items()
         }
         return sanitized_dict
 
@@ -288,7 +287,4 @@ def sanitize_mapping(
         >>> sanitize_mapping({"url": "https://api.telegram.org/bot123/send", "status": 200})
         {'url': 'https://api.telegram.org/bot<REDACTED>/send', 'status': 200}
     """
-    return {
-        key: sanitize_value(val, field_name=key)
-        for key, val in data.items()
-    }
+    return {key: sanitize_value(val, field_name=key) for key, val in data.items()}

@@ -16,7 +16,6 @@ from mover_status.plugins.discord.config import DiscordConfig
 from mover_status.types.models import Response
 from mover_status.types.protocols import HTTPClient
 
-
 # Test fixtures and helpers
 
 

@@ -186,7 +186,7 @@ class ProvidersConfig(BaseModel):
     ] = False
 
     @model_validator(mode="after")
-    def validate_at_least_one_provider(self) -> "ProvidersConfig":
+    def validate_at_least_one_provider(self) -> ProvidersConfig:
         """Validate that at least one provider is enabled.
 
         Returns:
@@ -345,6 +345,7 @@ def resolve_env_var(value: str) -> str:
         >>> resolve_env_var("no variables here")
         'no variables here'
     """
+
     def replace_match(match: re.Match[str]) -> str:
         """Replace a single environment variable reference.
 
@@ -480,11 +481,7 @@ def load_main_config(config_path: Path) -> MainConfig:
         )
         raise ConfigurationError(msg) from e
     except OSError as e:
-        msg = (
-            f"Failed to read configuration file: {config_path}\n"
-            f"Error: {e}\n"
-            f"Please check file permissions."
-        )
+        msg = f"Failed to read configuration file: {config_path}\nError: {e}\nPlease check file permissions."
         raise ConfigurationError(msg) from e
 
     # Validate YAML contains a dictionary

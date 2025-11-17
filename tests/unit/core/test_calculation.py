@@ -48,9 +48,7 @@ class TestCalculateProgress:
             (1024, 768, 25.0),  # Exactly 25%
         ],
     )
-    def test_calculate_progress_standard_cases(
-        self, baseline: int, current: int, expected: float
-    ) -> None:
+    def test_calculate_progress_standard_cases(self, baseline: int, current: int, expected: float) -> None:
         """Test calculate_progress with standard and edge cases."""
         result = calculate_progress(baseline=baseline, current=current)
         assert result == pytest.approx(expected, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
@@ -73,9 +71,7 @@ class TestCalculateProgress:
             (1024**4 * 5, int(1024**4 * 5 * 0.1)),  # 5 TB baseline, 90% complete
         ],
     )
-    def test_calculate_progress_large_values(
-        self, baseline: int, current: int
-    ) -> None:
+    def test_calculate_progress_large_values(self, baseline: int, current: int) -> None:
         """Test calculate_progress with large realistic values (GB, TB)."""
         result = calculate_progress(baseline=baseline, current=current)
         assert 0.0 <= result <= 100.0
@@ -87,9 +83,7 @@ class TestCalculateProgress:
         baseline=st.integers(min_value=0, max_value=1024**5),
         current=st.integers(min_value=0, max_value=1024**5),
     )
-    def test_calculate_progress_always_in_range(
-        self, baseline: int, current: int
-    ) -> None:
+    def test_calculate_progress_always_in_range(self, baseline: int, current: int) -> None:
         """Property test: progress percentage always between 0 and 100."""
         result = calculate_progress(baseline=baseline, current=current)
         assert 0.0 <= result <= 100.0
@@ -133,9 +127,7 @@ class TestCalculateRemaining:
             (0, 0, 0),  # Nothing to transfer
         ],
     )
-    def test_calculate_remaining_standard_cases(
-        self, baseline: int, current: int, expected: int
-    ) -> None:
+    def test_calculate_remaining_standard_cases(self, baseline: int, current: int, expected: int) -> None:
         """Test calculate_remaining with standard and edge cases."""
         result = calculate_remaining(baseline=baseline, current=current)
         assert result == expected
@@ -154,9 +146,7 @@ class TestCalculateRemaining:
         baseline=st.integers(min_value=0, max_value=1024**5),
         current=st.integers(min_value=0, max_value=1024**5),
     )
-    def test_calculate_remaining_always_non_negative(
-        self, baseline: int, current: int
-    ) -> None:
+    def test_calculate_remaining_always_non_negative(self, baseline: int, current: int) -> None:
         """Property test: remaining bytes always non-negative."""
         result = calculate_remaining(baseline=baseline, current=current)
         assert result >= 0
@@ -165,9 +155,7 @@ class TestCalculateRemaining:
         baseline=st.integers(min_value=0, max_value=1024**5),
         current=st.integers(min_value=0, max_value=1024**5),
     )
-    def test_calculate_remaining_never_exceeds_baseline(
-        self, baseline: int, current: int
-    ) -> None:
+    def test_calculate_remaining_never_exceeds_baseline(self, baseline: int, current: int) -> None:
         """Property test: remaining never exceeds baseline."""
         result = calculate_remaining(baseline=baseline, current=current)
         assert result <= baseline
@@ -180,9 +168,7 @@ class TestCalculateRate:
         """Test rate calculation with two samples (one interval)."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 900, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 900, "/cache"),  # 100 bytes in 10s = 10 B/s
         ]
         result = calculate_rate(samples)
         assert result == pytest.approx(10.0, abs=0.01)  # pyright: ignore[reportUnknownMemberType]  # pytest.approx has incomplete type annotations
@@ -190,16 +176,10 @@ class TestCalculateRate:
     def test_calculate_rate_moving_average(self) -> None:
         """Test rate calculation with moving average over multiple intervals."""
         samples = [
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),  # 100 bytes in 10s = 10 B/s
             DiskSample(datetime(2024, 1, 1, 10, 0, 10), 900, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 20), 800, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 30), 700, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 20), 800, "/cache"),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 30), 700, "/cache"),  # 100 bytes in 10s = 10 B/s
         ]
         # Average of three intervals: (10 + 10 + 10) / 3 = 10 B/s
         result = calculate_rate(samples, window_size=3)
@@ -209,12 +189,8 @@ class TestCalculateRate:
         """Test rate calculation with varying transfer rates."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 800, "/cache"
-            ),  # 200 bytes in 10s = 20 B/s
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 20), 700, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 800, "/cache"),  # 200 bytes in 10s = 20 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 20), 700, "/cache"),  # 100 bytes in 10s = 10 B/s
         ]
         # Average: (20 + 10) / 2 = 15 B/s
         result = calculate_rate(samples, window_size=3)
@@ -235,9 +211,7 @@ class TestCalculateRate:
         """Test that samples with same timestamp are skipped."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 0), 900, "/cache"
-            ),  # Same timestamp, skip
+            DiskSample(datetime(2024, 1, 1, 10, 0, 0), 900, "/cache"),  # Same timestamp, skip
             DiskSample(
                 datetime(2024, 1, 1, 10, 0, 10), 800, "/cache"
             ),  # Valid intervals: (1000->900 skipped), (900->800 over 10s = 10 B/s)
@@ -251,9 +225,7 @@ class TestCalculateRate:
         """Test that negative deltas (disk usage increase) are skipped."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 1100, "/cache"
-            ),  # Increased, skip (1000->1100)
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 1100, "/cache"),  # Increased, skip (1000->1100)
             DiskSample(
                 datetime(2024, 1, 1, 10, 0, 20), 900, "/cache"
             ),  # Valid: 1100->900 over 10s = 200 bytes in 10s = 20 B/s
@@ -268,12 +240,8 @@ class TestCalculateRate:
         """Test that all invalid intervals returns 0.0."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 1100, "/cache"
-            ),  # Negative delta
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 1200, "/cache"
-            ),  # Zero time delta
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 1100, "/cache"),  # Negative delta
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 1200, "/cache"),  # Zero time delta
         ]
         result = calculate_rate(samples)
         assert result == 0.0
@@ -282,15 +250,9 @@ class TestCalculateRate:
         """Test that window_size limits the samples used."""
         samples = [
             DiskSample(datetime(2024, 1, 1, 10, 0, 0), 1000, "/cache"),
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 10), 900, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 20), 800, "/cache"
-            ),  # 100 bytes in 10s = 10 B/s
-            DiskSample(
-                datetime(2024, 1, 1, 10, 0, 30), 600, "/cache"
-            ),  # 200 bytes in 10s = 20 B/s (most recent)
+            DiskSample(datetime(2024, 1, 1, 10, 0, 10), 900, "/cache"),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 20), 800, "/cache"),  # 100 bytes in 10s = 10 B/s
+            DiskSample(datetime(2024, 1, 1, 10, 0, 30), 600, "/cache"),  # 200 bytes in 10s = 20 B/s (most recent)
         ]
         # With window_size=2, should only use last 2 samples
         # Rate from 800->600 in 10s = 20 B/s
@@ -481,9 +443,7 @@ class TestPropertyBasedInvariants:
         baseline=st.integers(min_value=1, max_value=1024**4),
         current=st.integers(min_value=0, max_value=1024**4),
     )
-    def test_progress_plus_remaining_equals_baseline(
-        self, baseline: int, current: int
-    ) -> None:
+    def test_progress_plus_remaining_equals_baseline(self, baseline: int, current: int) -> None:
         """Property: progress + remaining should relate correctly to baseline."""
         progress_percent = calculate_progress(baseline=baseline, current=current)
         remaining = calculate_remaining(baseline=baseline, current=current)
@@ -509,9 +469,7 @@ class TestPropertyBasedInvariants:
         samples=st.lists(
             st.builds(
                 DiskSample,
-                timestamp=st.datetimes(
-                    min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)
-                ),
+                timestamp=st.datetimes(min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)),
                 bytes_used=st.integers(min_value=0, max_value=1024**4),
                 path=st.just("/cache"),
             ),
@@ -541,9 +499,7 @@ class TestPropertyBasedInvariants:
         samples=st.lists(
             st.builds(
                 DiskSample,
-                timestamp=st.datetimes(
-                    min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)
-                ),
+                timestamp=st.datetimes(min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)),
                 bytes_used=st.integers(min_value=0, max_value=1024**4),
                 path=st.just("/cache"),
             ),
@@ -572,9 +528,7 @@ class TestPropertyBasedInvariants:
         samples=st.lists(
             st.builds(
                 DiskSample,
-                timestamp=st.datetimes(
-                    min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)
-                ),
+                timestamp=st.datetimes(min_value=datetime(2024, 1, 1), max_value=datetime(2024, 12, 31)),
                 bytes_used=st.integers(min_value=0, max_value=1024**4),
                 path=st.just("/cache"),
             ),
@@ -582,9 +536,7 @@ class TestPropertyBasedInvariants:
             max_size=10,
         ),
     )
-    def test_progress_data_all_fields_valid(
-        self, baseline: int, current: int, samples: list[DiskSample]
-    ) -> None:
+    def test_progress_data_all_fields_valid(self, baseline: int, current: int, samples: list[DiskSample]) -> None:
         """Property: calculate_progress_data produces valid values for all fields.
 
         This comprehensive test ensures that the aggregate function produces
@@ -592,9 +544,7 @@ class TestPropertyBasedInvariants:
         """
         import math
 
-        progress_data = calculate_progress_data(
-            baseline=baseline, current=current, samples=samples
-        )
+        progress_data = calculate_progress_data(baseline=baseline, current=current, samples=samples)
 
         # Progress percentage must be in valid range
         assert 0.0 <= progress_data.percent <= 100.0
@@ -790,12 +740,8 @@ class TestEvaluateThresholdCrossed:
 
     @given(
         current_percent=st.floats(min_value=0.0, max_value=100.0),
-        thresholds=st.lists(
-            st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10
-        ),
-        notified=st.lists(
-            st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10
-        ),
+        thresholds=st.lists(st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10),
+        notified=st.lists(st.floats(min_value=0.0, max_value=100.0), min_size=0, max_size=10),
     )
     def test_evaluate_threshold_crossed_result_is_valid(
         self,
@@ -820,13 +766,9 @@ class TestEvaluateThresholdCrossed:
 
     @given(
         current_percent=st.floats(min_value=0.0, max_value=100.0),
-        thresholds=st.lists(
-            st.floats(min_value=0.0, max_value=100.0), min_size=1, max_size=10
-        ),
+        thresholds=st.lists(st.floats(min_value=0.0, max_value=100.0), min_size=1, max_size=10),
     )
-    def test_evaluate_threshold_crossed_idempotent(
-        self, current_percent: float, thresholds: list[float]
-    ) -> None:
+    def test_evaluate_threshold_crossed_idempotent(self, current_percent: float, thresholds: list[float]) -> None:
         """Property test: same input always produces same output."""
         notified: list[float] = []
         result1 = evaluate_threshold_crossed(

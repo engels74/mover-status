@@ -130,10 +130,10 @@ class LifecycleStream:
         self,
         _pid_file: Path,
         _interval: float,
-    ) -> AsyncGenerator[MoverLifecycleEvent, None]:
+    ) -> AsyncGenerator[MoverLifecycleEvent]:
         """Create lifecycle monitor generator."""
 
-        async def _generator() -> AsyncGenerator[MoverLifecycleEvent, None]:
+        async def _generator() -> AsyncGenerator[MoverLifecycleEvent]:
             while True:
                 item = await self._events.get()
                 if item is None:
@@ -509,9 +509,7 @@ async def test_threshold_notification_triggering(
 
     # Verify each provider received progress notifications
     for provider in providers:
-        progress_notifications = [
-            data for event_type, data in provider.notifications if event_type == "progress"
-        ]
+        progress_notifications = [data for event_type, data in provider.notifications if event_type == "progress"]
         # Should have 4 progress notifications (one per threshold)
         assert len(progress_notifications) == 4
 
@@ -653,7 +651,7 @@ async def test_provider_initialization_failures(
     with pytest.raises(RuntimeError, match="All enabled providers failed validation or health checks"):
         try:
             await asyncio.wait_for(orchestrator.start(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Orchestrator start() timed out instead of raising RuntimeError")
 
     # Test case 2: All providers fail health checks
@@ -688,7 +686,7 @@ async def test_provider_initialization_failures(
     with pytest.raises(RuntimeError, match="All enabled providers failed validation or health checks"):
         try:
             await asyncio.wait_for(orchestrator2.start(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Orchestrator start() timed out instead of raising RuntimeError")
 
 
@@ -710,7 +708,7 @@ async def test_no_providers_loaded(
     with pytest.raises(RuntimeError, match="No notification providers could be loaded"):
         try:
             await asyncio.wait_for(orchestrator.start(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Orchestrator start() timed out instead of raising RuntimeError")
 
 
@@ -967,7 +965,5 @@ async def test_completed_event_without_baseline(
 
     # No completed notifications should be sent
     for provider in providers:
-        completed_count = sum(
-            1 for event_type, _ in provider.notifications if event_type == "completed"
-        )
+        completed_count = sum(1 for event_type, _ in provider.notifications if event_type == "completed")
         assert completed_count == 0

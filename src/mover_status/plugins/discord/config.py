@@ -56,10 +56,7 @@ class DiscordConfig(BaseModel):
             raise ValueError(msg)
         host = (parsed.hostname or "").lower()
         if not any(host == domain or host.endswith(f".{domain}") for domain in _ALLOWED_DOMAINS):
-            msg = (
-                "Webhook URL must point to discord.com or discordapp.com "
-                "(including canary/ptb subdomains)"
-            )
+            msg = "Webhook URL must point to discord.com or discordapp.com (including canary/ptb subdomains)"
             raise ValueError(msg)
         if not _WEBHOOK_PATH_PATTERN.match(parsed.path):
             msg = "Webhook URL must include /api/webhooks/<id>/<token> path"

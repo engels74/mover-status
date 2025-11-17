@@ -9,11 +9,11 @@ Responsibilities (Requirements 9.1–9.4):
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import html
 import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final, override
 
 from mover_status.types.models import NotificationData
@@ -68,11 +68,7 @@ class TelegramFormatter(MessageFormatter):
 
     def _build_placeholders(self, data: NotificationData) -> dict[str, str]:
         """Construct escaped placeholder values from NotificationData."""
-        etc_value = (
-            self.format_time(data.etc_timestamp)
-            if data.etc_timestamp is not None
-            else _CALCULATING_LABEL
-        )
+        etc_value = self.format_time(data.etc_timestamp) if data.etc_timestamp is not None else _CALCULATING_LABEL
 
         return {
             "percent": self._escape_value(self._format_percent(data.percent)),
@@ -128,7 +124,7 @@ class TelegramFormatter(MessageFormatter):
     def _ensure_tz(self, timestamp: datetime) -> datetime:
         """Ensure timestamp has timezone info (defaulting to UTC)."""
         if timestamp.tzinfo is None:
-            return timestamp.replace(tzinfo=timezone.utc)
+            return timestamp.replace(tzinfo=UTC)
         return timestamp
 
 

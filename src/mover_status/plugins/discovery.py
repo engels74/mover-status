@@ -8,11 +8,11 @@ only those enabled in configuration.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import importlib
 import logging
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -50,10 +50,7 @@ def register_plugin(metadata: PluginMetadata) -> None:
     """
     identifier = metadata.identifier.strip()
     if not _IDENTIFIER_PATTERN.match(identifier):
-        msg = (
-            "Plugin identifier must be lowercase alphanumeric with optional underscores: "
-            f"{identifier!r}"
-        )
+        msg = f"Plugin identifier must be lowercase alphanumeric with optional underscores: {identifier!r}"
         raise ValueError(msg)
 
     if identifier in _PLUGIN_REGISTRY:
@@ -62,10 +59,7 @@ def register_plugin(metadata: PluginMetadata) -> None:
 
     module_suffix = metadata.package.rsplit(".", maxsplit=1)[-1]
     if module_suffix != identifier:
-        msg = (
-            "Plugin identifier must match package name "
-            f"(identifier={identifier}, package={metadata.package})"
-        )
+        msg = f"Plugin identifier must match package name (identifier={identifier}, package={metadata.package})"
         raise ValueError(msg)
 
     _PLUGIN_REGISTRY[identifier] = metadata
@@ -138,9 +132,7 @@ def _scan_plugin_packages(*, force_rescan: bool) -> None:
         try:
             _module = importlib.import_module(module_name)
         except Exception:
-            logger.exception(
-                "Failed to import plugin package", extra={"plugin_module": module_name}
-            )
+            logger.exception("Failed to import plugin package", extra={"plugin_module": module_name})
             continue
 
         if registry_before == set(_PLUGIN_REGISTRY):

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import ModuleType
-from typing import Callable
 
 import pytest
 
@@ -20,7 +20,9 @@ class DummyProvider:
     def __init__(self, *, label: str = "default") -> None:
         self.label: str = label
 
-    async def send_notification(self, data: NotificationData) -> NotificationResult:  # pragma: no cover - protocol method
+    async def send_notification(
+        self, data: NotificationData
+    ) -> NotificationResult:  # pragma: no cover - protocol method
         _ = data
         return NotificationResult(
             success=True,

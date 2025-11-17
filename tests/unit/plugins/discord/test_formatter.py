@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 
 from mover_status.plugins.discord.formatter import DiscordFormatter
@@ -23,9 +23,7 @@ def _make_notification(
     correlation_id: str = "corr-123",
 ) -> NotificationData:
     resolved_etc = (
-        datetime(2024, 1, 1, tzinfo=timezone.utc)
-        if etc_timestamp is _DEFAULT_ETC
-        else cast(datetime | None, etc_timestamp)
+        datetime(2024, 1, 1, tzinfo=UTC) if etc_timestamp is _DEFAULT_ETC else cast(datetime | None, etc_timestamp)
     )
     return NotificationData(
         event_type=event_type,
@@ -57,7 +55,7 @@ class TestDiscordFormatter:
     def test_format_time_produces_relative_timestamp(self) -> None:
         """ETC timestamps use Discord's relative format."""
         formatter = DiscordFormatter()
-        timestamp = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 1, 1, tzinfo=UTC)
 
         result = formatter.format_time(timestamp)
 

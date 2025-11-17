@@ -367,9 +367,7 @@ class TestIntegrationScenarios:
 
     def test_exception_from_http_error(self) -> None:
         """Test exception from HTTP request with URL is sanitized."""
-        exc = ConnectionError(
-            "Failed to connect to https://api.telegram.org/bot123:ABC-TOKEN/sendMessage"
-        )
+        exc = ConnectionError("Failed to connect to https://api.telegram.org/bot123:ABC-TOKEN/sendMessage")
         sanitized = sanitize_exception(exc)
         assert "ABC-TOKEN" not in sanitized
         assert "ConnectionError:" in sanitized

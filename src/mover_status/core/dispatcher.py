@@ -28,7 +28,7 @@ __all__ = ["NotificationDispatcher"]
 type CorrelationIDFactory = Callable[[], str]
 
 
-class ProviderDispatchException(Exception):
+class ProviderDispatchError(Exception):
     """Base exception for provider dispatch failures."""
 
     identifier: str
@@ -50,9 +50,8 @@ class ProviderDispatchException(Exception):
             self.__cause__ = cause
 
 
-class ProviderExecutionError(ProviderDispatchException):
+class ProviderExecutionError(ProviderDispatchError):
     """Raised when send_notification crashes unexpectedly."""
-
 
     def __init__(
         self,
@@ -64,7 +63,7 @@ class ProviderExecutionError(ProviderDispatchException):
         super().__init__(identifier, result=result, cause=cause)
 
 
-class ProviderTimeoutError(ProviderDispatchException):
+class ProviderTimeoutError(ProviderDispatchError):
     """Raised when a provider exceeds its dispatch timeout."""
 
     timeout_seconds: float
@@ -98,13 +97,13 @@ class NotificationDispatcher:
 
         self._registry: ProviderRegistry[NotificationProvider] = registry
         self._provider_timeout_seconds: float = provider_timeout_seconds
-        self._correlation_id_factory: CorrelationIDFactory = (
-            correlation_id_factory or (lambda: uuid4().hex)
-        )
+        self._correlation_id_factory: CorrelationIDFactory = correlation_id_factory or (lambda: uuid4().hex)
         self._logger: logging.Logger = logger_obj or get_logger(__name__)
         self._dry_run_enabled: bool = dry_run_enabled
 
-    async def dispatch_notification(self, data: NotificationData) -> tuple[NotificationResult, ...]:
+    async def dispatch_notification(  # noqa: C901  # Complexity justified: concurrent dispatch with timeout and error handling
+        self, data: NotificationData
+    ) -> tuple[NotificationResult, ...]:
         """Dispatch notification data to all healthy providers concurrently."""
         providers = self._collect_healthy_providers()
         if not providers:
@@ -132,7 +131,7 @@ class NotificationDispatcher:
 
         ordered_identifiers = [identifier for identifier, _ in providers]
         results: dict[str, NotificationResult] = {}
-        dispatch_errors: list[ProviderDispatchException] = []
+        dispatch_errors: list[ProviderDispatchError] = []
 
         async def _dispatch_single(identifier: str, provider: NotificationProvider) -> None:
             start = time.perf_counter()
@@ -142,12 +141,9 @@ class NotificationDispatcher:
                     result = await provider.send_notification(data)
             except asyncio.CancelledError:
                 raise
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 delivery_ms = (time.perf_counter() - start) * 1000.0
-                message = (
-                    "Notification delivery timed out "
-                    f"after {self._provider_timeout_seconds:.2f}s"
-                )
+                message = f"Notification delivery timed out after {self._provider_timeout_seconds:.2f}s"
                 result = NotificationResult(
                     success=False,
                     provider_name=identifier,
@@ -308,7 +304,7 @@ class NotificationDispatcher:
 
     def _handle_dispatch_exception_group(
         self,
-        errors: list[ProviderDispatchException],
+        errors: list[ProviderDispatchError],
         data: NotificationData,
     ) -> None:
         """Handle grouped provider dispatch errors using except* semantics."""
@@ -317,8 +313,8 @@ class NotificationDispatcher:
         except* ProviderTimeoutError as group:
             for error in self._flatten_exceptions(group.exceptions, ProviderTimeoutError):
                 self._log_timeout_error(error, data)
-        except* ProviderDispatchException as group:
-            for error in self._flatten_exceptions(group.exceptions, ProviderDispatchException):
+        except* ProviderDispatchError as group:
+            for error in self._flatten_exceptions(group.exceptions, ProviderDispatchError):
                 self._log_dispatch_exception(error, data)
 
     def _log_timeout_error(
@@ -343,7 +339,7 @@ class NotificationDispatcher:
 
     def _log_dispatch_exception(
         self,
-        error: ProviderDispatchException,
+        error: ProviderDispatchError,
         data: NotificationData,
     ) -> None:
         log_with_context(

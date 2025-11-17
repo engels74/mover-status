@@ -34,14 +34,10 @@ correlation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 )
 
 # Log format constants
-DEFAULT_LOG_FORMAT: Final[str] = (
-    "%(asctime)s - %(name)s - %(levelname)s - "
-    "[%(correlation_id)s] - %(message)s"
-)
+DEFAULT_LOG_FORMAT: Final[str] = "%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] - %(message)s"
 
 SYSLOG_LOG_FORMAT: Final[str] = (
-    "mover-status[%(process)d]: %(levelname)s - "
-    "[%(correlation_id)s] - %(name)s - %(message)s"
+    "mover-status[%(process)d]: %(levelname)s - [%(correlation_id)s] - %(name)s - %(message)s"
 )
 
 # Default syslog address for Unraid
@@ -369,5 +365,3 @@ def log_with_context(
 
     # Log with context
     logger.log(level, message, extra=context)
-
-

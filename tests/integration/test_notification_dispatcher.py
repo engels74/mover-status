@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -33,7 +33,7 @@ def _make_notification_data(
     correlation_id: str = "",
 ) -> NotificationData:
     """Create notification data payload for integration tests."""
-    resolved_etc = etc_timestamp or datetime(2024, 1, 1, tzinfo=timezone.utc)
+    resolved_etc = etc_timestamp or datetime(2024, 1, 1, tzinfo=UTC)
     return NotificationData(
         event_type=event_type,
         percent=percent,
@@ -98,7 +98,7 @@ class InstrumentedProvider:
     async def health_check(self) -> HealthStatus:
         return HealthStatus(
             is_healthy=True,
-            last_check=datetime.now(tz=timezone.utc),
+            last_check=datetime.now(tz=UTC),
             consecutive_failures=0,
             error_message=None,
         )
@@ -131,9 +131,7 @@ async def test_notification_dispatcher_delivers_concurrently() -> None:
 
 async def test_exception_group_handles_mixed_outcomes() -> None:
     """Ensure mixed failures produce results without stopping healthy providers."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=2
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=2)
     success_provider = InstrumentedProvider("alpha")
     exception_provider = InstrumentedProvider(
         "beta",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -12,7 +12,6 @@ from mover_status.plugins.discord.config import DiscordConfig
 from mover_status.plugins.discord.provider import DiscordProvider, create_provider
 from mover_status.types.models import NotificationData, Response
 from mover_status.types.protocols import HTTPClient
-
 
 # Test fixtures and helpers
 
@@ -43,7 +42,7 @@ def _make_notification_data(
     correlation_id: str = "test-correlation-id",
 ) -> NotificationData:
     """Factory for creating test notification data."""
-    resolved_etc = etc_timestamp or datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    resolved_etc = etc_timestamp or datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     return NotificationData(
         event_type=event_type,
         percent=percent,
@@ -470,7 +469,7 @@ class TestHealthCheck:
 
         assert health.last_check is not None
         # Last check should be recent (within last minute)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_diff = (now - health.last_check).total_seconds()
         assert time_diff < 60.0
 

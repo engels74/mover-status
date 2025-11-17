@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final
 
 from mover_status.plugins.discord.client import (
@@ -32,9 +32,7 @@ from mover_status.utils.template import load_template
 
 __all__ = ["DiscordProvider", "create_provider"]
 
-_DEFAULT_TEMPLATE: Final[str] = (
-    "Progress: {percent}% | Remaining: {remaining_data} | Rate: {rate} | ETA: {etc}"
-)
+_DEFAULT_TEMPLATE: Final[str] = "Progress: {percent}% | Remaining: {remaining_data} | Rate: {rate} | ETA: {etc}"
 _PROVIDER_NAME: Final[str] = "Discord"
 
 
@@ -75,9 +73,7 @@ class DiscordProvider:
     formatter: DiscordFormatter = field(init=False, repr=False)
     client: DiscordAPIClient = field(init=False, repr=False)
     _consecutive_failures: int = field(default=0, init=False, repr=False)
-    _last_check: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc), init=False, repr=False
-    )
+    _last_check: datetime = field(default_factory=lambda: datetime.now(UTC), init=False, repr=False)
     _logger: logging.Logger = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -122,7 +118,7 @@ class DiscordProvider:
 
             # Reset failure counter on success
             self._consecutive_failures = 0
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
             self._logger.info(
                 "Discord notification delivered successfully (correlation_id=%s, delivery_time=%.2fms)",
@@ -141,7 +137,7 @@ class DiscordProvider:
             # Discord-specific API errors
             delivery_time_ms = (time.perf_counter() - start_time) * 1000.0
             self._consecutive_failures += 1
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
             error_msg = f"Discord API error (status={exc.status}): {exc}"
             should_retry = _should_retry_discord_error(exc)
@@ -164,7 +160,7 @@ class DiscordProvider:
             # Unexpected errors (network issues, JSON serialization, etc.)
             delivery_time_ms = (time.perf_counter() - start_time) * 1000.0
             self._consecutive_failures += 1
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
             error_msg = f"Unexpected error during Discord notification: {type(exc).__name__}: {exc}"
             self._logger.error(
@@ -229,10 +225,7 @@ class DiscordProvider:
 
         error_message = None
         if not is_healthy:
-            error_message = (
-                f"Discord provider unhealthy after {self._consecutive_failures} "
-                f"consecutive failures"
-            )
+            error_message = f"Discord provider unhealthy after {self._consecutive_failures} consecutive failures"
 
         return HealthStatus(
             is_healthy=is_healthy,

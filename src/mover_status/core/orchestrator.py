@@ -44,7 +44,7 @@ from mover_status.utils.formatting import format_rate, format_size
 
 __all__ = ["Orchestrator"]
 
-type LifecycleMonitorFactory = Callable[[Path, float], AsyncGenerator[MoverLifecycleEvent, None]]
+type LifecycleMonitorFactory = Callable[[Path, float], AsyncGenerator[MoverLifecycleEvent]]
 type ProgressCalculator = Callable[[int, int, Sequence[DiskSample], int], ProgressData]
 type ThresholdEvaluator = Callable[[float, Sequence[float], Sequence[float]], float | None]
 type ProviderInitKwargs = Mapping[str, Mapping[str, object]]
@@ -74,7 +74,7 @@ class UsageSampler(Protocol):
 def _default_lifecycle_monitor_factory(
     pid_file: Path,
     interval: float,
-) -> AsyncGenerator[MoverLifecycleEvent, None]:
+) -> AsyncGenerator[MoverLifecycleEvent]:
     return monitor_mover_lifecycle(pid_file, check_interval=interval)
 
 
@@ -126,12 +126,8 @@ class Orchestrator:
                 dry_run_enabled=self._dry_run_enabled,
             )
         self._provider_init_kwargs: ProviderInitKwargs | None = provider_init_kwargs
-        self._progress_calculator: ProgressCalculator = (
-            progress_calculator or self._default_progress_calculator
-        )
-        self._threshold_evaluator: ThresholdEvaluator = (
-            threshold_evaluator or self._default_threshold_evaluator
-        )
+        self._progress_calculator: ProgressCalculator = progress_calculator or self._default_progress_calculator
+        self._threshold_evaluator: ThresholdEvaluator = threshold_evaluator or self._default_threshold_evaluator
         self._sampling_interval: float = float(config.monitoring.sampling_interval)
         if self._sampling_interval <= 0:
             msg = "sampling_interval must be greater than zero"
@@ -139,15 +135,11 @@ class Orchestrator:
 
         self._pid_file: Path = config.monitoring.pid_file
         self._pid_check_interval: float = float(config.monitoring.pid_check_interval)
-        self._notification_thresholds: tuple[float, ...] = tuple(
-            sorted(config.notifications.thresholds)
-        )
+        self._notification_thresholds: tuple[float, ...] = tuple(sorted(config.notifications.thresholds))
 
         self._logger: logging.Logger = logging.getLogger(__name__)
         if self._dry_run_enabled:
-            self._logger.info(
-                "Dry-run mode enabled: notifications will be logged without sending"
-            )
+            self._logger.info("Dry-run mode enabled: notifications will be logged without sending")
         self._shutdown_event: asyncio.Event = asyncio.Event()
         self._ready_event: asyncio.Event = asyncio.Event()
         self._task_group: asyncio.TaskGroup | None = None
@@ -305,9 +297,7 @@ class Orchestrator:
     async def _sampling_loop(self, cycle_id: str) -> None:
         try:
             while (
-                not self._shutdown_event.is_set()
-                and self._cycle_active.is_set()
-                and self._active_cycle_id == cycle_id
+                not self._shutdown_event.is_set() and self._cycle_active.is_set() and self._active_cycle_id == cycle_id
             ):
                 await asyncio.sleep(self._sampling_interval)
                 if (

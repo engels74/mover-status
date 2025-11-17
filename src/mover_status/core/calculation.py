@@ -372,9 +372,7 @@ def evaluate_threshold_crossed(
     # Find all crossed thresholds that haven't been notified
     # A threshold is "crossed" when current_percent >= threshold
     crossed_unnotified: list[float] = [
-        threshold
-        for threshold in thresholds
-        if current_percent >= threshold and threshold not in notified_set
+        threshold for threshold in thresholds if current_percent >= threshold and threshold not in notified_set
     ]
 
     # Edge case: No new thresholds crossed

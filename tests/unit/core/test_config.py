@@ -436,9 +436,7 @@ class TestResolveEnvVar:
         assert "not set" in error_msg
         assert "Please set this variable" in error_msg
 
-    def test_error_message_does_not_expose_secrets(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_error_message_does_not_expose_secrets(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error messages never expose secret values."""
         monkeypatch.setenv("SECRET_VAR", "super_secret_value")
 
@@ -627,9 +625,7 @@ application:
         assert config.application.log_level == "DEBUG"
         assert config.application.dry_run is False
 
-    def test_load_config_with_env_vars(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_config_with_env_vars(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading configuration with environment variable resolution."""
         monkeypatch.setenv("TEST_PID_FILE", str(tmp_path / "mover.pid"))
         monkeypatch.setenv("TEST_LOG_LEVEL", "WARNING")
@@ -810,9 +806,7 @@ enabled: true
         assert config.api_key == "test_key_123"
         assert config.enabled is True
 
-    def test_load_provider_config_with_env_vars(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_provider_config_with_env_vars(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading provider configuration with environment variables."""
         from pydantic import BaseModel, Field
 
@@ -886,9 +880,7 @@ api_key: short
         assert "validation failed" in error_msg.lower()
         assert "Field:" in error_msg
 
-    def test_load_provider_config_provider_name_in_errors(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_provider_config_provider_name_in_errors(self, tmp_path: Path) -> None:
         """Test that provider name appears in all error messages."""
         from pydantic import BaseModel
 

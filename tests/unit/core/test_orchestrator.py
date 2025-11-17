@@ -39,7 +39,9 @@ class DummyProvider(NotificationProvider):
         self.health_checks: int = 0
 
     @override
-    async def send_notification(self, data: NotificationData) -> NotificationResult:  # pragma: no cover - dispatcher integration
+    async def send_notification(
+        self, data: NotificationData
+    ) -> NotificationResult:  # pragma: no cover - dispatcher integration
         _ = data
         return NotificationResult(
             success=True,
@@ -102,8 +104,8 @@ class LifecycleStream:
         self,
         _pid_file: Path,
         _interval: float,
-    ) -> AsyncGenerator[MoverLifecycleEvent, None]:
-        async def _generator() -> AsyncGenerator[MoverLifecycleEvent, None]:
+    ) -> AsyncGenerator[MoverLifecycleEvent]:
+        async def _generator() -> AsyncGenerator[MoverLifecycleEvent]:
             while True:
                 item = await self._events.get()
                 if item is None:

@@ -105,7 +105,9 @@ class DiscordAPIClient:
         )
         return await self._dispatch(payload)
 
-    async def _dispatch(self, payload: Mapping[str, object]) -> Response:
+    async def _dispatch(  # noqa: C901  # Complexity justified: retry logic with rate limiting
+        self, payload: Mapping[str, object]
+    ) -> Response:
         """Execute webhook POST with retry, rate limiting, and error parsing."""
         last_error: DiscordAPIError | None = None
         for attempt in range(1, self.max_attempts + 1):

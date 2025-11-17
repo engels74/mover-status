@@ -548,11 +548,11 @@ class MoverLifecycleStateMachine:
         return event
 
 
-async def watch_pid_file(
+async def watch_pid_file(  # noqa: C901  # Complexity justified: state machine for PID file monitoring
     pid_file_path: Path,
     *,
     check_interval: float = 1.0,
-) -> AsyncGenerator[PIDFileEvent, None]:
+) -> AsyncGenerator[PIDFileEvent]:
     """Watch PID file and yield events on state changes.
 
     Continuously monitors the PID file for changes and yields PIDFileEvent
@@ -726,11 +726,11 @@ async def watch_pid_file(
         raise
 
 
-async def monitor_mover_lifecycle(
+async def monitor_mover_lifecycle(  # noqa: C901  # Complexity justified: orchestrates entire monitoring lifecycle
     pid_file_path: Path,
     *,
     check_interval: float = 1.0,
-) -> AsyncGenerator[MoverLifecycleEvent, None]:
+) -> AsyncGenerator[MoverLifecycleEvent]:
     """Monitor mover process lifecycle and yield state transition events.
 
     High-level interface for monitoring the mover process lifecycle. Watches
@@ -813,9 +813,7 @@ async def monitor_mover_lifecycle(
 
                         if process_exists:
                             # Transition to STARTED state
-                            lifecycle_event = state_machine.transition_to_started(
-                                pid_event.pid
-                            )
+                            lifecycle_event = state_machine.transition_to_started(pid_event.pid)
                             yield lifecycle_event
                         else:
                             logger.warning(
@@ -845,9 +843,7 @@ async def monitor_mover_lifecycle(
                     MoverState.MONITORING,
                 }:
                     try:
-                        lifecycle_event = state_machine.transition_to_completed(
-                            reason="PID file deleted"
-                        )
+                        lifecycle_event = state_machine.transition_to_completed(reason="PID file deleted")
                         yield lifecycle_event
 
                         # Auto-reset for next cycle
@@ -900,9 +896,7 @@ async def monitor_mover_lifecycle(
                                 pid_event.pid,
                             )
                             if process_exists:
-                                start_event = state_machine.transition_to_started(
-                                    pid_event.pid
-                                )
+                                start_event = state_machine.transition_to_started(pid_event.pid)
                                 yield start_event
 
                     except ValueError as exc:

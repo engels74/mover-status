@@ -9,10 +9,10 @@ Responsibilities (Requirements 9.1–9.4):
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import math
+from datetime import UTC, datetime
 from typing import Final, override
 
 from mover_status.types.models import NotificationData
@@ -69,7 +69,7 @@ class DiscordFormatter(MessageFormatter):
             "title": self._resolve_title(data.event_type),
             "description": description,
             "color": embed_color,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "fields": self._build_fields(placeholder_values),
         }
 
@@ -80,11 +80,7 @@ class DiscordFormatter(MessageFormatter):
 
     def _build_placeholders(self, data: NotificationData) -> dict[str, str]:
         """Construct placeholder values from NotificationData."""
-        etc_value = (
-            self.format_time(data.etc_timestamp)
-            if data.etc_timestamp is not None
-            else _CALCULATING_LABEL
-        )
+        etc_value = self.format_time(data.etc_timestamp) if data.etc_timestamp is not None else _CALCULATING_LABEL
 
         return {
             "percent": self._format_percent(data.percent),
@@ -141,8 +137,8 @@ class DiscordFormatter(MessageFormatter):
     def _ensure_tz(self, timestamp: datetime) -> datetime:
         """Ensure timestamps are timezone-aware for consistent conversion."""
         if timestamp.tzinfo is None:
-            return timestamp.replace(tzinfo=timezone.utc)
-        return timestamp.astimezone(timezone.utc)
+            return timestamp.replace(tzinfo=UTC)
+        return timestamp.astimezone(UTC)
 
 
 __all__ = ["DiscordFormatter"]

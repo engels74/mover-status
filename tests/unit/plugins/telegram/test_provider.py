@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -40,9 +40,7 @@ def _make_notification_data(
     correlation_id: str = "test-correlation",
 ) -> NotificationData:
     """Create common NotificationData payloads."""
-    resolved_timestamp = etc_timestamp or datetime(
-        2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc
-    )
+    resolved_timestamp = etc_timestamp or datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     return NotificationData(
         event_type=event_type,
         percent=percent,

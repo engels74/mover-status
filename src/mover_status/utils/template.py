@@ -13,14 +13,16 @@ from collections.abc import Mapping, Set
 from typing import Final
 
 # Known placeholders that can be used in templates
-KNOWN_PLACEHOLDERS: Final[Set[str]] = frozenset({
-    "percent",
-    "remaining_data",
-    "etc",
-    "moved_data",
-    "total_data",
-    "rate",
-})
+KNOWN_PLACEHOLDERS: Final[Set[str]] = frozenset(
+    {
+        "percent",
+        "remaining_data",
+        "etc",
+        "moved_data",
+        "total_data",
+        "rate",
+    }
+)
 
 # Regex pattern to identify placeholders in templates
 # Matches {placeholder_name} format (lowercase letters, numbers, underscores)
@@ -69,16 +71,11 @@ def validate_template(template: str) -> None:
     if unknown:
         unknown_list = sorted(unknown)
         known_list = sorted(KNOWN_PLACEHOLDERS)
-        msg = (
-            f"Template contains unknown placeholders: {unknown_list}. "
-            f"Known placeholders are: {known_list}"
-        )
+        msg = f"Template contains unknown placeholders: {unknown_list}. Known placeholders are: {known_list}"
         raise TemplateError(msg)
 
 
-def replace_placeholders(
-    template: str, values: Mapping[str, object]
-) -> str:
+def replace_placeholders(template: str, values: Mapping[str, object]) -> str:
     """Replace placeholders in template with provided values.
 
     This function performs safe string substitution without evaluating
@@ -108,9 +105,7 @@ def replace_placeholders(
     missing = placeholders - values.keys()
     if missing:
         missing_list = sorted(missing)
-        raise TemplateError(
-            f"Missing values for placeholders: {missing_list}"
-        )
+        raise TemplateError(f"Missing values for placeholders: {missing_list}")
 
     # Perform safe string substitution
     # Convert all values to strings for substitution
@@ -146,4 +141,3 @@ def load_template(template_str: str) -> str:
     """
     validate_template(template_str)
     return template_str
-

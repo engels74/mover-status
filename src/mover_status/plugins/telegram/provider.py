@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final
 
 from mover_status.plugins.telegram.client import (
@@ -31,9 +31,7 @@ from mover_status.utils.template import load_template
 
 __all__ = ["TelegramProvider", "create_provider"]
 
-_DEFAULT_TEMPLATE: Final[str] = (
-    "Progress {percent}% | Remaining {remaining_data} | Rate {rate} | ETA {etc}"
-)
+_DEFAULT_TEMPLATE: Final[str] = "Progress {percent}% | Remaining {remaining_data} | Rate {rate} | ETA {etc}"
 _PROVIDER_NAME: Final[str] = "Telegram"
 
 
@@ -62,7 +60,7 @@ class TelegramProvider:
     client: TelegramAPIClient = field(init=False, repr=False)
     _consecutive_failures: int = field(default=0, init=False, repr=False)
     _last_check: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         init=False,
         repr=False,
     )
@@ -91,7 +89,7 @@ class TelegramProvider:
 
             delivery_time_ms = (time.perf_counter() - start_time) * 1000.0
             self._consecutive_failures = 0
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
             self._logger.info(
                 "Telegram notification delivered successfully (correlation_id=%s, delivery_time=%.2fms)",
@@ -109,7 +107,7 @@ class TelegramProvider:
         except TelegramAPIError as exc:
             delivery_time_ms = (time.perf_counter() - start_time) * 1000.0
             self._consecutive_failures += 1
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
             error_msg = f"Telegram API error (status={exc.status}): {exc}"
             should_retry = _should_retry_telegram_error(exc)
@@ -131,11 +129,9 @@ class TelegramProvider:
         except Exception as exc:  # pragma: no cover - defensive catch-all
             delivery_time_ms = (time.perf_counter() - start_time) * 1000.0
             self._consecutive_failures += 1
-            self._last_check = datetime.now(timezone.utc)
+            self._last_check = datetime.now(UTC)
 
-            error_msg = (
-                f"Unexpected error during Telegram notification: {type(exc).__name__}: {exc}"
-            )
+            error_msg = f"Unexpected error during Telegram notification: {type(exc).__name__}: {exc}"
             self._logger.error(
                 "Telegram notification failed with unexpected error: %s (correlation_id=%s)",
                 error_msg,
@@ -177,10 +173,7 @@ class TelegramProvider:
         is_healthy = self._consecutive_failures < 3
         error_message = None
         if not is_healthy:
-            error_message = (
-                f"Telegram provider unhealthy after {self._consecutive_failures} "
-                "consecutive failures"
-            )
+            error_message = f"Telegram provider unhealthy after {self._consecutive_failures} consecutive failures"
 
         return HealthStatus(
             is_healthy=is_healthy,

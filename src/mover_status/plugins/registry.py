@@ -9,9 +9,10 @@ respecting dynamic discovery and enablement (requirements 3.1, 3.2).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import re
+
 from mover_status.types import HealthStatus, NotificationProvider
 
 __all__ = ["ProviderRegistry"]
@@ -168,10 +169,7 @@ class ProviderRegistry[T: NotificationProvider]:
         for identifier, entry in self._entries.items():
             if entry.health is None or entry.health.is_healthy:
                 identifiers.append(identifier)
-        return tuple(
-            (identifier, self._entries[identifier].provider)
-            for identifier in sorted(identifiers)
-        )
+        return tuple((identifier, self._entries[identifier].provider) for identifier in sorted(identifiers))
 
     def get_unhealthy_providers(self) -> tuple[T, ...]:
         """Return providers explicitly marked unhealthy."""

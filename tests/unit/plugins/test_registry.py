@@ -16,7 +16,9 @@ class DummyProvider:
     def __init__(self, name: str) -> None:
         self.name: str = name
 
-    async def send_notification(self, data: NotificationData) -> NotificationResult:  # pragma: no cover - protocol compliance
+    async def send_notification(
+        self, data: NotificationData
+    ) -> NotificationResult:  # pragma: no cover - protocol compliance
         _ = data
         return NotificationResult(
             success=True,

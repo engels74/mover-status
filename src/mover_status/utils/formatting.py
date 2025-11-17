@@ -9,6 +9,22 @@ Requirements:
 - 16.5: No provider-specific logic in shared utility modules
 """
 
+# Binary unit constants (1024-based)
+_KB_INT = 1024
+_MB_INT = _KB_INT * 1024  # 1,048,576
+_GB_INT = _MB_INT * 1024  # 1,073,741,824
+_TB_INT = _GB_INT * 1024  # 1,099,511,627,776
+
+_KB_FLOAT = 1024.0
+_MB_FLOAT = _KB_FLOAT * 1024.0  # 1,048,576
+_GB_FLOAT = _MB_FLOAT * 1024.0  # 1,073,741,824
+_TB_FLOAT = _GB_FLOAT * 1024.0  # 1,099,511,627,776
+
+# Time unit constants
+_MINUTE = 60
+_HOUR = _MINUTE * 60  # 3,600
+_DAY = _HOUR * 24  # 86,400
+
 
 def format_size(bytes: int, *, precision: int = 1) -> str:
     """Convert bytes to human-readable size format.
@@ -46,17 +62,11 @@ def format_size(bytes: int, *, precision: int = 1) -> str:
         msg = "bytes must be non-negative"
         raise ValueError(msg)
 
-    # Thresholds using binary units (1024-based)
-    _KB = 1024
-    _MB = _KB * 1024  # 1,048,576
-    _GB = _MB * 1024  # 1,073,741,824
-    _TB = _GB * 1024  # 1,099,511,627,776
-
-    if bytes >= _TB:
+    if bytes >= _TB_INT:
         # TB: Show both TB and GB for clarity
-        tb = bytes // _TB
-        remaining = bytes % _TB
-        gb = remaining // _GB
+        tb = bytes // _TB_INT
+        remaining = bytes % _TB_INT
+        gb = remaining // _GB_INT
 
         # Format with precision decimal places
         tb_decimal = tb + (gb / 1024.0)
@@ -64,16 +74,16 @@ def format_size(bytes: int, *, precision: int = 1) -> str:
 
         return f"{tb_decimal:.{precision}f} TB ({total_gb} GB)"
 
-    if bytes >= _GB:
-        gb = bytes // _GB
+    if bytes >= _GB_INT:
+        gb = bytes // _GB_INT
         return f"{gb} GB"
 
-    if bytes >= _MB:
-        mb = bytes // _MB
+    if bytes >= _MB_INT:
+        mb = bytes // _MB_INT
         return f"{mb} MB"
 
-    if bytes >= _KB:
-        kb = bytes // _KB
+    if bytes >= _KB_INT:
+        kb = bytes // _KB_INT
         return f"{kb} KB"
 
     return f"{bytes} Bytes"
@@ -115,11 +125,6 @@ def format_duration(seconds: float) -> str:
 
     # Convert to integer for cleaner display
     total_seconds = int(seconds)
-
-    # Time unit constants
-    _MINUTE = 60
-    _HOUR = _MINUTE * 60  # 3,600
-    _DAY = _HOUR * 24     # 86,400
 
     if total_seconds >= _DAY:
         days = total_seconds // _DAY
@@ -184,26 +189,20 @@ def format_rate(bytes_per_second: float) -> str:
         msg = "bytes_per_second must be non-negative"
         raise ValueError(msg)
 
-    # Thresholds using binary units (1024-based)
-    _KB = 1024.0
-    _MB = _KB * 1024.0  # 1,048,576
-    _GB = _MB * 1024.0  # 1,073,741,824
-    _TB = _GB * 1024.0  # 1,099,511,627,776
-
-    if bytes_per_second >= _TB:
-        tb = bytes_per_second / _TB
+    if bytes_per_second >= _TB_FLOAT:
+        tb = bytes_per_second / _TB_FLOAT
         return f"{tb:.1f} TB/s"
 
-    if bytes_per_second >= _GB:
-        gb = bytes_per_second / _GB
+    if bytes_per_second >= _GB_FLOAT:
+        gb = bytes_per_second / _GB_FLOAT
         return f"{gb:.1f} GB/s"
 
-    if bytes_per_second >= _MB:
-        mb = bytes_per_second / _MB
+    if bytes_per_second >= _MB_FLOAT:
+        mb = bytes_per_second / _MB_FLOAT
         return f"{mb:.1f} MB/s"
 
-    if bytes_per_second >= _KB:
-        kb = bytes_per_second / _KB
+    if bytes_per_second >= _KB_FLOAT:
+        kb = bytes_per_second / _KB_FLOAT
         return f"{kb:.1f} KB/s"
 
     # For small values, show integer

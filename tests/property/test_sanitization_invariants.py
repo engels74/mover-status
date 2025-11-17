@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from mover_status.utils.sanitization import (
     REDACTED,
@@ -38,7 +39,9 @@ def telegram_bot_url(draw: st.DrawFn) -> str:
     """Generate Telegram bot API URLs with random tokens."""
     bot_id = draw(st.integers(min_value=1, max_value=9999999999))
     # Generate token with alphanumeric characters, hyphens, and underscores
-    token = draw(st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", min_size=35, max_size=50))
+    token = draw(
+        st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", min_size=35, max_size=50)
+    )
     method = draw(st.sampled_from(["sendMessage", "getMe", "sendPhoto"]))
     return f"https://api.telegram.org/bot{bot_id}:{token}/{method}"
 
@@ -146,11 +149,13 @@ class TestSanitizeValueInvariants:
         # Cast to tuple for type checker - isinstance check guarantees this at runtime
         assert len(cast(tuple[object, ...], sanitized)) == len(data)
 
-    @given(st.recursive(
-        st.integers() | st.text() | st.booleans() | st.none(),
-        lambda children: st.lists(children) | st.dictionaries(st.text(min_size=1), children),
-        max_leaves=20,
-    ))
+    @given(
+        st.recursive(
+            st.integers() | st.text() | st.booleans() | st.none(),
+            lambda children: st.lists(children) | st.dictionaries(st.text(min_size=1), children),
+            max_leaves=20,
+        )
+    )
     def test_sanitize_never_crashes(self, data: object) -> None:
         """Property: sanitize_value never crashes on any recursive data structure."""
         # Should handle deeply nested structures without crashing
@@ -199,10 +204,11 @@ class TestSanitizeMappingInvariants:
     def test_non_sensitive_mapping_values_preserved(self, data: dict[str, int]) -> None:
         """Property: Non-sensitive mappings with primitives preserve values."""
         # Filter out any keys that might be sensitive
-        safe_data = {k: v for k, v in data.items() if not any(
-            pattern in k.lower()
-            for pattern in ["token", "key", "secret", "password", "auth", "webhook"]
-        )}
+        safe_data = {
+            k: v
+            for k, v in data.items()
+            if not any(pattern in k.lower() for pattern in ["token", "key", "secret", "password", "auth", "webhook"])
+        }
 
         sanitized = sanitize_mapping(safe_data)
         # Values should be preserved for non-sensitive keys with primitive values
@@ -284,10 +290,12 @@ class TestSecurityInvariants:
                 assert token not in str(sanitize_value({"endpoint": url}))
                 assert token not in str(sanitize_args((url,)))
 
-    @given(st.dictionaries(
-        st.sampled_from(["api_token", "bot_token", "webhook_url", "api_key", "password"]),
-        st.text(min_size=10),
-    ))
+    @given(
+        st.dictionaries(
+            st.sampled_from(["api_token", "bot_token", "webhook_url", "api_key", "password"]),
+            st.text(min_size=10),
+        )
+    )
     def test_sensitive_values_always_redacted(self, data: dict[str, str]) -> None:
         """Security invariant: Values for sensitive field names are ALWAYS redacted."""
         sanitized = sanitize_mapping(data)

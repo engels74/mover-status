@@ -189,7 +189,7 @@ class AIOHTTPClient:
             self._logger.warning("Client error for %s: %s", sanitize_url(url), exc)
             raise
 
-    async def post_with_retry(
+    async def post_with_retry(  # noqa: C901  # Complexity justified: retry logic with exponential backoff
         self,
         url: str,
         payload: Mapping[str, object],

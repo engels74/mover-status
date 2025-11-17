@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 
 from mover_status.plugins.telegram.formatter import TelegramFormatter
@@ -23,7 +23,7 @@ def _make_notification(
     correlation_id: str = "corr-telegram",
 ) -> NotificationData:
     resolved_etc = (
-        datetime(2024, 1, 1, 12, 30, tzinfo=timezone.utc)
+        datetime(2024, 1, 1, 12, 30, tzinfo=UTC)
         if etc_timestamp is _DEFAULT_ETC
         else cast(datetime | None, etc_timestamp)
     )
@@ -45,7 +45,7 @@ class TestTelegramFormatter:
     def test_format_time_returns_readable_string(self) -> None:
         """Datetime values are rendered as human-readable UTC strings."""
         formatter = TelegramFormatter()
-        timestamp = datetime(2024, 2, 20, 15, 45, tzinfo=timezone.utc)
+        timestamp = datetime(2024, 2, 20, 15, 45, tzinfo=UTC)
 
         result = formatter.format_time(timestamp)
 

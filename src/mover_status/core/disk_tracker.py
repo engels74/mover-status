@@ -68,7 +68,7 @@ def is_excluded(path: Path, exclusion_paths: Sequence[Path]) -> bool:
     return False
 
 
-def calculate_disk_usage_sync(
+def calculate_disk_usage_sync(  # noqa: C901  # Complexity justified: robust filesystem error handling
     paths: Iterable[Path],
     *,
     exclusion_paths: Sequence[Path] | None = None,

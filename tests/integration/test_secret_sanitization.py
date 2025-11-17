@@ -221,9 +221,7 @@ class TestEndToEndSanitization:
         """Test config object __repr__ is sanitized."""
         from mover_status.plugins.discord.config import DiscordConfig
 
-        config = DiscordConfig(
-            webhook_url="https://discord.com/api/webhooks/123/SECRET_TOKEN"
-        )
+        config = DiscordConfig(webhook_url="https://discord.com/api/webhooks/123/SECRET_TOKEN")
         repr_str = repr(config)
 
         assert "SECRET_TOKEN" not in repr_str
@@ -258,9 +256,7 @@ class TestConfigureLoggingIntegration:
         # Verify the root logger has SecretRedactingFilter
         root_logger = logging.getLogger()
         has_secret_filter = any(
-            isinstance(f, SecretRedactingFilter)
-            for handler in root_logger.handlers
-            for f in handler.filters
+            isinstance(f, SecretRedactingFilter) for handler in root_logger.handlers for f in handler.filters
         )
         assert has_secret_filter, "SecretRedactingFilter should be installed"
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -33,7 +33,7 @@ def _make_notification_data(
     correlation_id: str = "initial-id",
 ) -> NotificationData:
     """Create NotificationData with sensible defaults for tests."""
-    resolved_etc = etc_timestamp or datetime(2024, 1, 1, tzinfo=timezone.utc)
+    resolved_etc = etc_timestamp or datetime(2024, 1, 1, tzinfo=UTC)
     return NotificationData(
         event_type=event_type,
         percent=percent,
@@ -86,7 +86,7 @@ class StubProvider:
     async def health_check(self) -> HealthStatus:  # pragma: no cover - protocol compliance
         return HealthStatus(
             is_healthy=True,
-            last_check=datetime.now(tz=timezone.utc),
+            last_check=datetime.now(tz=UTC),
             consecutive_failures=0,
             error_message=None,
         )
@@ -95,9 +95,7 @@ class StubProvider:
 @pytest.mark.asyncio
 async def test_dispatch_success_sets_correlation_id_and_records_results() -> None:
     """Dispatcher should send to healthy providers and generate correlation IDs."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=1
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=1)
     provider = StubProvider("alpha")
     registry.register("alpha", provider)
     dispatcher = NotificationDispatcher(
@@ -123,9 +121,7 @@ async def test_dry_run_logs_payload_and_skips_provider_calls(
     caplog: LogCaptureFixture,
 ) -> None:
     """Dry-run mode should log notification data without invoking providers."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=1
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=1)
     provider = StubProvider("alpha")
     registry.register("alpha", provider)
     dispatcher = NotificationDispatcher(
@@ -143,11 +139,9 @@ async def test_dry_run_logs_payload_and_skips_provider_calls(
     assert len(results) == 1
     assert results[0].success is True
     assert data.correlation_id  # correlation ID should still be generated
-    dry_run_logs = [
-        record for record in caplog.records if record.message == "Dry-run notification recorded"
-    ]
+    dry_run_logs = [record for record in caplog.records if record.message == "Dry-run notification recorded"]
     assert dry_run_logs, "Dry-run dispatch should be logged"
-    payload = cast(dict[str, object], getattr(dry_run_logs[0], "notification_payload"))
+    payload = cast(dict[str, object], dry_run_logs[0].notification_payload)
     assert payload["event_type"] == "started"
     assert payload["correlation_id"] == data.correlation_id
 
@@ -155,9 +149,7 @@ async def test_dry_run_logs_payload_and_skips_provider_calls(
 @pytest.mark.asyncio
 async def test_unhealthy_providers_are_skipped() -> None:
     """Dispatcher should ignore providers marked unhealthy."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=1
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=1)
     healthy = StubProvider("healthy")
     failing = StubProvider("failing")
     registry.register("healthy", healthy)
@@ -180,9 +172,7 @@ async def test_timeout_failure_does_not_block_other_providers(
     caplog: LogCaptureFixture,
 ) -> None:
     """Per-provider timeout should mark one provider unhealthy and allow others to succeed."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=1
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=1)
     slow = StubProvider("slow", delay=0.05)
     fast = StubProvider("fast")
     registry.register("slow", slow)
@@ -211,9 +201,7 @@ async def test_timeout_failure_does_not_block_other_providers(
 @pytest.mark.asyncio
 async def test_retryable_failure_marks_provider_for_retry() -> None:
     """Retryable failures should keep provider eligible in registry."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=3
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=3)
     retrying = StubProvider("retrying", success=False, retryable_failure=True)
     registry.register("retrying", retrying)
 
@@ -233,9 +221,7 @@ async def test_retryable_failure_marks_provider_for_retry() -> None:
 @pytest.mark.asyncio
 async def test_permanent_failure_marks_provider_unhealthy() -> None:
     """Permanent failures should mark provider unhealthy immediately."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=5
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=5)
     failing = StubProvider("failing", success=False, retryable_failure=False)
     registry.register("failing", failing)
 
@@ -257,9 +243,7 @@ async def test_exception_group_logs_runtime_failure(
     caplog: LogCaptureFixture,
 ) -> None:
     """Provider runtime exception should be logged while other providers succeed."""
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=1
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=1)
     failing = StubProvider("failing", fail_with=RuntimeError("boom"))
     healthy = StubProvider("healthy")
     registry.register("failing", failing)
@@ -279,7 +263,5 @@ async def test_exception_group_logs_runtime_failure(
     health = registry.get_health("failing")
     assert health is not None
     assert health.is_healthy is False
-    failure_logs = [
-        record for record in caplog.records if "Provider raised exception" in record.message
-    ]
+    failure_logs = [record for record in caplog.records if "Provider raised exception" in record.message]
     assert failure_logs, "Exception dispatch should be logged"

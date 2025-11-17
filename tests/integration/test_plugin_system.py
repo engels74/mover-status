@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 import importlib
 import sys
-from pathlib import Path
 import textwrap
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -63,9 +63,7 @@ class PluginPackageBuilder:
         importlib.invalidate_caches()
 
     def _metadata_source(self, identifier: str, enabled_flag: str | None) -> str:
-        enabled_line = (
-            f'        enabled_flag="{enabled_flag}",\n' if enabled_flag else ""
-        )
+        enabled_line = f'        enabled_flag="{enabled_flag}",\n' if enabled_flag else ""
         lines = [
             "from mover_status.plugins import PluginMetadata, register_plugin",
             "",
@@ -133,9 +131,7 @@ class PluginPackageBuilder:
 
 
 @pytest.fixture()
-def plugin_test_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[PluginPackageBuilder]:
+def plugin_test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[PluginPackageBuilder]:
     """Provide isolated plugin package directory wired to discovery module."""
     base_path = tmp_path / "plugin_packages"
     package_name = "integration_plugins"
@@ -208,9 +204,7 @@ def test_registry_tracks_health_status(plugin_test_env: PluginPackageBuilder) ->
         provider_flags={"gamma": True},
         force_rescan=True,
     )
-    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(
-        unhealthy_threshold=2
-    )
+    registry: ProviderRegistry[NotificationProvider] = ProviderRegistry(unhealthy_threshold=2)
     registry.register(plugin.identifier, plugin.provider)
 
     first_failure = registry.record_failure(plugin.identifier, error_message="timeout")

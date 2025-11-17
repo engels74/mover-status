@@ -57,10 +57,7 @@ class TestIdentifyPlaceholders:
 
     def test_identify_all_known_placeholders(self) -> None:
         """Test template with all known placeholders."""
-        template = (
-            "{percent} {remaining_data} {etc} "
-            "{moved_data} {total_data} {rate}"
-        )
+        template = "{percent} {remaining_data} {etc} {moved_data} {total_data} {rate}"
         result = identify_placeholders(template)
         assert result == KNOWN_PLACEHOLDERS
 
@@ -288,9 +285,7 @@ class TestPropertyBased:
         st.sampled_from(list(KNOWN_PLACEHOLDERS)),
         st.text(min_size=1),
     )
-    def test_replace_known_placeholder_succeeds(
-        self, placeholder: str, value: str
-    ) -> None:
+    def test_replace_known_placeholder_succeeds(self, placeholder: str, value: str) -> None:
         """Property test: replacing known placeholders always succeeds."""
         template = f"{{{placeholder}}}"
         values = {placeholder: value}
@@ -340,4 +335,3 @@ class TestIntegration:
         result5 = load_template(template)
         result6 = load_template(template)
         assert result5 == result6
-

@@ -130,9 +130,7 @@ class TestFormatSize:
         bytes_value=st.integers(min_value=0, max_value=1024**5),
         precision=st.integers(min_value=0, max_value=5),
     )
-    def test_format_size_precision_parameter_valid(
-        self, bytes_value: int, precision: int
-    ) -> None:
+    def test_format_size_precision_parameter_valid(self, bytes_value: int, precision: int) -> None:
         """Property test: precision parameter produces valid output for all values.
 
         This tests that the precision parameter works correctly across all byte ranges.
@@ -277,9 +275,7 @@ class TestFormatRate:
             (1024.0**4 * 2.5, "2.5 TB/s"),
         ],
     )
-    def test_format_rate_boundaries(
-        self, bytes_per_second: float, expected: str
-    ) -> None:
+    def test_format_rate_boundaries(self, bytes_per_second: float, expected: str) -> None:
         """Test format_rate at all unit boundaries."""
         assert format_rate(bytes_per_second) == expected
 
@@ -312,9 +308,7 @@ class TestFormatRate:
         assert isinstance(result, str)
         assert len(result) > 0
         assert "/s" in result
-        assert any(
-            unit in result for unit in ["Bytes/s", "KB/s", "MB/s", "GB/s", "TB/s"]
-        )
+        assert any(unit in result for unit in ["Bytes/s", "KB/s", "MB/s", "GB/s", "TB/s"])
 
     @given(st.floats(min_value=0.0, max_value=1024.0**5))
     def test_format_rate_idempotent(self, rate: float) -> None:
@@ -492,9 +486,7 @@ class TestPropertyBasedFormattingInvariants:
         precision1=st.integers(min_value=0, max_value=3),
         precision2=st.integers(min_value=0, max_value=3),
     )
-    def test_format_size_precision_consistency(
-        self, bytes_value: int, precision1: int, precision2: int
-    ) -> None:
+    def test_format_size_precision_consistency(self, bytes_value: int, precision1: int, precision2: int) -> None:
         """Property: format_size with same precision always produces same output.
 
         This tests that the precision parameter is deterministic and consistent.

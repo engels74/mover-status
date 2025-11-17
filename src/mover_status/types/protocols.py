@@ -59,9 +59,7 @@ class MessageFormatter(Protocol):
     platform-specific rich content and timestamp representations.
     """
 
-    def format_message(
-        self, template: str, placeholders: Mapping[str, object]
-    ) -> str:
+    def format_message(self, template: str, placeholders: Mapping[str, object]) -> str:
         """Format message with platform-specific formatting.
 
         Args:

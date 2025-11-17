@@ -20,7 +20,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from mover_status.core.monitoring import (
     MoverLifecycleEvent,
@@ -457,9 +458,7 @@ class TestWatchPidFile:
         await watch_and_cancel()
 
     @pytest.mark.asyncio
-    async def test_invalid_pid_content_emits_event_with_none(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_invalid_pid_content_emits_event_with_none(self, tmp_path: Path) -> None:
         """File with invalid PID should emit event with pid=None."""
         pid_file = tmp_path / "mover.pid"
 
@@ -1008,9 +1007,7 @@ class TestMonitorMoverLifecycle:
         assert "changed unexpectedly" in completed_events[0].message.lower()
 
     @pytest.mark.asyncio
-    async def test_lifecycle_handles_invalid_pid_gracefully(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_lifecycle_handles_invalid_pid_gracefully(self, tmp_path: Path) -> None:
         """Should handle PID file with invalid content gracefully."""
         pid_file = tmp_path / "mover.pid"
 
@@ -1082,9 +1079,7 @@ class TestMonitorMoverLifecycle:
         # Monitor lifecycle with custom interval
         start_time = asyncio.get_event_loop().time()
         events: list[MoverLifecycleEvent] = []
-        async for event in monitor_mover_lifecycle(
-            pid_file, check_interval=check_interval
-        ):
+        async for event in monitor_mover_lifecycle(pid_file, check_interval=check_interval):
             events.append(event)
             if event.new_state == MoverState.STARTED:
                 break
@@ -1120,9 +1115,7 @@ class TestPIDFileWatchingWithMocks:
     """Test PID file watching with mocked filesystem to simulate errors."""
 
     @pytest.mark.asyncio
-    async def test_watch_handles_file_deletion_race_condition(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_watch_handles_file_deletion_race_condition(self, tmp_path: Path) -> None:
         """Should handle file deleted between exists check and read."""
         pid_file = tmp_path / "mover.pid"
         _ = pid_file.write_text("12345")
@@ -1143,8 +1136,9 @@ class TestPIDFileWatchingWithMocks:
                 return None  # File disappeared between exists and read
             return original_read(path)
 
-        with patch.object(Path, "exists", mock_exists), patch(
-            "mover_status.core.monitoring.read_pid_from_file", side_effect=mock_read
+        with (
+            patch.object(Path, "exists", mock_exists),
+            patch("mover_status.core.monitoring.read_pid_from_file", side_effect=mock_read),
         ):
             events: list[PIDFileEvent] = []
             try:
@@ -1214,9 +1208,7 @@ class TestStateMachineProperties:
         pid1=st.integers(min_value=1, max_value=100000),
         pid2=st.integers(min_value=1, max_value=100000),
     )
-    def test_multiple_cycles_preserve_state_invariants(
-        self, pid1: int, pid2: int
-    ) -> None:
+    def test_multiple_cycles_preserve_state_invariants(self, pid1: int, pid2: int) -> None:
         """Multiple cycles should maintain state machine invariants."""
         sm = MoverLifecycleStateMachine()
 
@@ -1345,9 +1337,7 @@ class TestEdgeCasesParametrized:
             "[]",
         ],
     )
-    def test_read_pid_handles_invalid_content(
-        self, tmp_path: Path, invalid_pid_content: str
-    ) -> None:
+    def test_read_pid_handles_invalid_content(self, tmp_path: Path, invalid_pid_content: str) -> None:
         """Should return None for various invalid PID content formats."""
         pid_file = tmp_path / "test.pid"
         _ = pid_file.write_text(invalid_pid_content)
@@ -1368,9 +1358,7 @@ class TestEdgeCasesParametrized:
             ("\t12345\t", 12345),  # Tabs
         ],
     )
-    def test_read_pid_handles_valid_content(
-        self, tmp_path: Path, valid_pid: str, expected: int
-    ) -> None:
+    def test_read_pid_handles_valid_content(self, tmp_path: Path, valid_pid: str, expected: int) -> None:
         """Should correctly parse various valid PID formats."""
         pid_file = tmp_path / "test.pid"
         _ = pid_file.write_text(valid_pid)
@@ -1440,9 +1428,7 @@ class TestEdgeCasesParametrized:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("check_interval", [0.01, 0.05])
-    async def test_watch_respects_different_intervals(
-        self, tmp_path: Path, check_interval: float
-    ) -> None:
+    async def test_watch_respects_different_intervals(self, tmp_path: Path, check_interval: float) -> None:
         """Should respect various check interval values."""
         pid_file = tmp_path / "mover.pid"
         current_pid = os.getpid()
@@ -1641,9 +1627,7 @@ class TestLifecycleIntegration:
             events: list[MoverLifecycleEvent] = []
             try:
                 async with asyncio.timeout(0.3):
-                    async for event in monitor_mover_lifecycle(
-                        pid_file, check_interval=0.01
-                    ):
+                    async for event in monitor_mover_lifecycle(pid_file, check_interval=0.01):
                         events.append(event)
                         if event.new_state == MoverState.STARTED:
                             break
