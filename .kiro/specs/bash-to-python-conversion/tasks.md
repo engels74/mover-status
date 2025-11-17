@@ -11,7 +11,7 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
   - Configure basedpyright for type checking in recommended mode with failOnWarnings
   - Set up pytest with coverage reporting
   - Create noxfile.py for multi-environment testing
-  - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+  - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
 - [x] 2. Implement core type definitions and protocols
   - [x] 2.1 Create Protocol definitions for component interfaces
@@ -358,19 +358,8 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
      - Ensure no secrets in diagnostic output
      - Validate environment variable resolution
      - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-   
-   - [ ] 14.3 Set up dependency scanning
-     - Configure pip-audit for PyPI advisory scanning
-     - Configure bandit for code security analysis
-     - Add pre-commit hooks for security scanning
-     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
-   
-   - [ ] 14.4 Implement hash verification for dependencies
-     - Generate requirements.txt with hashes using uv export
-     - Document hash verification installation process
-     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
-- [ ] 15. Create comprehensive documentation
+   - [ ] 15. Create comprehensive documentation
    - [ ] 15.1 Write README.md
      - Add project overview and features
      - Add installation instructions for Unraid
@@ -405,20 +394,20 @@ This implementation plan breaks down the bash-to-Python conversion into discrete
      - Add comprehensive checks (basedpyright type checking)
      - Add test suite with coverage reporting
      - Add security scanning (pip-audit, bandit)
-     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
    
    - [ ] 16.2 Configure multi-environment testing
      - Test on Python 3.14
      - Test on multiple platforms (Linux, macOS)
      - Use matrix strategy for combinations
-     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+     - _Requirements: 16.5_
    
    - [ ] 16.3 Add release automation
      - Create workflow for release tags
      - Build package with uv build
      - Generate requirements with hash verification
      - Create GitHub release with artifacts
-     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
+     - _Requirements: 16.1_
 
 - [ ] 17. Perform feature parity validation
    - [ ] 17.1 Create feature parity checklist

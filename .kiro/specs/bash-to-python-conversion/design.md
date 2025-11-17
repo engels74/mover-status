@@ -826,27 +826,6 @@ webhook_url: ${MOVER_STATUS_DISCORD_WEBHOOK_URL}
 - No arbitrary code execution in templates
 - Safe string substitution only
 
-### Dependency Security
-
-**Multi-Tool Scanning:**
-- pip-audit: Scans against PyPI advisory database
-- bandit: Static code analysis for security issues
-- safety: Additional vulnerability database
-
-**Hash Verification:**
-```bash
-# Generate requirements with hashes
-uv export --frozen --generate-hashes > requirements.txt
-
-# Install with hash verification
-pip install --require-hashes -r requirements.txt
-```
-
-**Benefits:**
-- Prevents dependency confusion attacks
-- Prevents typosquatting attacks
-- Supply chain security
-
 ## Deployment
 
 ### Package Structure
