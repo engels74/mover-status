@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -190,8 +190,10 @@ class TestSendNotification:
         assert result.delivery_time_ms > 0.0
         assert result.should_retry is False
 
+    @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_rate_limit_error_returns_failure_result(
         self,
+        mock_sleep: AsyncMock,
         discord_config: DiscordConfig,
         mock_http_client: HTTPClient,
         notification_data: NotificationData,
@@ -201,7 +203,7 @@ class TestSendNotification:
         mock_client = cast(MockHTTPClient, mock_http_client)
         rate_limit_response = Response(
             status=429,
-            body={"message": "You are being rate limited", "retry_after": 5.0, "global": False},
+            body={"message": "You are being rate limited", "retry_after": 0.0, "global": False},
             headers={},
         )
         mock_client.post.return_value = rate_limit_response
@@ -219,6 +221,8 @@ class TestSendNotification:
         assert result.error_message is not None
         assert "status=429" in result.error_message
         assert result.should_retry is True
+        # Verify rate limit handling called sleep (enforces minimum 1.0s + 0.25s padding)
+        mock_sleep.assert_called()
 
     async def test_unexpected_exception_returns_failure_result(
         self,

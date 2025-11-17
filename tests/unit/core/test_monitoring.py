@@ -1475,8 +1475,8 @@ class TestEdgeCasesParametrized:
             "Process crashed unexpectedly",
             "Signal received",
             "Timeout exceeded",
-            "",  # Empty reason
-            "A" * 500,  # Very long reason
+            pytest.param("", id="empty-reason"),
+            pytest.param("A" * 500, id="very-long-reason-500chars"),
         ],
     )
     def test_completion_with_various_reasons(self, completion_reason: str) -> None:
