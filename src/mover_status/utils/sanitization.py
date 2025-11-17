@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any, TypeIs
+from typing import TypeIs
 
 # Redaction marker for sanitized values
 REDACTED = "<REDACTED>"
@@ -118,7 +118,8 @@ def sanitize_url(url: str) -> str:
         >>> sanitize_url("https://api.example.com/data?token=secret123")
         'https://api.example.com/data?token=<REDACTED>'
     """
-    if not url or not isinstance(url, str):
+    # Defensive check for runtime safety, even though type signature requires str
+    if not url or not isinstance(url, str):  # pyright: ignore[reportUnnecessaryIsInstance]
         return url
 
     # Apply provider-specific patterns first (most specific)
@@ -144,7 +145,7 @@ def _is_primitive(value: object) -> TypeIs[str | int | float | bool | None]:
     return isinstance(value, (str, int, float, bool, type(None)))
 
 
-def _is_mapping(value: object) -> TypeIs[Mapping[str, Any]]:
+def _is_mapping(value: object) -> TypeIs[Mapping[str, object]]:
     """Type predicate to check if value is a mapping.
 
     Args:
@@ -156,7 +157,7 @@ def _is_mapping(value: object) -> TypeIs[Mapping[str, Any]]:
     return isinstance(value, Mapping)
 
 
-def _is_sequence(value: object) -> TypeIs[Sequence[Any]]:
+def _is_sequence(value: object) -> TypeIs[Sequence[object]]:
     """Type predicate to check if value is a sequence (but not str/bytes).
 
     Args:

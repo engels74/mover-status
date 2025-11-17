@@ -162,7 +162,8 @@ class SecretRedactingFilter(logging.Filter):
             # Sanitize any extra fields
             for attr_name in list(record.__dict__.keys()):
                 if attr_name not in standard_attrs and not attr_name.startswith("_"):
-                    attr_value = getattr(record, attr_name)
+                    # getattr inherently returns Any for dynamic attributes - use explicit cast
+                    attr_value: object = getattr(record, attr_name)  # pyright: ignore[reportAny]
                     sanitized_value = sanitize_value(attr_value, field_name=attr_name)
                     setattr(record, attr_name, sanitized_value)
 

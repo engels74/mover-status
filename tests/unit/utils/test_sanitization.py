@@ -7,6 +7,8 @@ Requirements tested:
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from mover_status.utils.sanitization import (
@@ -161,7 +163,7 @@ class TestSanitizeValue:
         }
         sanitized = sanitize_value(data)
         assert isinstance(sanitized, dict)
-        assert "TOKEN" not in sanitized["url"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert "TOKEN" not in sanitized["url"]
         assert sanitized["status"] == 200
 
     def test_nested_dict_sanitization(self) -> None:
@@ -175,11 +177,12 @@ class TestSanitizeValue:
         }
         sanitized = sanitize_value(data)
         assert isinstance(sanitized, dict)
-        outer = sanitized["outer"]
+        # Cast to dict for type checker - isinstance check guarantees this at runtime
+        outer: object = cast(dict[str, object], sanitized)["outer"]
         assert isinstance(outer, dict)
-        inner = outer["inner"]
+        inner: object = cast(dict[str, object], outer)["inner"]
         assert isinstance(inner, dict)
-        assert inner["api_key"] == REDACTED
+        assert cast(dict[str, object], inner)["api_key"] == REDACTED
 
     def test_list_sanitization(self) -> None:
         """Test lists are sanitized recursively."""
@@ -193,7 +196,7 @@ class TestSanitizeValue:
         assert "TOKEN" not in sanitized[0]
         assert sanitized[1] == "normal string"
         assert isinstance(sanitized[2], dict)
-        assert sanitized[2]["api_key"] == REDACTED  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert sanitized[2]["api_key"] == REDACTED
 
     def test_tuple_sanitization_preserves_type(self) -> None:
         """Test tuples are sanitized and type is preserved."""
@@ -203,9 +206,11 @@ class TestSanitizeValue:
         )
         sanitized = sanitize_value(data)
         assert isinstance(sanitized, tuple)
-        assert len(sanitized) == 2
-        assert "TOKEN" not in sanitized[0]
-        assert sanitized[1] == 42
+        # Cast to tuple for type checker - isinstance check guarantees this at runtime
+        sanitized_tuple = cast(tuple[object, ...], sanitized)
+        assert len(sanitized_tuple) == 2
+        assert "TOKEN" not in cast(str, sanitized_tuple[0])
+        assert sanitized_tuple[1] == 42
 
     def test_primitive_types_pass_through(self) -> None:
         """Test primitive types pass through unchanged."""
@@ -320,7 +325,7 @@ class TestSanitizeMapping:
         sanitized = sanitize_mapping(data)
         config = sanitized["config"]
         assert isinstance(config, dict)
-        assert config["webhook_url"] == REDACTED  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert config["webhook_url"] == REDACTED
 
 
 class TestIntegrationScenarios:

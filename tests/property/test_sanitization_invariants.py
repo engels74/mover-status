@@ -10,6 +10,8 @@ Requirements tested:
 
 from __future__ import annotations
 
+from typing import cast
+
 from hypothesis import given, strategies as st
 
 from mover_status.utils.sanitization import (
@@ -125,21 +127,24 @@ class TestSanitizeValueInvariants:
         """Property: List length is preserved after sanitization."""
         sanitized = sanitize_value(values)
         assert isinstance(sanitized, list)
-        assert len(sanitized) == len(values)
+        # Cast to list for type checker - isinstance check guarantees this at runtime
+        assert len(cast(list[object], sanitized)) == len(values)
 
     @given(st.dictionaries(st.text(min_size=1), st.integers()))
     def test_dict_keys_preserved(self, data: dict[str, int]) -> None:
         """Property: Dictionary keys are preserved after sanitization."""
         sanitized = sanitize_value(data)
         assert isinstance(sanitized, dict)
-        assert set(sanitized.keys()) == set(data.keys())
+        # Cast to dict for type checker - isinstance check guarantees this at runtime
+        assert set(cast(dict[str, object], sanitized).keys()) == set(data.keys())
 
     @given(st.tuples(st.integers(), st.text()))
     def test_tuple_type_preserved(self, data: tuple[int, str]) -> None:
         """Property: Tuple type is preserved after sanitization."""
         sanitized = sanitize_value(data)
         assert isinstance(sanitized, tuple)
-        assert len(sanitized) == len(data)
+        # Cast to tuple for type checker - isinstance check guarantees this at runtime
+        assert len(cast(tuple[object, ...], sanitized)) == len(data)
 
     @given(st.recursive(
         st.integers() | st.text() | st.booleans() | st.none(),
