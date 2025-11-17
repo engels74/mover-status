@@ -141,7 +141,8 @@ async def test_dry_run_logs_payload_and_skips_provider_calls(
     assert data.correlation_id  # correlation ID should still be generated
     dry_run_logs = [record for record in caplog.records if record.message == "Dry-run notification recorded"]
     assert dry_run_logs, "Dry-run dispatch should be logged"
-    payload = cast(dict[str, object], dry_run_logs[0].notification_payload)
+    # Access dynamic attribute added via extra={} in logging call
+    payload = cast(dict[str, object], dry_run_logs[0].notification_payload)  # pyright: ignore[reportAttributeAccessIssue]
     assert payload["event_type"] == "started"
     assert payload["correlation_id"] == data.correlation_id
 
