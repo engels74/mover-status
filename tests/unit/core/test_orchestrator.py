@@ -147,7 +147,7 @@ async def test_orchestrator_handles_lifecycle_and_sampling(tmp_path: Path) -> No
             exclusion_paths=[],
         ),
         notifications=NotificationsConfig(thresholds=[0.0, 50.0, 100.0]),
-        providers=ProvidersConfig(discord_enabled=True, telegram_enabled=False),
+        providers=ProvidersConfig(enabled=["discord"]),
         application=ApplicationConfig(),
     )
 

@@ -176,40 +176,45 @@ class TestNotificationsConfig:
 class TestProvidersConfig:
     """Test ProvidersConfig validation."""
 
-    def test_valid_providers_config_discord_only(self) -> None:
-        """Test configuration with only webhook service enabled."""
-        config = ProvidersConfig(discord_enabled=True, telegram_enabled=False)
+    def test_valid_providers_config_single_provider(self) -> None:
+        """Test configuration with single provider enabled."""
+        config = ProvidersConfig(enabled=["discord"])
 
-        assert config.discord_enabled is True
-        assert config.telegram_enabled is False
+        assert config.enabled == ["discord"]
 
-    def test_valid_providers_config_telegram_only(self) -> None:
-        """Test configuration with only chat platform enabled."""
-        config = ProvidersConfig(discord_enabled=False, telegram_enabled=True)
+    def test_valid_providers_config_different_provider(self) -> None:
+        """Test configuration with different single provider enabled."""
+        config = ProvidersConfig(enabled=["telegram"])
 
-        assert config.discord_enabled is False
-        assert config.telegram_enabled is True
+        assert config.enabled == ["telegram"]
 
-    def test_valid_providers_config_both_enabled(self) -> None:
-        """Test configuration with both providers enabled."""
-        config = ProvidersConfig(discord_enabled=True, telegram_enabled=True)
+    def test_valid_providers_config_multiple_providers(self) -> None:
+        """Test configuration with multiple providers enabled."""
+        config = ProvidersConfig(enabled=["discord", "telegram"])
 
-        assert config.discord_enabled is True
-        assert config.telegram_enabled is True
+        assert config.enabled == ["discord", "telegram"]
 
     def test_at_least_one_provider_must_be_enabled(self) -> None:
         """Test validation fails if no providers are enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            _ = ProvidersConfig(discord_enabled=False, telegram_enabled=False)
+            _ = ProvidersConfig(enabled=[])
 
         assert "At least one notification provider must be enabled" in str(exc_info.value)
 
     def test_default_values(self) -> None:
         """Test default values require explicit enablement."""
         with pytest.raises(ValidationError) as exc_info:
-            _ = ProvidersConfig()
+            _ = ProvidersConfig()  # pyright: ignore[reportCallIssue]
 
-        assert "At least one notification provider must be enabled" in str(exc_info.value)
+        # Field is required, so will show "Field required" error
+        assert "Field required" in str(exc_info.value) or "required" in str(exc_info.value).lower()
+
+    def test_unknown_provider_identifier_raises_error(self) -> None:
+        """Test validation fails for unknown provider identifiers."""
+        with pytest.raises(ValidationError) as exc_info:
+            _ = ProvidersConfig(enabled=["nonexistent_provider"])
+
+        assert "Unknown provider identifier" in str(exc_info.value)
 
 
 @pytest.mark.unit
@@ -260,7 +265,7 @@ def is_monitoring_runtime_config(obj: object) -> TypeIs[MonitoringRuntimeConfig]
 
 def is_providers_runtime_config(obj: object) -> TypeIs[ProvidersRuntimeConfig]:
     """Type predicate to narrow to ProvidersRuntimeConfig."""
-    return isinstance(obj, dict) and "discord_enabled" in obj and "telegram_enabled" in obj
+    return isinstance(obj, dict) and "enabled" in obj
 
 
 def is_application_runtime_config(obj: object) -> TypeIs[ApplicationRuntimeConfig]:
@@ -279,13 +284,13 @@ class TestMainConfig:
         config = MainConfig(
             monitoring=MonitoringConfig(pid_file=pid_file),
             notifications=NotificationsConfig(),
-            providers=ProvidersConfig(discord_enabled=True),
+            providers=ProvidersConfig(enabled=["discord"]),
             application=ApplicationConfig(),
         )
 
         assert config.monitoring.pid_file == pid_file
         assert config.notifications.completion_enabled is True
-        assert config.providers.discord_enabled is True
+        assert config.providers.enabled == ["discord"]
         assert config.application.log_level == "INFO"
 
     def test_application_has_default(self, tmp_path: Path) -> None:
@@ -295,7 +300,7 @@ class TestMainConfig:
         config = MainConfig(
             monitoring=MonitoringConfig(pid_file=pid_file),
             notifications=NotificationsConfig(),
-            providers=ProvidersConfig(discord_enabled=True),
+            providers=ProvidersConfig(enabled=["discord"]),
         )
 
         assert config.application.log_level == "INFO"
@@ -312,7 +317,7 @@ class TestMainConfig:
                 process_timeout=400,
             ),
             notifications=NotificationsConfig(retry_attempts=3),
-            providers=ProvidersConfig(discord_enabled=True, telegram_enabled=True),
+            providers=ProvidersConfig(enabled=["discord", "telegram"]),
             application=ApplicationConfig(log_level="DEBUG", dry_run=True),
         )
 
@@ -329,8 +334,7 @@ class TestMainConfig:
 
         providers_runtime = runtime["providers"]
         assert is_providers_runtime_config(providers_runtime)
-        assert providers_runtime["discord_enabled"] is True
-        assert providers_runtime["telegram_enabled"] is True
+        assert providers_runtime["enabled"] == ["discord", "telegram"]
 
         application_runtime = runtime["application"]
         assert is_application_runtime_config(application_runtime)
@@ -348,7 +352,7 @@ class TestMainConfig:
                     sampling_interval=-10,  # Invalid: must be positive
                 ),
                 notifications=NotificationsConfig(),
-                providers=ProvidersConfig(discord_enabled=True),
+                providers=ProvidersConfig(enabled=["discord"]),
             )
 
         assert "greater than 0" in str(exc_info.value).lower()
@@ -359,7 +363,7 @@ class TestMainConfig:
                 notifications=NotificationsConfig(
                     thresholds=[0.0, 150.0]  # Invalid: > 100
                 ),
-                providers=ProvidersConfig(discord_enabled=True),
+                providers=ProvidersConfig(enabled=["discord"]),
             )
 
         assert "Threshold must be between 0 and 100" in str(exc_info.value)
@@ -600,8 +604,8 @@ notifications:
   retry_attempts: 3
 
 providers:
-  discord_enabled: true
-  telegram_enabled: false
+  enabled:
+    - discord
 
 application:
   log_level: DEBUG
@@ -620,8 +624,7 @@ application:
         assert config.monitoring.process_timeout == 600
         assert config.notifications.thresholds == [0.0, 50.0, 100.0]
         assert config.notifications.retry_attempts == 3
-        assert config.providers.discord_enabled is True
-        assert config.providers.telegram_enabled is False
+        assert config.providers.enabled == ["discord"]
         assert config.application.log_level == "DEBUG"
         assert config.application.dry_run is False
 
@@ -640,8 +643,8 @@ notifications:
   thresholds: [0.0, 100.0]
 
 providers:
-  discord_enabled: true
-  telegram_enabled: false
+  enabled:
+    - discord
 
 application:
   log_level: ${TEST_LOG_LEVEL}
@@ -701,8 +704,8 @@ notifications:
   thresholds: [0.0, 100.0]
 
 providers:
-  discord_enabled: true
-  telegram_enabled: false
+  enabled:
+    - discord
 
 application:
   log_level: ${{MISSING_VAR}}
@@ -731,8 +734,8 @@ notifications:
   thresholds: [0.0, 100.0]
 
 providers:
-  discord_enabled: true
-  telegram_enabled: false
+  enabled:
+    - discord
 """
         _ = config_file.write_text(config_content)
 
@@ -758,8 +761,8 @@ notifications:
   thresholds: [0.0, 150.0]
 
 providers:
-  discord_enabled: true
-  telegram_enabled: false
+  enabled:
+    - discord
 """
         _ = config_file.write_text(config_content)
 

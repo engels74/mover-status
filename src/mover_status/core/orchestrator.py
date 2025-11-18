@@ -362,7 +362,7 @@ class Orchestrator:
         _ = self._cycle_active.clear()
 
     async def _initialize_providers(self) -> None:
-        provider_flags = self.config.providers.model_dump()
+        provider_flags = {provider_id: True for provider_id in self.config.providers.enabled}
         loaded = self._plugin_loader.load_enabled_plugins(
             provider_flags=provider_flags,
             factory_kwargs=self._provider_init_kwargs,

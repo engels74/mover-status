@@ -9,6 +9,5 @@ register_plugin(
         package=__name__,
         version="0.1.0",
         description="Delivers mover status updates to Telegram chats.",
-        enabled_flag="telegram_enabled",
     )
 )

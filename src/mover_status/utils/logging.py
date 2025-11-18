@@ -91,11 +91,11 @@ class SecretRedactingFilter(logging.Filter):
         - 6.5: Authentication failures logged WITHOUT including secret values
 
     Examples:
-        >>> logger.info("POST to %s", "https://discord.com/api/webhooks/123/token")
-        # Logged as: "POST to https://discord.com/api/webhooks/123/<REDACTED>"
+        >>> logger.info("POST to %s", "https://api.example.com/webhooks/123/token")
+        # Logged as: "POST to https://api.example.com/webhooks/123/<REDACTED>"
 
-        >>> logger.error("Failed", extra={"url": "https://api.telegram.org/bot123/send"})
-        # extra sanitized to: {"url": "https://api.telegram.org/bot<REDACTED>/send"}
+        >>> logger.error("Failed", extra={"url": "https://api.provider.com/bot123/send"})
+        # extra sanitized to: {"url": "https://api.provider.com/bot<REDACTED>/send"}
     """
 
     @override
@@ -192,7 +192,7 @@ def configure_logging(
         >>> configure_logging(log_level="INFO", enable_syslog=True)
         >>> logger = logging.getLogger(__name__)
         >>> correlation_id_var.set("abc-123")
-        >>> logger.info("Notification sent", extra={"provider": "discord"})
+        >>> logger.info("Notification sent", extra={"provider": "provider_a"})
     """
     # Get root logger
     root_logger = logging.getLogger()
@@ -348,7 +348,7 @@ def log_with_context(
         ...     logging.INFO,
         ...     "Notification sent successfully",
         ...     extra={
-        ...         "provider": "discord",
+        ...         "provider": "provider_a",
         ...         "event_type": "progress",
         ...         "percent": 75.5,
         ...         "delivery_time_ms": 234.5,

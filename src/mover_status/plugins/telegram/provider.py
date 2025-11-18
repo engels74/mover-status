@@ -12,6 +12,7 @@ client components. Responsibilities (Requirements 9.1–9.4) include:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -27,12 +28,20 @@ from mover_status.plugins.telegram.config import TelegramConfig
 from mover_status.plugins.telegram.formatter import TelegramFormatter
 from mover_status.types.models import HealthStatus, NotificationData, NotificationResult
 from mover_status.types.protocols import HTTPClient
+from mover_status.utils.sanitization import REDACTED, register_sanitization_pattern
 from mover_status.utils.template import load_template
 
 __all__ = ["TelegramProvider", "create_provider"]
 
 _DEFAULT_TEMPLATE: Final[str] = "Progress {percent}% | Remaining {remaining_data} | Rate {rate} | ETA {etc}"
 _PROVIDER_NAME: Final[str] = "Telegram"
+
+# URL sanitization pattern for Telegram Bot API URLs
+# Matches: https://api.telegram.org/bot<token>/method
+_TELEGRAM_BOT_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"(https?://api\.telegram\.org/bot)([^/?#]+)(/[^?#]*)",
+    re.IGNORECASE,
+)
 
 
 def _should_retry_telegram_error(error: TelegramAPIError) -> bool:
@@ -191,6 +200,9 @@ def create_provider(
     footer: str | None = None,
 ) -> TelegramProvider:
     """Factory for creating TelegramProvider instances."""
+    # Register URL sanitization pattern for Telegram Bot API
+    register_sanitization_pattern(_TELEGRAM_BOT_PATTERN, rf"\1{REDACTED}\3")
+
     validated_template = load_template(template)
 
     return TelegramProvider(

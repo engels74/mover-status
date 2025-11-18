@@ -176,7 +176,7 @@ def _make_config(
             exclusion_paths=[],
         ),
         notifications=NotificationsConfig(thresholds=thresholds or [25.0, 50.0, 75.0, 100.0]),
-        providers=ProvidersConfig(discord_enabled=True, telegram_enabled=False),
+        providers=ProvidersConfig(enabled=["discord"]),
         application=ApplicationConfig(),
     )
 

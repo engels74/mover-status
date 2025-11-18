@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated, Final, NotRequired, ReadOnly, TypedDict
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # Regular expression pattern for environment variable references
 # Matches ${VARIABLE_NAME} syntax where VARIABLE_NAME can contain letters, digits, and underscores
@@ -157,12 +157,11 @@ class NotificationsConfig(BaseModel):
 class ProvidersRuntimeConfig(TypedDict):
     """Immutable runtime configuration for providers (ReadOnly fields).
 
-    This TypedDict represents runtime-only provider enablement flags that
+    This TypedDict represents runtime-only provider enablement that
     should not be modified during execution.
     """
 
-    discord_enabled: ReadOnly[bool]
-    telegram_enabled: ReadOnly[bool]
+    enabled: ReadOnly[list[str]]
 
 
 class ProvidersConfig(BaseModel):
@@ -172,33 +171,48 @@ class ProvidersConfig(BaseModel):
     Providers are loaded dynamically from the plugins directory when enabled.
     """
 
-    discord_enabled: Annotated[
-        bool,
+    enabled: Annotated[
+        list[str],
         Field(
-            description="Enable webhook service notifications",
+            description="List of enabled notification provider identifiers",
         ),
-    ] = False
-    telegram_enabled: Annotated[
-        bool,
-        Field(
-            description="Enable chat platform notifications",
-        ),
-    ] = False
+    ]
 
-    @model_validator(mode="after")
-    def validate_at_least_one_provider(self) -> ProvidersConfig:
-        """Validate that at least one provider is enabled.
+    @field_validator("enabled", mode="after")
+    @classmethod
+    def validate_provider_identifiers(cls, v: list[str]) -> list[str]:
+        """Validate provider identifiers against discovered plugins.
+
+        Args:
+            v: List of provider identifiers
 
         Returns:
-            Validated configuration
+            Validated provider identifiers
 
         Raises:
-            ValueError: If no providers are enabled
+            ValueError: If any provider identifier is unknown
         """
-        if not (self.discord_enabled or self.telegram_enabled):
+        if not v:
             msg = "At least one notification provider must be enabled"
             raise ValueError(msg)
-        return self
+
+        # Import here to avoid circular dependency at module level
+        from mover_status.plugins.discovery import discover_plugins
+
+        # Discover all available plugins (regardless of enablement)
+        all_plugins = discover_plugins(enabled_only=False, provider_flags={})
+        available_identifiers = {plugin.identifier for plugin in all_plugins}
+
+        # Check for unknown provider identifiers
+        unknown = set(v) - available_identifiers
+        if unknown:
+            msg = (
+                f"Unknown provider identifier(s): {', '.join(sorted(unknown))}. "
+                f"Available providers: {', '.join(sorted(available_identifiers))}"
+            )
+            raise ValueError(msg)
+
+        return v
 
 
 class ApplicationRuntimeConfig(TypedDict):
@@ -300,8 +314,7 @@ class MainConfig(BaseModel):
                 process_timeout=self.monitoring.process_timeout,
             ),
             "providers": ProvidersRuntimeConfig(
-                discord_enabled=self.providers.discord_enabled,
-                telegram_enabled=self.providers.telegram_enabled,
+                enabled=self.providers.enabled,
             ),
             "application": ApplicationRuntimeConfig(
                 log_level=self.application.log_level,
@@ -553,14 +566,14 @@ def load_provider_config[T: BaseModel](
         EnvironmentVariableError: If required environment variable is missing
 
     Examples:
-        >>> from mover_status.plugins.discord.config import DiscordConfig
+        >>> from mover_status.plugins.provider_a.config import ProviderAConfig
         >>> config = load_provider_config(
-        ...     Path("config/providers/discord.yaml"),
-        ...     DiscordConfig,
-        ...     provider_name="Discord"
+        ...     Path("config/providers/provider_a.yaml"),
+        ...     ProviderAConfig,
+        ...     provider_name="Provider A"
         ... )
         >>> print(config.webhook_url)
-        https://discord.com/api/webhooks/...
+        https://example.com/webhooks/...
     """
     # Validate file exists
     if not config_path.exists():

@@ -100,17 +100,7 @@ def get_plugin(identifier: str) -> PluginMetadata | None:
 
 def _is_enabled(metadata: PluginMetadata, flags: Mapping[str, bool]) -> bool:
     """Return True if the provider is enabled based on configuration flags."""
-    slug_value = flags.get(metadata.identifier)
-    if slug_value is not None:
-        return bool(slug_value)
-
-    if metadata.enabled_flag is None:
-        return False
-
-    flag_value = flags.get(metadata.enabled_flag)
-    if flag_value is None:
-        return False
-    return bool(flag_value)
+    return flags.get(metadata.identifier, False)
 
 
 def _scan_plugin_packages(*, force_rescan: bool) -> None:

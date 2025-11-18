@@ -9,11 +9,11 @@ Security Requirements:
     - 6.5: Authentication failures logged WITHOUT including secret values
 
 Examples:
-    >>> sanitize_url("https://discord.com/api/webhooks/123/secret_token")
-    'https://discord.com/api/webhooks/123/<REDACTED>'
+    >>> sanitize_url("https://api.example.com/webhooks/123/secret_token")
+    'https://api.example.com/webhooks/123/<REDACTED>'
 
-    >>> sanitize_url("https://api.telegram.org/bot123:ABC/sendMessage")
-    'https://api.telegram.org/bot<REDACTED>/sendMessage'
+    >>> sanitize_url("https://api.example.com/bot123:ABC/sendMessage")
+    'https://api.example.com/bot<REDACTED>/sendMessage'
 
     >>> sanitize_value({"webhook": "https://example.com/token", "count": 42})
     {'webhook': 'https://example.com/<REDACTED>', 'count': 42}
@@ -28,19 +28,35 @@ from typing import TypeIs
 # Redaction marker for sanitized values
 REDACTED = "<REDACTED>"
 
-# URL patterns for provider-specific endpoints
-# Discord: https://discord.com/api/webhooks/<id>/<token>
-# Discord: https://discordapp.com/api/webhooks/<id>/<token>
-_DISCORD_WEBHOOK_PATTERN = re.compile(
-    r"(https?://(?:discord(?:app)?\.com)/api/webhooks/\d+/)([^/?#]+)",
-    re.IGNORECASE,
-)
+# Provider-specific URL pattern registry
+# Plugins register their URL sanitization patterns at initialization time
+# Each entry is a tuple of (pattern, replacement_template)
+_PROVIDER_URL_PATTERNS: list[tuple[re.Pattern[str], str]] = []
 
-# Telegram: https://api.telegram.org/bot<token>/method
-_TELEGRAM_BOT_PATTERN = re.compile(
-    r"(https?://api\.telegram\.org/bot)([^/?#]+)(/[^?#]*)",
-    re.IGNORECASE,
-)
+
+def register_sanitization_pattern(pattern: re.Pattern[str], replacement: str) -> None:
+    """Register a provider-specific URL sanitization pattern.
+
+    Plugins call this function during initialization to register URL patterns
+    for sanitizing provider-specific endpoints. Patterns are applied in
+    registration order during URL sanitization.
+
+    Args:
+        pattern: Compiled regex pattern for identifying and sanitizing
+            provider-specific URLs. Should use capture groups to preserve
+            URL structure while redacting sensitive tokens.
+        replacement: Replacement template string using regex backreferences
+            (e.g., r"\\1<REDACTED>\\3" to keep groups 1 and 3, redact group 2).
+            Use REDACTED constant for consistency.
+
+    Examples:
+        >>> import re
+        >>> from mover_status.utils.sanitization import REDACTED
+        >>> pattern = re.compile(r"(https://api.example.com/key/)([^/?#]+)")
+        >>> register_sanitization_pattern(pattern, rf"\\1{REDACTED}")
+    """
+    _PROVIDER_URL_PATTERNS.append((pattern, replacement))
+
 
 # Generic patterns for common secret-bearing URL structures
 # Pattern for URLs with tokens in path segments
@@ -95,9 +111,9 @@ def sanitize_url(url: str) -> str:
     """Sanitize sensitive tokens from URLs while preserving structure.
 
     This function identifies and redacts tokens in URLs from various services:
-    - Webhook services (Discord, generic webhooks)
+    - Webhook services (generic webhooks, provider-specific endpoints)
     - API endpoints with tokens in path or query parameters
-    - Bot APIs (Telegram)
+    - Chat platform bot APIs
 
     The URL structure is preserved to maintain useful debugging information
     (scheme, domain, path structure) while removing sensitive token values.
@@ -109,11 +125,11 @@ def sanitize_url(url: str) -> str:
         Sanitized URL with tokens replaced by REDACTED marker
 
     Examples:
-        >>> sanitize_url("https://discord.com/api/webhooks/123/secret_token")
-        'https://discord.com/api/webhooks/123/<REDACTED>'
+        >>> sanitize_url("https://api.example.com/webhooks/123/secret_token")
+        'https://api.example.com/webhooks/123/<REDACTED>'
 
-        >>> sanitize_url("https://api.telegram.org/bot123:ABC/sendMessage")
-        'https://api.telegram.org/bot<REDACTED>/sendMessage'
+        >>> sanitize_url("https://api.provider.com/bot123:ABC/sendMessage")
+        'https://api.provider.com/bot<REDACTED>/sendMessage'
 
         >>> sanitize_url("https://api.example.com/data?token=secret123")
         'https://api.example.com/data?token=<REDACTED>'
@@ -122,9 +138,12 @@ def sanitize_url(url: str) -> str:
     if not url or not isinstance(url, str):  # pyright: ignore[reportUnnecessaryIsInstance]
         return url
 
+    sanitized = url
+
     # Apply provider-specific patterns first (most specific)
-    sanitized = _DISCORD_WEBHOOK_PATTERN.sub(rf"\1{REDACTED}", url)
-    sanitized = _TELEGRAM_BOT_PATTERN.sub(rf"\1{REDACTED}\3", sanitized)
+    # Patterns registered by plugins during initialization
+    for pattern, replacement in _PROVIDER_URL_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
 
     # Apply generic patterns to catch other token-bearing URLs
     sanitized = _GENERIC_TOKEN_IN_PATH.sub(rf"\1{REDACTED}", sanitized)
@@ -190,14 +209,14 @@ def sanitize_value(
         Sanitized value with secrets replaced by REDACTED marker
 
     Examples:
-        >>> sanitize_value("https://discord.com/api/webhooks/123/token")
-        'https://discord.com/api/webhooks/123/<REDACTED>'
+        >>> sanitize_value("https://api.example.com/webhooks/123/token")
+        'https://api.example.com/webhooks/123/<REDACTED>'
 
         >>> sanitize_value({"api_token": "secret", "count": 42})
         {'api_token': '<REDACTED>', 'count': 42}
 
-        >>> sanitize_value(["https://api.telegram.org/bot123/send", "ok"])
-        ['https://api.telegram.org/bot<REDACTED>/send', 'ok']
+        >>> sanitize_value(["https://api.provider.com/bot123/send", "ok"])
+        ['https://api.provider.com/bot<REDACTED>/send', 'ok']
     """
     # Check if field name indicates sensitive data
     if field_name and is_sensitive_field(field_name):
@@ -266,8 +285,8 @@ def sanitize_args(args: tuple[object, ...]) -> tuple[object, ...]:
         Tuple with sanitized arguments
 
     Examples:
-        >>> sanitize_args(("Connecting to %s", "https://discord.com/api/webhooks/1/token"))
-        ('Connecting to %s', 'https://discord.com/api/webhooks/1/<REDACTED>')
+        >>> sanitize_args(("Connecting to %s", "https://api.example.com/webhooks/1/token"))
+        ('Connecting to %s', 'https://api.example.com/webhooks/1/<REDACTED>')
     """
     return tuple(sanitize_value(arg) for arg in args)
 
@@ -284,7 +303,7 @@ def sanitize_mapping(
         Dictionary with sanitized values
 
     Examples:
-        >>> sanitize_mapping({"url": "https://api.telegram.org/bot123/send", "status": 200})
-        {'url': 'https://api.telegram.org/bot<REDACTED>/send', 'status': 200}
+        >>> sanitize_mapping({"url": "https://api.provider.com/bot123/send", "status": 200})
+        {'url': 'https://api.provider.com/bot<REDACTED>/send', 'status': 200}
     """
     return {key: sanitize_value(val, field_name=key) for key, val in data.items()}

@@ -9,6 +9,5 @@ register_plugin(
         package=__name__,
         version="0.1.0",
         description="Sends mover status updates to Discord webhooks.",
-        enabled_flag="discord_enabled",
     )
 )
