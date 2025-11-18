@@ -165,12 +165,12 @@ def test_plugin_discovery_detects_packages(plugin_test_env: PluginPackageBuilder
 
 def test_loader_respects_configuration_flags(plugin_test_env: PluginPackageBuilder) -> None:
     """Plugin loader should only initialize providers enabled in configuration."""
-    plugin_test_env.create_plugin("alpha", enabled_flag="alpha_enabled")
-    plugin_test_env.create_plugin("beta", enabled_flag="beta_enabled")
+    plugin_test_env.create_plugin("alpha")
+    plugin_test_env.create_plugin("beta")
 
     loader = PluginLoader()
     loaded = loader.load_enabled_plugins(
-        provider_flags={"alpha_enabled": True, "beta_enabled": False},
+        provider_flags={"alpha": True, "beta": False},
         force_rescan=True,
     )
 

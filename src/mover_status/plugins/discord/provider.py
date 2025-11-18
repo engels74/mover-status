@@ -14,7 +14,6 @@ Responsibilities (Requirement 9.4):
 from __future__ import annotations
 
 import logging
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,21 +28,12 @@ from mover_status.plugins.discord.config import DiscordConfig
 from mover_status.plugins.discord.formatter import DiscordFormatter
 from mover_status.types.models import HealthStatus, NotificationData, NotificationResult
 from mover_status.types.protocols import HTTPClient
-from mover_status.utils.sanitization import REDACTED, register_sanitization_pattern
 from mover_status.utils.template import load_template
 
 __all__ = ["DiscordProvider", "create_provider"]
 
 _DEFAULT_TEMPLATE: Final[str] = "Progress: {percent}% | Remaining: {remaining_data} | Rate: {rate} | ETA: {etc}"
 _PROVIDER_NAME: Final[str] = "Discord"
-
-# URL sanitization pattern for Discord webhook URLs
-# Matches: https://discord.com/api/webhooks/<id>/<token>
-#          https://discordapp.com/api/webhooks/<id>/<token>
-_DISCORD_WEBHOOK_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"(https?://(?:discord(?:app)?\.com)/api/webhooks/\d+/)([^/?#]+)",
-    re.IGNORECASE,
-)
 
 
 def _should_retry_discord_error(error: DiscordAPIError) -> bool:
@@ -272,9 +262,6 @@ def create_provider(
         >>> http_client = SomeHTTPClient()
         >>> provider = create_provider(config=config, http_client=http_client)
     """
-    # Register URL sanitization pattern for Discord webhooks
-    register_sanitization_pattern(_DISCORD_WEBHOOK_PATTERN, rf"\1{REDACTED}")
-
     # Validate template before creating provider
     validated_template = load_template(template)
 

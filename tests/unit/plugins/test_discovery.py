@@ -21,7 +21,7 @@ def test_discover_plugins_filters_enabled_flags() -> None:
     """Only enabled providers should be returned when filtering."""
     enabled = discover_plugins(
         enabled_only=True,
-        provider_flags={"discord_enabled": True, "telegram_enabled": False},
+        provider_flags={"discord": True, "telegram": False},
     )
     identifiers = {meta.identifier for meta in enabled}
     assert identifiers == {"discord"}
@@ -50,7 +50,6 @@ def test_register_plugin_rejects_duplicates() -> None:
         name="Duplicate Discord",
         package="mover_status.plugins.discord",
         version="1.0.0",
-        enabled_flag="discord_enabled",
     )
     with pytest.raises(ValueError):
         register_plugin(metadata)
