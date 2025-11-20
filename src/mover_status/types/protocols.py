@@ -20,8 +20,34 @@ from mover_status.types.models import (
 class NotificationProvider(Protocol):
     """Protocol for notification delivery providers.
 
-    Defines the interface for sending notifications to external platforms
-    (e.g., webhook services, chat platforms) with health monitoring capabilities.
+    Implementations deliver notifications to external services while reporting
+    their health. The protocol is intentionally provider-agnostic to preserve
+    the plugin architecture.
+
+    Example:
+        >>> class WebhookProvider(NotificationProvider):
+        ...     def __init__(self, endpoint: str) -> None:
+        ...         self._endpoint = endpoint
+        ...
+        ...     async def send_notification(self, data: NotificationData) -> NotificationResult:
+        ...         # Make an HTTP request using a shared client
+        ...         return NotificationResult(
+        ...             success=True,
+        ...             provider_name="webhook",
+        ...             error_message=None,
+        ...             delivery_time_ms=12.3,
+        ...         )
+        ...
+        ...     def validate_config(self) -> bool:
+        ...         return bool(self._endpoint)
+        ...
+        ...     async def health_check(self) -> HealthStatus:
+        ...         return HealthStatus(
+        ...             is_healthy=True,
+        ...             last_check=datetime.now(),
+        ...             consecutive_failures=0,
+        ...             error_message=None,
+        ...         )
     """
 
     async def send_notification(self, data: NotificationData) -> NotificationResult:
@@ -55,8 +81,16 @@ class NotificationProvider(Protocol):
 class MessageFormatter(Protocol):
     """Protocol for platform-specific message formatting.
 
-    Defines the interface for formatting notification messages with
-    platform-specific rich content and timestamp representations.
+    Implementations translate generic notification data into platform-friendly
+    message strings without embedding provider-specific logic in core modules.
+
+    Example:
+        >>> class PlainTextFormatter(MessageFormatter):
+        ...     def format_message(self, template: str, placeholders: Mapping[str, object]) -> str:
+        ...         return template.format(**placeholders)
+        ...
+        ...     def format_time(self, timestamp: datetime) -> str:
+        ...         return timestamp.isoformat()
     """
 
     def format_message(self, template: str, placeholders: Mapping[str, object]) -> str:
@@ -87,8 +121,16 @@ class MessageFormatter(Protocol):
 class HTTPClient(Protocol):
     """Protocol for HTTP client operations.
 
-    Defines the interface for making HTTP requests with timeout
-    and retry capabilities for reliable notification delivery.
+    Implementations submit HTTP POST requests with timeout and retry behavior.
+    The protocol can be fulfilled by production clients or testing doubles.
+
+    Example:
+        >>> class LoggingHTTPClient(HTTPClient):
+        ...     async def post(self, url: str, payload: Mapping[str, object], *, timeout: float) -> Response:
+        ...         return Response(status=200, body={"echo": payload}, headers={})
+        ...
+        ...     async def post_with_retry(self, url: str, payload: Mapping[str, object]) -> Response:
+        ...         return await self.post(url, payload, timeout=5.0)
     """
 
     async def post(

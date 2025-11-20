@@ -53,6 +53,15 @@ _DEFAULT_RATE_WINDOW_SIZE = 3
 
 
 class BaselineSampler(Protocol):
+    """Callable protocol for asynchronous baseline sampling.
+
+    Implementations capture initial disk usage before monitoring begins.
+
+    Example:
+        async def sampler(paths: Sequence[Path], *, exclusion_paths: Sequence[Path] | None = None) -> DiskSample:
+            return await capture_baseline_async(paths, exclusion_paths=exclusion_paths)
+    """
+
     async def __call__(
         self,
         paths: Sequence[Path],
@@ -62,6 +71,24 @@ class BaselineSampler(Protocol):
 
 
 class UsageSampler(Protocol):
+    """Callable protocol for asynchronous usage sampling during monitoring.
+
+    Implementations collect ongoing disk usage snapshots with optional caching.
+
+    Example:
+        async def sampler(
+            paths: Sequence[Path],
+            *,
+            exclusion_paths: Sequence[Path] | None = None,
+            cache_duration_seconds: int = 30,
+        ) -> DiskSample:
+            return await sample_current_usage_async(
+                paths,
+                exclusion_paths=exclusion_paths,
+                cache_duration_seconds=cache_duration_seconds,
+            )
+    """
+
     async def __call__(
         self,
         paths: Sequence[Path],
