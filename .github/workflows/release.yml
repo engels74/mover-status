@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  build-and-publish:
+    name: Build and publish artifacts
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run test suite
+        run: >
+          uv run pytest
+          --cov=mover_status
+          --cov-report=term-missing:skip-covered
+          --cov-report=xml
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Export hashed requirements
+        run: uv export --frozen --generate-hashes > requirements.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: |
+            dist/*
+            requirements.txt
+            coverage.xml
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+            requirements.txt
+            coverage.xml

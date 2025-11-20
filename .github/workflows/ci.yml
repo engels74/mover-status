@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: Ruff lint and format check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: basedpyright
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run basedpyright
+        run: uvx basedpyright@latest
+
+  tests:
+    name: Tests (coverage)
+    needs: [lint, typecheck]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run tests with coverage
+        run: >
+          uv run pytest
+          --cov=mover_status
+          --cov-report=term-missing:skip-covered
+          --cov-report=xml
+          --cov-report=html
+
+      - name: Upload coverage artifact
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov
