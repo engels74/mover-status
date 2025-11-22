@@ -90,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ["3.14"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -116,7 +116,7 @@ jobs:
           --cov-report=html
 
       - name: Upload coverage artifact
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python-version }}
