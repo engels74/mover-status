@@ -36,17 +36,13 @@ PROTECTED_DIRS: Final[tuple[str, ...]] = ("core", "types", "utils")
 PROVIDER_NAMES: Final[tuple[str, ...]] = ("discord", "telegram")
 
 # Regex patterns for violation detection
-IMPORT_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"from\s+mover_status\.plugins\.(?:discord|telegram)\b"
-)
+IMPORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"from\s+mover_status\.plugins\.(?:discord|telegram)\b")
 
 # Pattern to match provider names in code (case-insensitive)
 # Excludes:
 # - Comments explaining what we're checking for (like this file)
 # - Variable names that are compound words (e.g., "concord", "elegram")
-PROVIDER_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:discord|telegram)\b", re.IGNORECASE
-)
+PROVIDER_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"\b(?:discord|telegram)\b", re.IGNORECASE)
 
 # Pattern to match provider-specific config field names
 CONFIG_FIELD_PATTERN: Final[re.Pattern[str]] = re.compile(
@@ -100,8 +96,7 @@ def check_file(file_path: Path) -> list[tuple[int, str]]:
             if not (
                 line.strip().startswith("#")
                 and any(
-                    keyword in line.lower()
-                    for keyword in ["check", "validate", "exclude", "example", "e.g.", "like"]
+                    keyword in line.lower() for keyword in ["check", "validate", "exclude", "example", "e.g.", "like"]
                 )
             ):
                 violations.append(
@@ -176,9 +171,7 @@ def main() -> int:
     # Report results
     if not all_violations:
         print(f"{GREEN}✓ No provider isolation violations found!{RESET}")
-        print(
-            f"{GREEN}✓ Core, types, and utils modules are completely provider-agnostic{RESET}"
-        )
+        print(f"{GREEN}✓ Core, types, and utils modules are completely provider-agnostic{RESET}")
         return 0
 
     # Print violations
