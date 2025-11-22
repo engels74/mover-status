@@ -1,0 +1,18 @@
+# Discord Provider Configuration for E2E Testing
+# ===============================================
+#
+# This configuration uses environment variables to inject test credentials
+# from GitHub Secrets. The webhook URL should point to a dedicated test
+# channel to avoid spamming production channels.
+#
+# Required environment variable:
+#   E2E_DISCORD_WEBHOOK_URL - Discord webhook URL for test notifications
+
+# Discord webhook URL from GitHub Secrets
+webhook_url: "${E2E_DISCORD_WEBHOOK_URL}"
+
+# Custom username for test notifications (helps identify E2E test messages)
+username: "Mover Status E2E Test"
+
+# Use a distinct color for test notifications (orange)
+embed_color: "#FF8C00"

@@ -1,0 +1,226 @@
+version: '3.8'
+
+# ============================================================================
+# E2E Test Environment for Mover Status
+# ============================================================================
+#
+# This Docker Compose configuration sets up a complete E2E test environment
+# that simulates the Unraid mover workflow. It includes:
+#
+# 1. mover-status service: Monitors PID file and sends notifications
+# 2. mover-simulator service: Simulates Unraid mover process
+# 3. Shared volumes: PID file, test filesystem, configs
+#
+# Usage:
+#   # Run E2E test
+#   docker compose -f tests/e2e/docker-compose.e2e.yml up --abort-on-container-exit
+#
+#   # View logs
+#   docker compose -f tests/e2e/docker-compose.e2e.yml logs -f
+#
+#   # Clean up
+#   docker compose -f tests/e2e/docker-compose.e2e.yml down -v
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # Mover Status Service - Monitors PID file and sends notifications
+  # ==========================================================================
+  mover-status:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+
+    image: mover-status:e2e
+    container_name: mover-status-e2e
+
+    # Run as non-root user
+    user: "1000:1000"
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+
+    # Read-only root filesystem
+    read_only: true
+
+    # Tmpfs for runtime temporary files
+    tmpfs:
+      - /tmp
+
+    # Volume mounts
+    volumes:
+      # PID file monitoring (shared with simulator)
+      - pid-file:/var/run:rw
+
+      # Test filesystem (shared with simulator)
+      - test-cache:/mnt/cache:ro
+      - test-array:/mnt/user:ro
+
+      # Mock /proc directory (use tmpfs to avoid host /proc)
+      - /proc:/proc:ro
+
+      # E2E test configuration
+      - ./config:/app/config:ro
+
+    # Environment variables for test credentials
+    environment:
+      # Discord webhook URL from GitHub Secrets
+      - E2E_DISCORD_WEBHOOK_URL=${E2E_DISCORD_WEBHOOK_URL:-}
+
+      # Telegram bot credentials from GitHub Secrets
+      - E2E_TELEGRAM_BOT_TOKEN=${E2E_TELEGRAM_BOT_TOKEN:-}
+      - E2E_TELEGRAM_CHAT_ID=${E2E_TELEGRAM_CHAT_ID:-}
+
+      # Timezone for consistent timestamps
+      - TZ=UTC
+
+    # Network configuration
+    network_mode: bridge
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+
+    # Health check (verify process is running)
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q mover-status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Keep container running to capture all notifications
+    # Will exit when simulator completes and stops
+    restart: "no"
+
+  # ==========================================================================
+  # Mover Simulator Service - Simulates Unraid mover process
+  # ==========================================================================
+  mover-simulator:
+    image: mover-status:e2e
+    container_name: mover-simulator-e2e
+
+    # Run as non-root user
+    user: "1000:1000"
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+
+    # Read-only root filesystem (except for volumes)
+    read_only: true
+
+    # Tmpfs for runtime temporary files
+    tmpfs:
+      - /tmp
+
+    # Volume mounts
+    volumes:
+      # PID file (shared with mover-status)
+      - pid-file:/var/run:rw
+
+      # Test filesystem (needs write access to move files)
+      - test-cache:/mnt/cache:rw
+      - test-array:/mnt/user:rw
+
+    # Override entrypoint to run simulator instead of mover-status
+    entrypoint: ["uv", "run", "python"]
+    command:
+      - "tests/e2e/mover_simulator.py"
+      - "--source-dir=/mnt/cache"
+      - "--dest-dir=/mnt/user"
+      - "--pid-file=/var/run/mover.pid"
+      - "--duration=45"
+      - "--chunk-interval=3"
+      - "--log-level=INFO"
+      - "--create-test-data"
+      - "--test-data-size=100"
+
+    # Environment
+    environment:
+      - TZ=UTC
+
+    # Network configuration
+    network_mode: bridge
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Wait for mover-status to be healthy before starting
+    depends_on:
+      mover-status:
+        condition: service_healthy
+
+    # Don't restart (run once and exit)
+    restart: "no"
+
+# ============================================================================
+# Volumes - Shared between services
+# ============================================================================
+volumes:
+  # PID file volume (shared read-write)
+  pid-file:
+    driver: local
+
+  # Test cache directory (source for mover)
+  test-cache:
+    driver: local
+
+  # Test array directory (destination for mover)
+  test-array:
+    driver: local
+
+# ============================================================================
+# Usage Notes
+# ============================================================================
+#
+# Prerequisites:
+# 1. Set environment variables for test credentials:
+#    - E2E_DISCORD_WEBHOOK_URL
+#    - E2E_TELEGRAM_BOT_TOKEN
+#    - E2E_TELEGRAM_CHAT_ID
+#
+# 2. Create test data in the test-cache volume before running
+#    (see run_e2e_test.py for automated setup)
+#
+# Running the test:
+#   docker compose -f tests/e2e/docker-compose.e2e.yml up --abort-on-container-exit
+#
+# Expected behavior:
+#   1. mover-status starts and waits for PID file
+#   2. mover-simulator creates PID file and starts moving files
+#   3. mover-status detects PID file and sends "started" notification
+#   4. mover-status monitors progress and sends progress notifications
+#   5. mover-simulator completes and deletes PID file
+#   6. mover-status sends "completed" notification and exits
+#
+# Verification:
+#   - Check Discord channel for test notifications
+#   - Check Telegram chat for test notifications
+#   - Review logs: docker compose -f tests/e2e/docker-compose.e2e.yml logs
+#
+# Cleanup:
+#   docker compose -f tests/e2e/docker-compose.e2e.yml down -v
+# ============================================================================

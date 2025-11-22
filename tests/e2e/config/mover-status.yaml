@@ -1,0 +1,59 @@
+# Mover Status E2E Test Configuration
+# =====================================
+#
+# This configuration is optimized for E2E testing in CI/CD environments:
+# - Fast polling intervals for quick test execution
+# - Low progress thresholds to ensure notifications are triggered
+# - DEBUG logging for troubleshooting
+# - Syslog disabled (not needed in containerized tests)
+# - Both Discord and Telegram providers enabled
+
+monitoring:
+  # PID file path (will be created by mover simulator)
+  pid_file: "/var/run/mover.pid"
+
+  # Fast polling for quick test execution
+  pid_check_interval: 0.5
+
+  # Quick sampling for measurable progress updates
+  sampling_interval: 2
+
+  # Short timeout for faster failure detection
+  process_timeout: 30
+
+  # No exclusion paths for E2E tests
+  exclusion_paths: []
+
+notifications:
+  # Low thresholds to ensure multiple notifications during short test
+  # Notifications at: 10%, 25%, 50%, 75%, 100%
+  thresholds:
+    - 10.0
+    - 25.0
+    - 50.0
+    - 75.0
+    - 100.0
+
+  # Send completion notification
+  completion_enabled: true
+
+  # No retries in E2E tests (fail fast)
+  retry_attempts: 0
+
+providers:
+  # Enable both providers for E2E testing
+  discord_enabled: true
+  telegram_enabled: true
+
+application:
+  # Debug logging for troubleshooting
+  log_level: "DEBUG"
+
+  # Not a dry-run - send real notifications
+  dry_run: false
+
+  # Disable version check (not needed in CI)
+  version_check: false
+
+  # Disable syslog (not needed in containerized tests)
+  syslog_enabled: false

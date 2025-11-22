@@ -1,0 +1,145 @@
+name: E2E Mover Test
+
+on:
+  # Manual trigger for E2E tests (requires secrets to be configured)
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: 'Log level for E2E test'
+        required: false
+        default: 'INFO'
+        type: choice
+        options:
+          - DEBUG
+          - INFO
+          - WARNING
+          - ERROR
+
+  # Optional: Run on PR to main (only if secrets are configured)
+  # pull_request:
+  #   branches: [main]
+
+# Cancel in-progress runs for same workflow + branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  e2e-test:
+    name: End-to-End Mover Workflow Test
+    runs-on: ubuntu-latest
+
+    # Only run if secrets are configured
+    # This prevents failures on forks or when secrets are missing
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.E2E_TESTS_ENABLED == 'true' &&
+       secrets.E2E_DISCORD_WEBHOOK_URL != '' &&
+       secrets.E2E_TELEGRAM_BOT_TOKEN != '' &&
+       secrets.E2E_TELEGRAM_CHAT_ID != '')
+
+    steps:
+      # ========================================================================
+      # Setup
+      # ========================================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
+
+      # ========================================================================
+      # Docker Setup
+      # ========================================================================
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for E2E testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: mover-status:e2e
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          platforms: linux/amd64
+
+      # ========================================================================
+      # E2E Test Execution
+      # ========================================================================
+      - name: Run E2E test
+        env:
+          # Inject test credentials from GitHub Secrets
+          E2E_DISCORD_WEBHOOK_URL: ${{ secrets.E2E_DISCORD_WEBHOOK_URL }}
+          E2E_TELEGRAM_BOT_TOKEN: ${{ secrets.E2E_TELEGRAM_BOT_TOKEN }}
+          E2E_TELEGRAM_CHAT_ID: ${{ secrets.E2E_TELEGRAM_CHAT_ID }}
+        run: |
+          uv run python tests/e2e/run_e2e_test.py \
+            --log-level ${{ inputs.log_level || 'INFO' }}
+
+      # ========================================================================
+      # Cleanup and Artifacts
+      # ========================================================================
+      - name: Collect Docker logs on failure
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --no-color > e2e-logs/docker-compose.log 2>&1 || true
+          docker ps -a > e2e-logs/docker-ps.txt 2>&1 || true
+
+      - name: Upload E2E logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-logs
+          path: e2e-logs/
+          retention-days: 7
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml down -v 2>/dev/null || true
+          docker system prune -f || true
+
+  # ==========================================================================
+  # Summary Job - Provides clear pass/fail status
+  # ==========================================================================
+  summary:
+    name: E2E Test Summary
+    runs-on: ubuntu-latest
+    needs: e2e-test
+    if: always()
+    steps:
+      - name: Check E2E test result
+        run: |
+          if [[ "${{ needs.e2e-test.result }}" == "success" ]]; then
+            echo "✅ E2E test PASSED"
+            echo "Notifications were successfully sent to Discord and Telegram"
+            exit 0
+          elif [[ "${{ needs.e2e-test.result }}" == "skipped" ]]; then
+            echo "⏭️  E2E test SKIPPED (secrets not configured)"
+            echo ""
+            echo "To enable E2E tests, configure the following GitHub Secrets:"
+            echo "  - E2E_DISCORD_WEBHOOK_URL"
+            echo "  - E2E_TELEGRAM_BOT_TOKEN"
+            echo "  - E2E_TELEGRAM_CHAT_ID"
+            echo ""
+            echo "Alternatively, set repository variable E2E_TESTS_ENABLED=true"
+            exit 0
+          else
+            echo "❌ E2E test FAILED"
+            echo "Check logs for details"
+            exit 1
+          fi

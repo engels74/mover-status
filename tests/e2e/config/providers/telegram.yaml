@@ -1,0 +1,25 @@
+# Telegram Provider Configuration for E2E Testing
+# ================================================
+#
+# This configuration uses environment variables to inject test credentials
+# from GitHub Secrets. The bot token and chat ID should point to a dedicated
+# test chat to avoid spamming production channels.
+#
+# Required environment variables:
+#   E2E_TELEGRAM_BOT_TOKEN - Telegram bot token from @BotFather
+#   E2E_TELEGRAM_CHAT_ID - Target chat ID for test notifications
+
+# Telegram bot token from GitHub Secrets
+bot_token: "${E2E_TELEGRAM_BOT_TOKEN}"
+
+# Target chat ID from GitHub Secrets
+chat_id: "${E2E_TELEGRAM_CHAT_ID}"
+
+# Use HTML formatting for rich text messages
+parse_mode: "HTML"
+
+# No specific thread (post to main chat)
+message_thread_id: null
+
+# Don't silence notifications (ensure they're visible in tests)
+disable_notification: false
