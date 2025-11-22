@@ -1,0 +1,194 @@
+version: '3.8'
+
+services:
+  mover-status:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: mover-status:latest
+    container_name: mover-status
+
+    # Restart policy - use 'unless-stopped' for production
+    restart: unless-stopped
+
+    # ========================================================================
+    # USER & SECURITY CONFIGURATION
+    # ========================================================================
+
+    # Run as non-root user (UID:GID)
+    # 1000:1000 is the default first user on most systems
+    # Adjust if your Unraid user has different UID/GID
+    user: "1000:1000"
+
+    # Security hardening
+    security_opt:
+      # Prevent privilege escalation
+      - no-new-privileges:true
+
+    # Read-only root filesystem for security
+    # Application doesn't write to disk (only reads configs and monitors PID/disk usage)
+    read_only: true
+
+    # Tmpfs for runtime temporary files (required with read-only root)
+    tmpfs:
+      - /tmp
+
+    # ========================================================================
+    # VOLUME MOUNTS - Critical for Unraid Integration
+    # ========================================================================
+
+    volumes:
+      # ---- REQUIRED MOUNTS ----
+
+      # PID file monitoring: Application checks /var/run/mover.pid to detect mover process
+      # Read-only: No writes needed
+      # Code reference: src/mover_status/core/monitoring.py:99-157
+      - /var/run:/var/run:ro
+
+      # Monitored disk paths: Application calculates disk usage to track mover progress
+      # Adjust paths to match your Unraid cache drives (e.g., /mnt/cache, /mnt/cache2)
+      # Read-only: Only traverses directories, never writes
+      # Code reference: src/mover_status/core/disk_tracker.py:71-216
+      - /mnt/cache:/mnt/cache:ro
+
+      # Additional cache drives (uncomment if you have multiple cache pools)
+      # - /mnt/cache2:/mnt/cache2:ro
+      # - /mnt/nvme:/mnt/nvme:ro
+
+      # Process validation: Checks /proc/{pid} to validate mover process is running
+      # Read-only: Only checks directory existence
+      # Code reference: src/mover_status/core/monitoring.py:160-214
+      - /proc:/proc:ro
+
+      # Configuration files: Main config and provider configs
+      # IMPORTANT: Create ./config directory with mover-status.yaml before starting
+      # See config/*.yaml.template files for examples
+      # Read-only: Loaded once at startup
+      # Code reference: src/mover_status/core/config.py:454-648
+      - ./config:/app/config:ro
+
+      # ---- OPTIONAL MOUNTS ----
+
+      # Syslog integration: Sends logs to Unraid syslog for operational visibility
+      # Read-write: Writes log messages to syslog socket
+      # Alternative: Use --no-syslog flag if unavailable
+      # Code reference: src/mover_status/utils/logging.py:213-240
+      - /dev/log:/dev/log:rw
+
+    # ========================================================================
+    # ENVIRONMENT VARIABLES
+    # ========================================================================
+
+    environment:
+      # Optional: Inject secrets via environment variables
+      # These can be referenced in YAML configs using ${VARIABLE_NAME} syntax
+      # See: src/mover_status/core/config.py:337-388
+
+      # Discord webhook URL (alternative to hardcoding in config/providers/discord.yaml)
+      # - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
+
+      # Telegram bot configuration (alternative to hardcoding in config/providers/telegram.yaml)
+      # - TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+      # - TELEGRAM_CHAT_ID=-1001234567890
+
+      # Application log level override (optional, defaults from config)
+      # - LOG_LEVEL=DEBUG
+
+      # Timezone (optional, useful for log timestamps)
+      - TZ=America/New_York
+
+    # ========================================================================
+    # NETWORK CONFIGURATION
+    # ========================================================================
+
+    # Network mode: Bridge is sufficient for outbound HTTPS webhooks
+    # No inbound ports needed (application only sends notifications)
+    network_mode: bridge
+
+    # No ports to expose (outbound-only application)
+    # ports: []
+
+    # ========================================================================
+    # RESOURCE LIMITS (Optional but Recommended)
+    # ========================================================================
+
+    deploy:
+      resources:
+        limits:
+          # Memory: Application is lightweight, 256MB is generous
+          # Actual usage typically under 100MB
+          memory: 256M
+
+          # CPU: Half a core is more than sufficient
+          # Application is mostly I/O bound (waiting for disk stats and webhooks)
+          cpus: '0.5'
+
+        reservations:
+          # Minimum guaranteed resources
+          memory: 64M
+          cpus: '0.1'
+
+    # ========================================================================
+    # HEALTH CHECK (Optional)
+    # ========================================================================
+
+    # Verify container process is running
+    # Note: This checks if the Python process exists, not if mover is being monitored
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "-v", "grep", "|", "grep", "-q", "mover-status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # ========================================================================
+    # LOGGING (Optional)
+    # ========================================================================
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================================
+# USAGE EXAMPLES
+# ============================================================================
+#
+# Basic usage (production):
+#   docker compose up -d
+#
+# Test configuration without sending notifications (dry-run):
+#   docker compose run --rm mover-status --dry-run
+#
+# Run with debug logging:
+#   docker compose run --rm mover-status --log-level DEBUG
+#
+# Disable syslog (if /dev/log unavailable):
+#   docker compose run --rm mover-status --no-syslog
+#
+# View logs:
+#   docker compose logs -f
+#
+# Stop and remove:
+#   docker compose down
+#
+# Rebuild after code changes:
+#   docker compose build
+#   docker compose up -d
+#
+# ============================================================================
+# CONFIGURATION CHECKLIST
+# ============================================================================
+#
+# Before running, ensure:
+# 1. ✅ Create ./config/mover-status.yaml from template
+# 2. ✅ Create ./config/providers/discord.yaml (if using Discord)
+# 3. ✅ Create ./config/providers/telegram.yaml (if using Telegram)
+# 4. ✅ Set webhook URLs/tokens in provider configs or environment variables
+# 5. ✅ Verify volume paths match your Unraid system (/mnt/cache, etc.)
+# 6. ✅ Adjust user:group UID:GID if needed (default 1000:1000)
+# 7. ✅ Test with --dry-run first: docker compose run --rm mover-status --dry-run
+#
+# ============================================================================

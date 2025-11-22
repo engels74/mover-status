@@ -202,6 +202,245 @@ Tests mirror source structure:
 - Provider exceptions must be isolated (use try/except in provider tasks)
 - Log with structured context (correlation IDs, provider names)
 
+## Docker Deployment
+
+### Quick Start
+
+```bash
+# Build and start container
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Test configuration (dry-run mode)
+docker compose run --rm mover-status --dry-run
+
+# Stop container
+docker compose down
+```
+
+### Prerequisites
+
+Before running the containerized application, ensure:
+
+1. **Configuration Files**: Create your config directory with required YAML files
+   ```bash
+   # Copy templates and configure
+   mkdir -p config/providers
+   cp config/mover-status.yaml.template config/mover-status.yaml
+   cp config/providers/discord.yaml.template config/providers/discord.yaml  # If using Discord
+   cp config/providers/telegram.yaml.template config/providers/telegram.yaml  # If using Telegram
+
+   # Edit configs with your webhook URLs and settings
+   vim config/mover-status.yaml
+   vim config/providers/discord.yaml
+   ```
+
+2. **Verify Unraid Paths**: Ensure volume mounts in [docker-compose.yml](docker-compose.yml) match your system
+   - Default monitored path: `/mnt/cache`
+   - Additional cache pools: Uncomment relevant volume mounts
+   - PID file location: `/var/run/mover.pid` (standard on Unraid)
+
+3. **Set Secrets** (optional): Use environment variables instead of hardcoding in YAML
+   ```bash
+   # Create .env file
+   echo "DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN" > .env
+   echo "TELEGRAM_BOT_TOKEN=1234567890:YOUR_BOT_TOKEN" >> .env
+   echo "TELEGRAM_CHAT_ID=-1001234567890" >> .env
+   ```
+
+### Volume Mounts Explained
+
+The container requires specific volume mounts for Unraid integration:
+
+| Mount | Purpose | Access | Required |
+|-------|---------|--------|----------|
+| `/var/run:/var/run:ro` | Monitor `/var/run/mover.pid` for process detection | Read-only | Yes |
+| `/mnt/cache:/mnt/cache:ro` | Calculate disk usage for progress tracking | Read-only | Yes |
+| `/proc:/proc:ro` | Validate mover process is running | Read-only | Yes |
+| `./config:/app/config:ro` | Load application and provider configurations | Read-only | Yes |
+| `/dev/log:/dev/log:rw` | Send logs to Unraid syslog (operational visibility) | Read-write | No* |
+
+\* If `/dev/log` is unavailable, use `--no-syslog` flag to disable syslog integration.
+
+**Security Note**: All mounts are read-only except `/dev/log` (syslog). The application never modifies system files, only monitors them.
+
+### Configuration in Containers
+
+Two approaches for managing secrets:
+
+**Approach 1: Environment Variables** (Recommended for secrets)
+```yaml
+# docker-compose.yml
+environment:
+  - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+  - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+```
+
+```yaml
+# config/providers/discord.yaml
+webhook_url: ${DISCORD_WEBHOOK_URL}
+```
+
+**Approach 2: Direct Values** (Simpler, less secure)
+```yaml
+# config/providers/discord.yaml
+webhook_url: https://discord.com/api/webhooks/1234567890/abcdef...
+```
+
+### Running Options
+
+```bash
+# Production: Run in background with auto-restart
+docker compose up -d
+
+# Development: See logs in foreground
+docker compose up
+
+# Test configuration without sending notifications
+docker compose run --rm mover-status --dry-run
+
+# Debug with verbose logging
+docker compose run --rm mover-status --log-level DEBUG
+
+# Disable syslog (if /dev/log unavailable)
+docker compose run --rm mover-status --no-syslog
+
+# Monitor specific paths
+docker compose run --rm mover-status /mnt/cache /mnt/cache2
+
+# Rebuild after code changes
+docker compose build
+docker compose up -d
+```
+
+### Docker Image
+
+Pre-built images are available from GitHub Container Registry:
+
+```bash
+# Pull latest image
+docker pull ghcr.io/engels74/mover-status:latest
+
+# Run directly (without docker-compose)
+docker run -d \
+  --name mover-status \
+  --user 1000:1000 \
+  --read-only \
+  --tmpfs /tmp \
+  --security-opt no-new-privileges:true \
+  -v /var/run:/var/run:ro \
+  -v /mnt/cache:/mnt/cache:ro \
+  -v /proc:/proc:ro \
+  -v ./config:/app/config:ro \
+  -v /dev/log:/dev/log:rw \
+  ghcr.io/engels74/mover-status:latest
+```
+
+### Building from Source
+
+```bash
+# Build image
+docker build -t mover-status:local .
+
+# Run built image
+docker run --rm mover-status:local --help
+```
+
+### Troubleshooting
+
+**Container exits immediately:**
+```bash
+# Check logs for configuration errors
+docker compose logs
+
+# Verify config files exist and are valid
+docker compose run --rm mover-status --dry-run
+```
+
+**"Permission denied" errors:**
+```bash
+# Ensure user UID:GID matches file ownership
+# Default is 1000:1000, adjust in docker-compose.yml if needed
+user: "99:100"  # Example: Unraid 'nobody' user
+```
+
+**Syslog errors:**
+```bash
+# If /dev/log is unavailable, disable syslog
+docker compose run --rm mover-status --no-syslog
+
+# Or add flag to docker-compose.yml
+command: ["--no-syslog"]
+```
+
+**Notifications not sending:**
+```bash
+# Test configuration in dry-run mode
+docker compose run --rm mover-status --dry-run
+
+# Check provider configs are mounted correctly
+docker compose exec mover-status cat /app/config/providers/discord.yaml
+
+# Verify network connectivity
+docker compose exec mover-status ping -c 3 discord.com
+```
+
+**Can't find mover.pid:**
+```bash
+# Verify PID file is accessible from container
+docker compose run --rm mover-status ls -la /var/run/mover.pid
+
+# Check volume mount is correct
+docker compose config | grep /var/run
+```
+
+### Security Hardening
+
+The Docker configuration follows security best practices:
+
+- **Non-root user**: Runs as UID 1000 (configurable)
+- **Read-only root filesystem**: Prevents container modification
+- **No privileged mode**: Standard user permissions only
+- **No new privileges**: Prevents privilege escalation
+- **Minimal attack surface**: Outbound HTTPS only, no inbound ports
+- **Resource limits**: Memory capped at 256MB, CPU at 0.5 cores
+
+**Network Security:**
+- Only outbound HTTPS to Discord/Telegram APIs required
+- No inbound network connections needed
+- Bridge network mode (isolated from host network)
+
+**File System Permissions:**
+```bash
+# Application NEVER writes to:
+- /var/run/mover.pid (read-only monitoring)
+- /mnt/cache (read-only disk usage calculation)
+- /proc (read-only process validation)
+- Config files (read-only at startup)
+
+# Application ONLY writes to:
+- /dev/log (syslog messages, optional)
+- /tmp (ephemeral temp files)
+```
+
+### CI/CD Integration
+
+Docker images are automatically built and pushed on every commit to `main`:
+
+- **Registry**: GitHub Container Registry (ghcr.io)
+- **Tags**: `latest` (main branch), branch names, PR numbers, commit SHAs
+- **Workflow**: [.github/workflows/ci.yml](.github/workflows/ci.yml)
+- **Quality Gates**: All tests, linting, type checking, and provider isolation checks must pass
+
+Pull pre-built images:
+```bash
+docker pull ghcr.io/engels74/mover-status:latest
+docker pull ghcr.io/engels74/mover-status:feat-rewrite_v5
+docker pull ghcr.io/engels74/mover-status:main-a3abd46
+```
+
 ## Project-Specific Context
 
 ### Unraid Integration
