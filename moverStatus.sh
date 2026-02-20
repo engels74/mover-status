@@ -76,10 +76,6 @@ check_latest_version() {
     LATEST_VERSION=$(curl -fsSL --connect-timeout 5 --max-time 10 "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name) || LATEST_VERSION=""
 }
 
-# Check latest version once at startup
-LATEST_VERSION=""
-check_latest_version
-
 # Initialize to -1 to ensure 0% notification
 LAST_NOTIFIED=-1
 
@@ -107,6 +103,16 @@ if [[ $USE_DISCORD == true ]]; then
         exit 1
     fi
 fi
+
+# Validate DU_POLL_INTERVAL is a positive integer
+if ! [[ "$DU_POLL_INTERVAL" =~ ^[0-9]+$ ]] || [ "$DU_POLL_INTERVAL" -eq 0 ]; then
+    log "Error: DU_POLL_INTERVAL must be a positive integer. Got: '$DU_POLL_INTERVAL'"
+    exit 1
+fi
+
+# Check latest version once at startup (after validation so we don't hit the API on misconfiguration)
+LATEST_VERSION=""
+check_latest_version
 
 # ---------------------------------------------------------
 # Do Not Modify: Dry-run check
@@ -380,6 +386,9 @@ while true; do
 
             # Calculate the total data moved and update the percentage
             total_data_moved=$((initial_size - current_size))
+            if [ "$total_data_moved" -lt 0 ]; then
+                total_data_moved=0
+            fi
             if [ "$initial_size" -gt 0 ]; then
                 percent=$((total_data_moved * 100 / initial_size))
                 if [ "$percent" -lt 0 ]; then
