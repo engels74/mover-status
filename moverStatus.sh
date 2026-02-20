@@ -267,6 +267,9 @@ PROGRESS_FILE_COUNT=""
 PROGRESS_REMAIN_FILES=""
 PROGRESS_CURRENT_FILE=""
 
+# Tracks bytes already moved when script started monitoring (for accurate late-join ETA)
+monitoring_start_bytes=0
+
 # INI globals (set by read_mover_ini)
 INI_TOTAL_TO_SECONDARY=0
 INI_REMAIN_TO_SECONDARY=0
@@ -445,6 +448,7 @@ LAST_REMAINING_BYTES=${PROGRESS_REMAINING_BYTES}
 LAST_MOVED_BYTES=${PROGRESS_MOVED_BYTES}
 LAST_POLL_TIME=$(date +%s)
 TOTAL_FILES=${PROGRESS_FILE_COUNT}
+MONITORING_START_BYTES=${monitoring_start_bytes}
 EOF
     mv "$tmp_file" "$STATE_FILE"
 }
@@ -513,6 +517,8 @@ load_state() {
     mover_pid="$MOVER_PID"
     # shellcheck disable=SC2153
     mover_start_time="$MOVER_START_TIME"
+    # shellcheck disable=SC2153
+    monitoring_start_bytes="${MONITORING_START_BYTES:-0}"
 
     log "Resumed from saved state (mover PID: $mover_pid, last notified: ${LAST_NOTIFIED}%)"
     return 0
@@ -645,8 +651,10 @@ calculate_etc() {
     current_time=$(date +%s)
     local elapsed=$((current_time - start_time))
 
-    if [ "$percent" -gt 1 ] && [ "$elapsed" -ge 60 ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
-        local rate=$((PROGRESS_MOVED_BYTES / elapsed))
+    local bytes_since_monitoring=$((PROGRESS_MOVED_BYTES - monitoring_start_bytes))
+
+    if [ "$percent" -gt 1 ] && [ "$elapsed" -ge 60 ] && [ "$bytes_since_monitoring" -gt 0 ]; then
+        local rate=$((bytes_since_monitoring / elapsed))
         local remaining_time=0
         if [ "$rate" -gt 0 ]; then
             remaining_time=$((PROGRESS_REMAINING_BYTES / rate))
@@ -655,6 +663,12 @@ calculate_etc() {
             remaining_time=0
         fi
         local completion_time_estimate=$((current_time + remaining_time))
+
+        # Safety net: never show an ETA in the past
+        if [ "$completion_time_estimate" -lt "$current_time" ]; then
+            echo "Calculating..."
+            return
+        fi
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
@@ -818,10 +832,12 @@ while true; do
 
         # Check for late-join (mover already running before script started)
         if [ "$DATA_SOURCE" = "mover_ini" ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
-            log "Late join detected — mover already $(( PROGRESS_PERCENT ))% complete (using mover.ini data)"
+            monitoring_start_bytes="$PROGRESS_MOVED_BYTES"
+            log "Late join detected — mover already $(( PROGRESS_PERCENT ))% complete (using mover.ini data, baseline: $(human_readable "$monitoring_start_bytes"))"
             percent="$PROGRESS_PERCENT"
             remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
         elif [ "$DATA_SOURCE" = "du_polling" ] && [ -n "$mover_start_time" ]; then
+            monitoring_start_bytes=0
             script_time=$(date +%s)
             if [ $((script_time - mover_start_time)) -gt 60 ]; then
                 log "Late join detected — progress relative to cache size at script start"
@@ -829,6 +845,7 @@ while true; do
             percent=0
             remaining_readable="$initial_readable"
         else
+            monitoring_start_bytes=0
             percent=0
             remaining_readable="$initial_readable"
         fi
