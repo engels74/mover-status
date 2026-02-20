@@ -316,7 +316,14 @@ read_mover_ini() {
     age=$((current_time - mod_time))
     stale_threshold=$((DU_POLL_INTERVAL * 3))
     if [ "$age" -gt "$stale_threshold" ]; then
-        log "Warning: mover.ini hasn't been updated in ${age}s (threshold: ${stale_threshold}s) — plugin may have stalled"
+        if is_mover_running; then
+            # Mover is alive — large file transfer likely; only log in debug mode
+            if $ENABLE_DEBUG; then
+                log "mover.ini unchanged for ${age}s — mover still running (likely processing a large file: ${INI_CURRENT_FILE##*/})"
+            fi
+        else
+            log "Warning: mover.ini hasn't been updated in ${age}s (threshold: ${stale_threshold}s) and mover process not found — plugin may have stalled"
+        fi
     fi
 
     return 0
@@ -828,6 +835,7 @@ while true; do
 
         LAST_NOTIFIED=-1
         send_notification "$percent" "$remaining_readable"
+        LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
         log "Initial notification sent with ${percent}% completion."
     fi
 
