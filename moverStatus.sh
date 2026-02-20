@@ -6,8 +6,18 @@
 #backgroundOnly=true
 #arrayStarted=true
 
+# ---------------------------------------------------------
+# Mover Status Script
+# ---------------------------------------------------------
+# Monitors Unraid's mover process and posts progress updates
+# to Discord and/or Telegram webhooks.
+#
+# Dependencies: bash, curl, jq, du, pgrep, date
+# Runs as a backgroundOnly Unraid user script.
+# ---------------------------------------------------------
+
 # Simple timestamp for logs
-function log {
+log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
@@ -27,6 +37,7 @@ DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Displa
 NOTIFICATION_INCREMENT=25                                               # Notification frequency in percentage increments
 DRY_RUN=false                                                           # Enable this to test the notifications without actual monitoring
 ENABLE_DEBUG=false                                                      # Set to true to enable debug logging
+DU_POLL_INTERVAL=30                                                     # Seconds between disk usage recalculations (higher = less I/O load)
 
 # -------------------------------------------
 # Webhook Messages: Edit these if you want
@@ -40,7 +51,7 @@ COMPLETION_MESSAGE="Moving has been completed!"
 # Exclusion Folders: Define paths to exclude
 # ---------------------------------------
 # Set EXCLUDE_PATH_XX to directories you want to exclude from being monitored.
-# Leave EXCLUDE_PATH_XX variables empty if no exclusions are needed. 
+# Leave EXCLUDE_PATH_XX variables empty if no exclusions are needed.
 # This will result in monitoring the entire directory specified in the script (/mnt/cache).
 #
 # Example usage:
@@ -52,12 +63,6 @@ COMPLETION_MESSAGE="Moving has been completed!"
 EXCLUDE_PATH_01=""
 EXCLUDE_PATH_02=""
 
-# ---------------------------------------------------------
-# Advanced Configuration: Only edit if you understand the impact
-# ---------------------------------------------------------
-# Path to the mover executable
-MOVER_EXECUTABLE="/usr/local/sbin/mover"
-
 # ---------------------------------
 # Do Not Modify: Script essentials
 # ---------------------------------
@@ -65,15 +70,16 @@ MOVER_EXECUTABLE="/usr/local/sbin/mover"
 CURRENT_VERSION="0.0.8"
 
 # Function to check the latest version
-function check_latest_version {
-    LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name)
+check_latest_version() {
+    LATEST_VERSION=$(curl -fsSL --connect-timeout 5 --max-time 10 "https://api.github.com/repos/engels74/mover-status/releases" | jq -r .[0].tag_name) || LATEST_VERSION=""
 }
+
+# Check latest version once at startup
+LATEST_VERSION=""
+check_latest_version
 
 # Initialize to -1 to ensure 0% notification
 LAST_NOTIFIED=-1
-
-# Initialize total_data_moved to keep track of the cumulative data moved by the mover process
-total_data_moved=0
 
 # ---------------------------------------------------------
 # Do Not Modify: Variable checking!
@@ -105,9 +111,8 @@ fi
 # ---------------------------------------------------------
 
 if $DRY_RUN; then
-    check_latest_version
     log "Running in dry-run mode. No real monitoring will be performed."
-    
+
     # Simulate data for notification
     dry_run_percent=50  # Arbitrary progress percentage for testing
     dry_run_remaining_data="500 GB"  # Arbitrary remaining data amount for testing
@@ -125,14 +130,14 @@ if $DRY_RUN; then
     fi
 
     # Footer text with version checking
-    local footer_text="Version: v${CURRENT_VERSION}"
-    if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
+    footer_text="Version: v${CURRENT_VERSION}"
+    if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
     fi
 
     # Prepare messages with footer
     dry_run_value_message_discord="Moving data from SSD Cache to HDD Array.\nProgress: **${dry_run_percent}%** complete.\nRemaining data: ${dry_run_remaining_data}.\nEstimated completion time: ${dry_run_etc_discord}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
-    dry_run_value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${dry_run_percent}%</b> complete. &#10;Remaining data: ${dry_run_remaining_data}.&#10;Estimated completion time: ${dry_run_etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10${footer_text}"
+    dry_run_value_message_telegram="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>${dry_run_percent}%</b> complete. &#10;Remaining data: ${dry_run_remaining_data}.&#10;Estimated completion time: ${dry_run_etc_telegram}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move.&#10;&#10;${footer_text}"
 
     # Send test notifications
     if $USE_TELEGRAM; then
@@ -168,7 +173,7 @@ if $DRY_RUN; then
         }'
         /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
     fi
-    
+
     log "Dry-run complete. Exiting script."
     exit 0
 fi
@@ -179,37 +184,40 @@ fi
 
 # Prepare exclusion paths for the du command
 declare -a exclusion_params
-path_index=1
-while true; do
-    formatted_index=$(printf "%02d" $path_index)
-    current_path_var="EXCLUDE_PATH_$formatted_index"
-    if [ -z "${!current_path_var}" ]; then
-        break
+for var_name in "${!EXCLUDE_PATH_@}"; do
+    if [ -n "${!var_name}" ]; then
+        if [ ! -d "${!var_name}" ]; then
+            log "Error: Exclusion path '${!var_name}' (${var_name}) does not exist."
+            exit 1
+        fi
+        exclusion_params+=("--exclude=${!var_name}")
     fi
-    if [ ! -d "${!current_path_var}" ]; then
-        log "Error: Exclusion path ${!current_path_var} does not exist."
-        exit 1
-    fi
-    exclusion_params+=("--exclude=${!current_path_var}")
-    ((path_index++))
 done
 
+# Check if any mover-related process is running (supports Unraid v7+ and Mover Tuning plugin)
+is_mover_running() {
+    pgrep -x "mover" > /dev/null 2>&1 && return 0
+    pgrep -x "age_mover" > /dev/null 2>&1 && return 0
+    pgrep -f "^/usr/libexec/unraid/move" > /dev/null 2>&1 && return 0
+    return 1
+}
+
 # Function to convert bytes to human-readable format
-function human_readable {
+human_readable() {
     local bytes=$1
     local tb gb kb mb
-    if [ $bytes -ge 1099511627776 ]; then
+    if [ "$bytes" -ge 1099511627776 ]; then
         tb=$((bytes / 1099511627776))
-        remaining_bytes=$((bytes % 1099511627776))
-        gb=$((remaining_bytes / 1073741824))
-        echo "${tb}.${gb} TB ($((tb * 1024 + gb)) GB)"
-    elif [ $bytes -ge 1073741824 ]; then
+        local tb_tenths=$(( (bytes * 10 / 1099511627776) % 10 ))
+        local total_gb=$((bytes / 1073741824))
+        echo "${tb}.${tb_tenths} TB (${total_gb} GB)"
+    elif [ "$bytes" -ge 1073741824 ]; then
         gb=$((bytes / 1073741824))
         echo "${gb} GB"
-    elif [ $bytes -ge 1048576 ]; then
+    elif [ "$bytes" -ge 1048576 ]; then
         mb=$((bytes / 1048576))
         echo "${mb} MB"
-    elif [ $bytes -ge 1024 ]; then
+    elif [ "$bytes" -ge 1024 ]; then
         kb=$((bytes / 1024))
         echo "${kb} KB"
     else
@@ -218,32 +226,36 @@ function human_readable {
 }
 
 # Calculate Estimated Time of Completion
-function calculate_etc {
+calculate_etc() {
     local percent=$1
     local platform=$2
     local current_time=$(date +%s)
-    if [ "$percent" -gt 0 ]; then
-        local elapsed=$((current_time - start_time))
-        local estimated_total_time=$((elapsed * (total_data_moved + current_size) / total_data_moved))
+    local elapsed=$((current_time - start_time))
+
+    if [ "$percent" -gt 1 ] && [ "$elapsed" -ge 60 ] && [ "$total_data_moved" -gt 0 ]; then
+        local estimated_total_time=$((elapsed * initial_size / total_data_moved))
         local remaining_time=$((estimated_total_time - elapsed))
+        if [ "$remaining_time" -lt 0 ]; then
+            remaining_time=0
+        fi
         local completion_time_estimate=$((current_time + remaining_time))
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
         elif [[ $platform == "telegram" ]]; then
-            echo $(date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)")
+            date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
         echo "Calculating..."
     fi
 }
 
-function send_notification {
+send_notification() {
     local percent=$1
     local remaining_data=$2
     local datetime=$(date +"%B %d (%Y) - %H:%M:%S")
-    local etc_discord=$(calculate_etc $percent "discord")
-    local etc_telegram=$(calculate_etc $percent "telegram")
+    local etc_discord=$(calculate_etc "$percent" "discord")
+    local etc_telegram=$(calculate_etc "$percent" "telegram")
 
     # Prepare the messages using the predefined templates
     local value_message_discord="${DISCORD_MOVING_MESSAGE//\{percent\}/$percent}"
@@ -255,14 +267,14 @@ function send_notification {
     value_message_telegram="${value_message_telegram//\{etc\}/$etc_telegram}"
 
     local footer_text="Version: v${CURRENT_VERSION}"
-    if [[ "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
+    if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
     fi
-    value_message_telegram+="&#10;&#10$footer_text"
+    value_message_telegram+="&#10;&#10;${footer_text}"
 
     # Determine the color based on completion and percentage
     local color
-    if [ "$percent" -ge 100 ] || ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
+    if [ "$percent" -ge 100 ] || ! is_mover_running; then
         value_message_discord=$COMPLETION_MESSAGE
         value_message_telegram=$COMPLETION_MESSAGE
         color=65280  # Green for completion
@@ -324,12 +336,11 @@ function send_notification {
 
 # Main Script Execution Loop
 while true; do
-    check_latest_version
     log "Monitoring new mover process..."
 
     # Wait for the mover process to start
     log "Mover process not found, waiting to start monitoring..."
-    while ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; do
+    while ! is_mover_running; do
         sleep 10
     done
 
@@ -337,7 +348,7 @@ while true; do
 
     # Calculate initial size after the Mover process is found
     initial_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
-    initial_readable=$(human_readable $initial_size)
+    initial_readable=$(human_readable "$initial_size")
     log "Initial total size of data: $initial_readable"
 
     start_time=$(date +%s)  # Record the start time of monitoring
@@ -348,17 +359,37 @@ while true; do
     log "Initial notification sent with 0% completion."
 
     # Monitor the progress
+    last_du_time=0
     while true; do
-        current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
-        remaining_readable=$(human_readable $current_size)
+        current_time=$(date +%s)
 
-        # Calculate the total data moved and update the percentage
-        total_data_moved=$((initial_size - current_size))
-        percent=$((total_data_moved * 100 / (total_data_moved + current_size)))
+        # Only recalculate disk usage when DU_POLL_INTERVAL has passed
+        if [ $((current_time - last_du_time)) -ge "$DU_POLL_INTERVAL" ]; then
+            current_size=$(du -sb "${exclusion_params[@]}" /mnt/cache | cut -f1)
+            remaining_readable=$(human_readable "$current_size")
+            last_du_time=$current_time
+
+            # Calculate the total data moved and update the percentage
+            total_data_moved=$((initial_size - current_size))
+            if [ "$initial_size" -gt 0 ]; then
+                percent=$((total_data_moved * 100 / initial_size))
+                if [ "$percent" -lt 0 ]; then
+                    percent=0
+                elif [ "$percent" -gt 99 ]; then
+                    percent=99
+                fi
+            else
+                percent=0
+            fi
+
+            if $ENABLE_DEBUG; then
+                log "Disk usage poll: current_size=$current_size, total_data_moved=$total_data_moved, percent=$percent"
+            fi
+        fi
 
         # Check if the mover process is still running
-        if ! pgrep -x "$(basename $MOVER_EXECUTABLE)" > /dev/null; then
-            log "Mover process '$(basename $MOVER_EXECUTABLE)' is no longer running."
+        if ! is_mover_running; then
+            log "Mover process is no longer running."
             log "Total data moved: $total_data_moved bytes, Initial size: $initial_size bytes."
             send_notification 100 "$remaining_readable"
             LAST_NOTIFIED=-1
@@ -374,7 +405,7 @@ while true; do
             log "Notification sent for $percent% completion."
         fi
 
-        sleep 1  # Small delay to prevent excessive CPU usage
+        sleep 5  # Check every 5 seconds; du only runs per DU_POLL_INTERVAL
     done
 
     # Delay before restarting monitoring
