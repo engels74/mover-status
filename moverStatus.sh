@@ -665,7 +665,7 @@ calculate_etc() {
         local completion_time_estimate=$((current_time + remaining_time))
 
         # Safety net: never show an ETA in the past
-        if [ "$completion_time_estimate" -le "$current_time" ]; then
+        if [ "$completion_time_estimate" -lt "$current_time" ]; then
             echo "Calculating..."
             return
         fi
