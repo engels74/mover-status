@@ -336,6 +336,9 @@ get_progress() {
 
         if [ "$PROGRESS_TOTAL_BYTES" -gt 0 ]; then
             PROGRESS_PERCENT=$((PROGRESS_MOVED_BYTES * 100 / PROGRESS_TOTAL_BYTES))
+            if [ "$PROGRESS_PERCENT" -gt 99 ]; then
+                PROGRESS_PERCENT=99
+            fi
         else
             PROGRESS_PERCENT=0
         fi
@@ -470,6 +473,25 @@ load_state() {
     if [ "$MOVER_PID" != "$current_pid" ]; then
         if $ENABLE_DEBUG; then
             log "Saved mover PID ($MOVER_PID) doesn't match current ($current_pid)"
+        fi
+        rm -f "$STATE_FILE"
+        return 1
+    fi
+
+    # Validate start time to guard against PID reuse
+    local current_start_time
+    current_start_time=$(get_mover_start_time "$current_pid") || {
+        if $ENABLE_DEBUG; then
+            log "Could not determine start time for PID $current_pid"
+        fi
+        rm -f "$STATE_FILE"
+        return 1
+    }
+
+    # shellcheck disable=SC2153
+    if [ "$MOVER_START_TIME" != "$current_start_time" ]; then
+        if $ENABLE_DEBUG; then
+            log "Mover start time mismatch — PID $current_pid was reused (saved: $MOVER_START_TIME, current: $current_start_time)"
         fi
         rm -f "$STATE_FILE"
         return 1
@@ -805,7 +827,7 @@ while true; do
         fi
 
         LAST_NOTIFIED=-1
-        send_notification "$percent" "$initial_readable"
+        send_notification "$percent" "$remaining_readable"
         log "Initial notification sent with ${percent}% completion."
     fi
 
