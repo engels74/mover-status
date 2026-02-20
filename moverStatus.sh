@@ -60,7 +60,9 @@ COMPLETION_MESSAGE="Moving has been completed!"
 # EXCLUDE_PATH_03="/mnt/cache/maybe/a/.hidden/folder"
 # Add more EXCLUDE_PATH_XX as needed.
 
+# shellcheck disable=SC2034
 EXCLUDE_PATH_01=""
+# shellcheck disable=SC2034
 EXCLUDE_PATH_02=""
 
 # ---------------------------------
@@ -171,7 +173,7 @@ if $DRY_RUN; then
             }
           ]
         }'
-        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_notification_data" $DISCORD_WEBHOOK_URL
+        /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_notification_data" "$DISCORD_WEBHOOK_URL"
     fi
 
     log "Dry-run complete. Exiting script."
@@ -229,7 +231,8 @@ human_readable() {
 calculate_etc() {
     local percent=$1
     local platform=$2
-    local current_time=$(date +%s)
+    local current_time
+    current_time=$(date +%s)
     local elapsed=$((current_time - start_time))
 
     if [ "$percent" -gt 1 ] && [ "$elapsed" -ge 60 ] && [ "$total_data_moved" -gt 0 ]; then
@@ -253,9 +256,12 @@ calculate_etc() {
 send_notification() {
     local percent=$1
     local remaining_data=$2
-    local datetime=$(date +"%B %d (%Y) - %H:%M:%S")
-    local etc_discord=$(calculate_etc "$percent" "discord")
-    local etc_telegram=$(calculate_etc "$percent" "telegram")
+    local datetime
+    datetime=$(date +"%B %d (%Y) - %H:%M:%S")
+    local etc_discord
+    etc_discord=$(calculate_etc "$percent" "discord")
+    local etc_telegram
+    etc_telegram=$(calculate_etc "$percent" "telegram")
 
     # Prepare the messages using the predefined templates
     local value_message_discord="${DISCORD_MOVING_MESSAGE//\{percent\}/$percent}"
@@ -291,14 +297,16 @@ send_notification() {
     # Send the notifications
     log "Sending notification..."
     if $USE_TELEGRAM; then
-        local json_payload=$(jq -n \
+        local json_payload
+        json_payload=$(jq -n \
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
                         --arg text "$value_message_telegram" \
                         '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
         if $ENABLE_DEBUG; then
             log "Preparing to send to Telegram: $json_payload"
         fi
-        local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
+        local response
+        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
         if $ENABLE_DEBUG; then
             log "Telegram response: $response"
         fi
@@ -327,7 +335,8 @@ send_notification() {
         if $ENABLE_DEBUG; then
             log "Preparing to send to Discord: $notification_data"
         fi
-        local response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" $DISCORD_WEBHOOK_URL -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
+        local response
+        response=$(curl -s -H "Content-Type: application/json" -X POST -d "$notification_data" "$DISCORD_WEBHOOK_URL" -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
         if $ENABLE_DEBUG; then
             log "Discord response: $response"
         fi
