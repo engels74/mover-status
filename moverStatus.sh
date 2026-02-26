@@ -366,11 +366,9 @@ get_progress() {
             PROGRESS_PERCENT=0
         fi
 
-        # Apply exclusion adjustment
+        # Apply exclusion adjustment (uses initial snapshot — excluded dirs are static during mover run)
         if [ ${#exclude_paths[@]} -gt 0 ]; then
-            local excluded_size
-            excluded_size=$(get_excluded_size)
-            PROGRESS_REMAINING_BYTES=$((PROGRESS_REMAINING_BYTES - excluded_size))
+            PROGRESS_REMAINING_BYTES=$((PROGRESS_REMAINING_BYTES - initial_excluded_size))
             if [ "$PROGRESS_REMAINING_BYTES" -lt 0 ]; then
                 PROGRESS_REMAINING_BYTES=0
             fi
@@ -401,9 +399,7 @@ get_progress() {
         local current_du
         current_du=$(du -sb "$CACHE_PATH" | cut -f1)
         if [ ${#exclude_paths[@]} -gt 0 ]; then
-            local excluded_size
-            excluded_size=$(get_excluded_size)
-            current_du=$((current_du - excluded_size))
+            current_du=$((current_du - initial_excluded_size))
             if [ "$current_du" -lt 0 ]; then
                 current_du=0
             fi
@@ -497,6 +493,7 @@ LAST_MOVED_BYTES=${PROGRESS_MOVED_BYTES}
 LAST_POLL_TIME=$(date +%s)
 TOTAL_FILES=${PROGRESS_FILE_COUNT}
 MONITORING_START_BYTES=${monitoring_start_bytes}
+INITIAL_EXCLUDED_SIZE=${initial_excluded_size}
 EOF
     mv "$tmp_file" "$STATE_FILE"
 }
@@ -567,6 +564,7 @@ load_state() {
     mover_start_time="$MOVER_START_TIME"
     # shellcheck disable=SC2153
     monitoring_start_bytes="${MONITORING_START_BYTES:-0}"
+    initial_excluded_size="${INITIAL_EXCLUDED_SIZE:-0}"
 
     log "Resumed from saved state (mover PID: $mover_pid, last notified: ${LAST_NOTIFIED}%)"
     return 0
