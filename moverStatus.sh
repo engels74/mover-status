@@ -227,17 +227,30 @@ fi
 # Mover Status Script - Do Not Edit!
 # ---------------------------------------------------------
 
-# Prepare exclusion paths for the du command
-declare -a exclusion_params
+# Prepare exclusion paths
+declare -a exclude_paths
 for var_name in "${!EXCLUDE_PATH_@}"; do
     if [ -n "${!var_name}" ]; then
         if [ ! -d "${!var_name}" ]; then
             log "Error: Exclusion path '${!var_name}' (${var_name}) does not exist."
             exit 1
         fi
-        exclusion_params+=("--exclude=${!var_name}")
+        exclude_paths+=("${!var_name}")
     fi
 done
+
+# Calculate total size of all excluded directories
+get_excluded_size() {
+    local total=0
+    local path size
+    for path in "${exclude_paths[@]}"; do
+        if [ -d "$path" ]; then
+            size=$(du -sb "$path" 2>/dev/null | cut -f1)
+            total=$((total + ${size:-0}))
+        fi
+    done
+    echo "$total"
+}
 
 # Check if any mover-related process is running (supports Unraid v7+ and Mover Tuning plugin)
 is_mover_running() {
@@ -353,13 +366,48 @@ get_progress() {
             PROGRESS_PERCENT=0
         fi
 
+        # Apply exclusion adjustment
+        if [ ${#exclude_paths[@]} -gt 0 ]; then
+            local excluded_size
+            excluded_size=$(get_excluded_size)
+            PROGRESS_REMAINING_BYTES=$((PROGRESS_REMAINING_BYTES - excluded_size))
+            if [ "$PROGRESS_REMAINING_BYTES" -lt 0 ]; then
+                PROGRESS_REMAINING_BYTES=0
+            fi
+            PROGRESS_TOTAL_BYTES=$((PROGRESS_TOTAL_BYTES - initial_excluded_size))
+            if [ "$PROGRESS_TOTAL_BYTES" -lt 0 ]; then
+                PROGRESS_TOTAL_BYTES=0
+            fi
+            PROGRESS_MOVED_BYTES=$((PROGRESS_TOTAL_BYTES - PROGRESS_REMAINING_BYTES))
+            if [ "$PROGRESS_MOVED_BYTES" -lt 0 ]; then
+                PROGRESS_MOVED_BYTES=0
+            fi
+            # Recalculate percent
+            if [ "$PROGRESS_TOTAL_BYTES" -gt 0 ]; then
+                PROGRESS_PERCENT=$((PROGRESS_MOVED_BYTES * 100 / PROGRESS_TOTAL_BYTES))
+                if [ "$PROGRESS_PERCENT" -gt 99 ]; then
+                    PROGRESS_PERCENT=99
+                fi
+            else
+                PROGRESS_PERCENT=0
+            fi
+        fi
+
         PROGRESS_FILE_COUNT="$INI_TOTAL_FILES"
         PROGRESS_REMAIN_FILES="$INI_REMAIN_FILES"
         PROGRESS_CURRENT_FILE="$INI_CURRENT_FILE"
     else
         # du_polling mode — uses current_size and initial_size (set in main loop)
         local current_du
-        current_du=$(du -sb "${exclusion_params[@]}" "$CACHE_PATH" | cut -f1)
+        current_du=$(du -sb "$CACHE_PATH" | cut -f1)
+        if [ ${#exclude_paths[@]} -gt 0 ]; then
+            local excluded_size
+            excluded_size=$(get_excluded_size)
+            current_du=$((current_du - excluded_size))
+            if [ "$current_du" -lt 0 ]; then
+                current_du=0
+            fi
+        fi
 
         PROGRESS_REMAINING_BYTES="$current_du"
         PROGRESS_TOTAL_BYTES="$initial_size"
@@ -808,6 +856,15 @@ while true; do
     mover_pid=$(get_mover_pid) || mover_pid=""
     mover_start_time=$(get_mover_start_time "$mover_pid") || mover_start_time=""
 
+    # Capture initial excluded size (used for consistent total adjustment)
+    initial_excluded_size=0
+    if [ ${#exclude_paths[@]} -gt 0 ]; then
+        initial_excluded_size=$(get_excluded_size)
+        if [ "$initial_excluded_size" -gt 0 ]; then
+            log "Excluding $(human_readable "$initial_excluded_size") from ${#exclude_paths[@]} path(s)"
+        fi
+    fi
+
     # Try to resume from saved state (crash recovery)
     if load_state; then
         log "Resuming monitoring from saved state — skipping 0% notification"
@@ -821,7 +878,11 @@ while true; do
             get_progress
             initial_size="$PROGRESS_TOTAL_BYTES"
         else
-            initial_size=$(du -sb "${exclusion_params[@]}" "$CACHE_PATH" | cut -f1)
+            initial_size=$(du -sb "$CACHE_PATH" | cut -f1)
+            initial_size=$((initial_size - initial_excluded_size))
+            if [ "$initial_size" -lt 0 ]; then
+                initial_size=0
+            fi
         fi
 
         initial_readable=$(human_readable "$initial_size")
