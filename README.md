@@ -1,4 +1,4 @@
-# Mover Status 
+# Mover Status
 
 <p align="center">
   <img src="mover-status.svg" alt="base-image" style="width: 40%;"/>
@@ -25,13 +25,13 @@
 - [🐛 Reporting Issues](#-reporting-issues)
 - [⚖️ License](#-license)
 
-### 📜 Description 
+### 📜 Description
 This Bash script monitors the progress of the "Mover" process and sends updates to Discord and/or Telegram webhooks. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
-## 📸 Images (preview) 
+## 📸 Images (preview)
 <img src="https://i.imgur.com/owBzb5R.png" width="60%" alt="An example of how it looks">
 
-### ⚙️ How it works 
+### ⚙️ How it works
 1. When the script runs, it continuously loops and waits for the Unraid Mover script to start.
 2. Once it detects the Unraid Mover script, it posts the initial notification to your Discord or Telegram webhook.
 3. It calculates the total amount of data on your cache, excluding the paths you specify. The estimation of the remaining time can vary.
@@ -40,7 +40,7 @@ This Bash script monitors the progress of the "Mover" process and sends updates 
 6. If the mover process completes successfully, the script posts a final notification indicating 100% completion and exits.
 7. If the mover process stops unexpectedly, the script detects this and sets the completion status to 100%, posting the final notification accordingly.
 
-### 🛠️ Installation 
+### 🛠️ Installation
 I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/topic/48286-plugin-ca-user-scripts/)"
 1. Go into "**Settings**"
 2. Select "**User Scripts**"
@@ -48,7 +48,7 @@ I'm using the UnraidOS plugin named "[User Scripts](https://forums.unraid.net/to
 4. Name your script "**Mover Status**" (or anything else)
 5. Select/hover the **Settings Wheel** icon of the Mover Status script you just created
 6. Select "**Edit Script**"
-7. Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/mover-status/main/moverStatus.sh) into the file 
+7. Copy everything from the [moverStatus.sh](https://raw.githubusercontent.com/engels74/mover-status/main/moverStatus.sh) into the file
 8. Edit the variables at the top to your liking (you don't **have** to define any excluded folders - leave them empty if you don't need to exclude folders)
 9. Select "**Save Changes**" to save the script
 10. Use **Run in Background** to run the script
@@ -61,11 +61,11 @@ If you are using the "Mover Tuning" plugin for Unraid, please ensure you have th
   <img src="https://up.shx.gg/71UMT4Sbk.png" alt="New Mover Tuning Plugin" width="60%">
 </p>
 
-### ⏰❌ Why can't I use cron/scheduling for this script?! 
-The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background. 
+### ⏰❌ Why can't I use cron/scheduling for this script?!
+The Unraid "User Scripts" plugin uses a "lockfile" to prevent multiple instances of a script running simultaneously. Adding our own "lockfile" function to the script itself, causes the plugin to lose track of the script, making it appear as if it's not running, even though it is running correctly in the background.
 Because the script runs in a loop, I've yet to find a way to integrate it with cron/scheduling while maintaining compatibility with the User Scripts plugin.
 
-### 🔄 Can I make the script start on startup/reboot? 
+### 🔄 Can I make the script start on startup/reboot?
 Well, somewhat! You can make it start, whenever you start up your Unraid array
 1. Go into "**Settings**"
 2. Select "**User Scripts**"
@@ -76,7 +76,7 @@ Well, somewhat! You can make it start, whenever you start up your Unraid array
 7. Select "**Done**"
 8. The script will now launch automatically, when you start your array!
 
-### ⚙️ Script Settings 
+### ⚙️ Script Settings
 Edit the script to configure the necessary settings:
 
 - `USE_TELEGRAM`: Set to `true` to enable Telegram notifications.
@@ -89,7 +89,7 @@ Edit the script to configure the necessary settings:
 - `DRY_RUN`: Set to `true` to test notifications without actual monitoring.
 - `ENABLE_DEBUG`: Set to `true` to enable debug logging.
 
-### 🤖 Telegram Bot Setup 
+### 🤖 Telegram Bot Setup
 
 1. **Create a Telegram Bot**:
     - Open Telegram and search for the user `@BotFather`.
@@ -131,7 +131,7 @@ Edit the script to configure the necessary settings:
 
   The `TELEGRAM_CHAT_ID` would then be `-1001122334455`.
 
-### 🖥️ Discord Webhook Setup 
+### 🖥️ Discord Webhook Setup
 
 1. Go to your Discord server settings.
 2. Navigate to the "Integrations" section and click "Webhooks".
