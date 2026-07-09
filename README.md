@@ -22,7 +22,7 @@
 - [⚙️ Script Settings](#-script-settings)
 - [🤖 Telegram Bot Setup](#-telegram-bot-setup)
 - [🖥️ Discord Webhook Setup](#-discord-webhook-setup)
-- [Linting](#linting)
+- [Running the tests](#running-the-tests)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [⚖️ License](#-license)
 
@@ -140,7 +140,7 @@ Edit the script to configure the necessary settings:
 4. Copy the Webhook URL.
 5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
 
-### Linting
+### Running the tests
 
 Run ShellCheck against the script:
 
