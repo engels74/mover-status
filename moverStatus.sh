@@ -73,7 +73,7 @@ EXCLUDE_PATH_02=""
 # Do Not Modify: Script essentials
 # ---------------------------------
 # Script versioning - check for updates
-CURRENT_VERSION="0.0.10"
+CURRENT_VERSION="0.0.11"
 
 # Function to check the latest version
 check_latest_version() {
