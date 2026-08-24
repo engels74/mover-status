@@ -2,7 +2,7 @@
 
 # Script Metadata
 #name=Mover Status Script
-#description=This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
+#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
 #backgroundOnly=true
 #arrayStarted=true
 
@@ -10,7 +10,7 @@
 # Mover Status Script
 # ---------------------------------------------------------
 # Monitors Unraid's mover process and posts progress updates
-# to Discord and/or Telegram webhooks.
+# to Discord, Telegram, and/or Pushover.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
 # Runs as a backgroundOnly Unraid user script.
@@ -30,10 +30,14 @@ log "Starting Mover Status Monitor..."
 # Configure basic settings and webhook details
 USE_TELEGRAM=false                                                      # Enable notifications to Telegram
 USE_DISCORD=false                                                       # Enable notifications to Discord
+USE_PUSHOVER=false                                                      # Enable notifications to Pushover
 TELEGRAM_BOT_TOKEN="xxxx"                                               # Telegram bot token
 TELEGRAM_CHAT_ID="xxxx"                                                 # Telegram chat ID
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discord webhook URL
 DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Display name for Discord notifications
+PUSHOVER_APP_TOKEN="xxxx"                                               # Pushover application/API token
+PUSHOVER_USER_KEY="xxxx"                                                # Pushover user/group key
+PUSHOVER_TITLE="Mover Status"                                           # Notification title for Pushover
 NOTIFICATION_INCREMENT=25                                               # Notification frequency in percentage increments
 DRY_RUN=false                                                           # Enable this to test the notifications without actual monitoring
 ENABLE_DEBUG=false                                                      # Set to true to enable debug logging
@@ -47,9 +51,11 @@ ENABLE_FILE_INFO=false                                                  # Show f
 # Custom messages for each notification point
 TELEGRAM_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>{percent}%</b> complete. &#10;Remaining data: {remaining_data}.&#10;Estimated completion time: {etc}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move."
 DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{percent}%** complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
+PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
+PUSHOVER_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 
 # ---------------------------------------
 # Exclusion Folders: Define paths to exclude
@@ -88,8 +94,8 @@ LAST_NOTIFIED=-1
 # ---------------------------------------------------------
 
 # Check if at least one notification method is enabled
-if ! $USE_TELEGRAM && ! $USE_DISCORD; then
-    log "Error: Both USE_TELEGRAM and USE_DISCORD are set to false. At least one must be true."
+if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER; then
+    log "Error: USE_TELEGRAM, USE_DISCORD, and USE_PUSHOVER are all set to false. At least one must be true."
     exit 1
 fi
 
@@ -104,6 +110,13 @@ fi
 if [[ $USE_DISCORD == true ]]; then
     if ! [[ $DISCORD_WEBHOOK_URL =~ ^https://(discord\.com|discordapp\.com)/api/webhooks/ ]]; then
         log "Error: Invalid Discord webhook URL."
+        exit 1
+    fi
+fi
+
+if [[ $USE_PUSHOVER == true ]]; then
+    if [ -z "$PUSHOVER_APP_TOKEN" ] || [ "$PUSHOVER_APP_TOKEN" = "xxxx" ] || [ -z "$PUSHOVER_USER_KEY" ] || [ "$PUSHOVER_USER_KEY" = "xxxx" ]; then
+        log "Error: Pushover settings not configured correctly."
         exit 1
     fi
 fi
@@ -146,6 +159,7 @@ if $DRY_RUN; then
     dry_run_datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     dry_run_etc_discord="<t:$(date +%s --date='01/01/2099 12:00'):R>"
     dry_run_etc_telegram="01/01/2099, 12pm"
+    dry_run_etc_pushover="01/01/2099, 12pm"
 
     # Simulate file info if available
     dry_run_file_count=""
@@ -184,6 +198,13 @@ if $DRY_RUN; then
     dry_run_value_message_telegram="${dry_run_value_message_telegram//\{current_file\}/$dry_run_current_file}"
     dry_run_value_message_telegram+="&#10;&#10;${footer_text}"
 
+    dry_run_value_message_pushover="${PUSHOVER_MOVING_MESSAGE//\{percent\}/$dry_run_percent}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{remaining_data\}/$dry_run_remaining_data}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{etc\}/$dry_run_etc_pushover}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{file_count\}/$dry_run_file_count}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{current_file\}/$dry_run_current_file}"
+    dry_run_value_message_pushover+=$'\n\n'"${footer_text}"
+
     # Send test notifications
     if $USE_TELEGRAM; then
         log "Sending test notification to Telegram..."
@@ -192,6 +213,16 @@ if $DRY_RUN; then
                        --arg text "$dry_run_value_message_telegram" \
                        '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
         /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+    fi
+
+    if $USE_PUSHOVER; then
+        log "Sending test notification to Pushover..."
+        /usr/bin/curl -s -o /dev/null \
+            --form-string "token=$PUSHOVER_APP_TOKEN" \
+            --form-string "user=$PUSHOVER_USER_KEY" \
+            --form-string "title=$PUSHOVER_TITLE" \
+            --form-string "message=$dry_run_value_message_pushover" \
+            "https://api.pushover.net/1/messages.json"
     fi
 
     if $USE_DISCORD; then
@@ -627,7 +658,7 @@ format_speed() {
 }
 
 # Build rich completion message with all available stats
-# Sets COMPLETION_SUMMARY_DISCORD and COMPLETION_SUMMARY_TELEGRAM
+# Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, and COMPLETION_SUMMARY_PUSHOVER
 build_completion_summary() {
     local end_time duration avg_speed_val
     end_time=$(date +%s)
@@ -664,6 +695,14 @@ build_completion_summary() {
     telegram_msg="${telegram_msg//\{duration\}/$duration_str}"
     telegram_msg="${telegram_msg//\{avg_speed\}/$avg_speed_str}"
     COMPLETION_SUMMARY_TELEGRAM="$telegram_msg"
+
+    # Build Pushover completion message
+    local pushover_msg="${PUSHOVER_COMPLETION_MESSAGE:-$COMPLETION_MESSAGE}"
+    pushover_msg="${pushover_msg//\{total_moved\}/$total_moved_str}"
+    pushover_msg="${pushover_msg//\{file_count\}/$file_count_str}"
+    pushover_msg="${pushover_msg//\{duration\}/$duration_str}"
+    pushover_msg="${pushover_msg//\{avg_speed\}/$avg_speed_str}"
+    COMPLETION_SUMMARY_PUSHOVER="$pushover_msg"
 }
 
 # Function to convert bytes to human-readable format
@@ -718,7 +757,7 @@ calculate_etc() {
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $platform == "telegram" ]]; then
+        elif [[ $platform == "telegram" || $platform == "pushover" ]]; then
             date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
@@ -735,6 +774,8 @@ send_notification() {
     etc_discord=$(calculate_etc "$percent" "discord")
     local etc_telegram
     etc_telegram=$(calculate_etc "$percent" "telegram")
+    local etc_pushover
+    etc_pushover=$(calculate_etc "$percent" "pushover")
 
     # Prepare file info placeholders
     local file_count_str=""
@@ -760,11 +801,18 @@ send_notification() {
     value_message_telegram="${value_message_telegram//\{file_count\}/$file_count_str}"
     value_message_telegram="${value_message_telegram//\{current_file\}/$current_file_str}"
 
+    local value_message_pushover="${PUSHOVER_MOVING_MESSAGE//\{percent\}/$percent}"
+    value_message_pushover="${value_message_pushover//\{remaining_data\}/$remaining_data}"
+    value_message_pushover="${value_message_pushover//\{etc\}/$etc_pushover}"
+    value_message_pushover="${value_message_pushover//\{file_count\}/$file_count_str}"
+    value_message_pushover="${value_message_pushover//\{current_file\}/$current_file_str}"
+
     local footer_text="Version: v${CURRENT_VERSION}"
     if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
     fi
     value_message_telegram+="&#10;&#10;${footer_text}"
+    value_message_pushover+=$'\n\n'"${footer_text}"
 
     # Determine the color based on completion and percentage
     local color
@@ -772,6 +820,7 @@ send_notification() {
         build_completion_summary
         value_message_discord="$COMPLETION_SUMMARY_DISCORD"
         value_message_telegram="$COMPLETION_SUMMARY_TELEGRAM"
+        value_message_pushover="$COMPLETION_SUMMARY_PUSHOVER"
         color=65280  # Green for completion
     else
         if [ "$percent" -le 34 ]; then
@@ -798,6 +847,23 @@ send_notification() {
         response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
         if $ENABLE_DEBUG; then
             log "Telegram response: $response"
+        fi
+    fi
+
+    if $USE_PUSHOVER; then
+        if $ENABLE_DEBUG; then
+            log "Preparing to send to Pushover: title='$PUSHOVER_TITLE', message='$value_message_pushover'"
+        fi
+        local response
+        response=$(curl -s \
+            --form-string "token=$PUSHOVER_APP_TOKEN" \
+            --form-string "user=$PUSHOVER_USER_KEY" \
+            --form-string "title=$PUSHOVER_TITLE" \
+            --form-string "message=$value_message_pushover" \
+            "https://api.pushover.net/1/messages.json" \
+            -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
+        if $ENABLE_DEBUG; then
+            log "Pushover response: $response"
         fi
     fi
 
@@ -972,7 +1038,7 @@ done
 
 # Mover Status Script
 # <https://github.com/engels74/mover-status>
-# This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
+# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
 # Copyright (C) 2024 - engels74
 #
 # This program is free software: you can redistribute it and/or modify

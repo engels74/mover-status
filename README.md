@@ -22,18 +22,19 @@
 - [⚙️ Script Settings](#-script-settings)
 - [🤖 Telegram Bot Setup](#-telegram-bot-setup)
 - [🖥️ Discord Webhook Setup](#-discord-webhook-setup)
+- [📲 Pushover Setup](#-pushover-setup)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [⚖️ License](#-license)
 
 ### 📜 Description 
-This Bash script monitors the progress of the "Mover" process and sends updates to Discord and/or Telegram webhooks. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
+This Bash script monitors the progress of the "Mover" process and sends updates to Discord, Telegram, and/or Pushover. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
 ## 📸 Images (preview) 
 <img src="https://i.imgur.com/owBzb5R.png" width="60%" alt="An example of how it looks">
 
 ### ⚙️ How it works 
 1. When the script runs, it continuously loops and waits for the Unraid Mover script to start.
-2. Once it detects the Unraid Mover script, it posts the initial notification to your Discord or Telegram webhook.
+2. Once it detects the Unraid Mover script, it posts the initial notification to your enabled notification service(s).
 3. It calculates the total amount of data on your cache, excluding the paths you specify. The estimation of the remaining time can vary.
 4. You can exclude specific folders from the mover process, such as those used by other applications like qBittorrent and SABnzbd, or any hidden folders.
 5. The script posts a progress update based on the percentage of data moved, configurable via the `NOTIFICATION_INCREMENT` setting.
@@ -81,10 +82,14 @@ Edit the script to configure the necessary settings:
 
 - `USE_TELEGRAM`: Set to `true` to enable Telegram notifications.
 - `USE_DISCORD`: Set to `true` to enable Discord notifications.
+- `USE_PUSHOVER`: Set to `true` to enable Pushover notifications.
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token.
 - `TELEGRAM_CHAT_ID`: Your Telegram group or channel chat ID.
 - `DISCORD_WEBHOOK_URL`: Your Discord webhook URL.
 - `DISCORD_NAME_OVERRIDE`: The display name for Discord notifications.
+- `PUSHOVER_APP_TOKEN`: Your Pushover application/API token.
+- `PUSHOVER_USER_KEY`: Your Pushover user or group key.
+- `PUSHOVER_TITLE`: The title used for Pushover notifications.
 - `NOTIFICATION_INCREMENT`: The frequency of notifications in percentage increments.
 - `DRY_RUN`: Set to `true` to test notifications without actual monitoring.
 - `ENABLE_DEBUG`: Set to `true` to enable debug logging.
@@ -138,6 +143,15 @@ Edit the script to configure the necessary settings:
 3. Click "New Webhook" and configure it.
 4. Copy the Webhook URL.
 5. The webhook URL can be used for `DISCORD_WEBHOOK_URL`.
+
+### 📲 Pushover Setup
+
+1. Sign in to Pushover and register an application/API token.
+2. Copy the application token into `PUSHOVER_APP_TOKEN`.
+3. Copy your Pushover user key (or a group key) into `PUSHOVER_USER_KEY`.
+4. Set `USE_PUSHOVER=true`.
+5. Optionally change `PUSHOVER_TITLE` to customize the notification title.
+6. Set `DRY_RUN=true` to send a test notification without monitoring Mover.
 
 ### 🐛 Reporting Issues
 
