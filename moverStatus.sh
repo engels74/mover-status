@@ -795,6 +795,7 @@ calculate_etc() {
 send_notification() {
     local percent=$1
     local remaining_data=$2
+    local pushover_only=${3:-false}
     local datetime
     datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc_discord
@@ -862,7 +863,7 @@ send_notification() {
     # Send the notifications
     log "Sending notification..."
     local notification_failed=false
-    if $USE_TELEGRAM; then
+    if ! $pushover_only && $USE_TELEGRAM; then
         local json_payload
         json_payload=$(jq -n \
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
@@ -887,7 +888,7 @@ send_notification() {
         fi
     fi
 
-    if $USE_DISCORD; then
+    if ! $pushover_only && $USE_DISCORD; then
         local notification_data='{
             "username": "'"$DISCORD_NAME_OVERRIDE"'",
             "content": null,
@@ -954,6 +955,13 @@ while true; do
         fi
     fi
 
+    # Notification retry state
+    pushover_retry_pending=false
+    pending_percent=""
+    pending_remaining=""
+    pending_level=""
+    completion_retry_pending=false
+
     # Try to resume from saved state (crash recovery)
     if load_state; then
         log "Resuming monitoring from saved state — skipping 0% notification"
@@ -1001,12 +1009,17 @@ while true; do
         fi
 
         LAST_NOTIFIED=-1
+
         if send_notification "$percent" "$remaining_readable"; then
             log "Initial notification sent with ${percent}% completion."
+            LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
         else
-            log "Warning: Initial notification had one or more delivery failures."
+            log "Warning: Initial notification had one or more delivery failures; Pushover will be retried."
+            pushover_retry_pending=true
+            pending_percent="$percent"
+            pending_remaining="$remaining_readable"
+            pending_level=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
         fi
-        LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
     fi
 
     # Monitor the progress
@@ -1041,26 +1054,60 @@ while true; do
             remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
 
             log "Total data moved: ${PROGRESS_MOVED_BYTES} bytes, Total: ${PROGRESS_TOTAL_BYTES} bytes."
-            if send_notification 100 "$remaining_readable"; then
+
+            if [[ "$completion_retry_pending" == true ]]; then
+                if send_notification 100 "$remaining_readable" true; then
+                    log "Final Pushover notification sent after retry."
+                    save_last_run
+                    LAST_NOTIFIED=-1
+                    log "Monitoring loop exiting."
+                    break
+                else
+                    log "Warning: Final Pushover notification delivery failed; retrying in 5 seconds."
+                    sleep 5
+                    continue
+                fi
+            elif send_notification 100 "$remaining_readable"; then
                 log "Final notification sent."
+                save_last_run
+                LAST_NOTIFIED=-1
+                log "Monitoring loop exiting."
+                break
             else
-                log "Warning: Final notification had one or more delivery failures."
+                log "Warning: Final notification had one or more delivery failures; Pushover will be retried."
+                completion_retry_pending=true
+                sleep 5
+                continue
             fi
-            save_last_run
-            LAST_NOTIFIED=-1
-            log "Monitoring loop exiting."
-            break
+        fi
+
+        # Retry only the failed Pushover progress notification so other channels are not duplicated
+        if [[ "$pushover_retry_pending" == true ]]; then
+            if send_notification "$pending_percent" "$pending_remaining" true; then
+                log "Pushover notification retry succeeded for ${pending_percent}% completion."
+                LAST_NOTIFIED="$pending_level"
+                pushover_retry_pending=false
+                pending_percent=""
+                pending_remaining=""
+                pending_level=""
+            else
+                log "Warning: Pushover notification retry failed; will retry again."
+            fi
         fi
 
         # Send notifications based on increment
-        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
+        if [[ "$pushover_retry_pending" != true ]] && [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
             log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
             if send_notification "$percent" "$remaining_readable"; then
                 log "Notification sent for $percent% completion."
+                LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
             else
-                log "Warning: Notification for $percent% had one or more delivery failures."
+                log "Warning: Notification for $percent% had one or more delivery failures; Pushover will be retried."
+                pushover_retry_pending=true
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+                pending_level="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
             fi
-            LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
         fi
 
         sleep 5  # Check every 5 seconds; progress only recalculated per DU_POLL_INTERVAL
