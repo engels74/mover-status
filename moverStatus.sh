@@ -796,6 +796,7 @@ send_notification() {
     local percent=$1
     local remaining_data=$2
     local pushover_only=${3:-false}
+    local skip_pushover=${4:-false}
     local datetime
     datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc_discord
@@ -879,7 +880,7 @@ send_notification() {
         fi
     fi
 
-    if $USE_PUSHOVER; then
+    if ! $skip_pushover && $USE_PUSHOVER; then
         if $ENABLE_DEBUG; then
             log "Preparing to send to Pushover: title='$PUSHOVER_TITLE', message='$value_message_pushover'"
         fi
@@ -959,7 +960,6 @@ while true; do
     pushover_retry_pending=false
     pending_percent=""
     pending_remaining=""
-    pending_level=""
     completion_retry_pending=false
 
     # Try to resume from saved state (crash recovery)
@@ -1012,14 +1012,15 @@ while true; do
 
         if send_notification "$percent" "$remaining_readable"; then
             log "Initial notification sent with ${percent}% completion."
-            LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
         else
             log "Warning: Initial notification had one or more delivery failures; Pushover will be retried."
             pushover_retry_pending=true
             pending_percent="$percent"
             pending_remaining="$remaining_readable"
-            pending_level=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
         fi
+
+        # Advance the normal notification schedule independently of Pushover retries.
+        LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
     fi
 
     # Monitor the progress
@@ -1081,35 +1082,47 @@ while true; do
             fi
         fi
 
-        # Retry only the failed Pushover progress notification so other channels are not duplicated
-        if [[ "$pushover_retry_pending" == true ]]; then
-            if send_notification "$pending_percent" "$pending_remaining" true; then
-                log "Pushover notification retry succeeded for ${pending_percent}% completion."
-                LAST_NOTIFIED="$pending_level"
-                pushover_retry_pending=false
-                pending_percent=""
-                pending_remaining=""
-                pending_level=""
-            else
-                log "Warning: Pushover notification retry failed; will retry again."
-            fi
-        fi
-
-        # Send notifications based on increment
-        if [[ "$pushover_retry_pending" != true ]] && [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
+        # Send notifications based on increment. A pending Pushover retry must not
+        # stall healthy Telegram/Discord channels.
+        if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
             log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
-            if send_notification "$percent" "$remaining_readable"; then
+
+            if [[ "$pushover_retry_pending" == true ]]; then
+                # Pushover is already pending, so send only to the healthy channels.
+                if $USE_TELEGRAM || $USE_DISCORD; then
+                    send_notification "$percent" "$remaining_readable" false true
+                    log "Notification sent for $percent% completion to non-Pushover channels."
+                fi
+
+                # Coalesce the pending Pushover retry to the newest progress update.
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+                log "Pending Pushover retry updated to ${percent}% completion."
+            elif send_notification "$percent" "$remaining_readable"; then
                 log "Notification sent for $percent% completion."
-                LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
             else
                 log "Warning: Notification for $percent% had one or more delivery failures; Pushover will be retried."
                 pushover_retry_pending=true
                 pending_percent="$percent"
                 pending_remaining="$remaining_readable"
-                pending_level="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
             fi
+
+            # Healthy-channel scheduling is independent of Pushover delivery state.
+            LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
         fi
 
+        # Retry only Pushover. This runs after the increment branch so any pending
+        # message is first coalesced to the newest progress value.
+        if [[ "$pushover_retry_pending" == true ]]; then
+            if send_notification "$pending_percent" "$pending_remaining" true; then
+                log "Pushover notification retry succeeded for ${pending_percent}% completion."
+                pushover_retry_pending=false
+                pending_percent=""
+                pending_remaining=""
+            else
+                log "Warning: Pushover notification retry failed; will retry again."
+            fi
+        fi
         sleep 5  # Check every 5 seconds; progress only recalculated per DU_POLL_INTERVAL
     done
 
