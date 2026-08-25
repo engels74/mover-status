@@ -121,6 +121,35 @@ if [[ $USE_PUSHOVER == true ]]; then
     fi
 fi
 
+# Send a Pushover notification and fail on transport/API errors
+send_pushover() {
+    local message="$1"
+    local response
+
+    if ! response=$(/usr/bin/curl -fsS \
+        --connect-timeout 10 \
+        --max-time 30 \
+        --form-string "token=$PUSHOVER_APP_TOKEN" \
+        --form-string "user=$PUSHOVER_USER_KEY" \
+        --form-string "title=$PUSHOVER_TITLE" \
+        --form-string "message=$message" \
+        "https://api.pushover.net/1/messages.json" 2>&1); then
+        log "Error: Failed to send Pushover notification: $response"
+        return 1
+    fi
+
+    if ! printf '%s' "$response" | jq -e '.status == 1' > /dev/null 2>&1; then
+        log "Error: Pushover returned an unsuccessful response: $response"
+        return 1
+    fi
+
+    if $ENABLE_DEBUG; then
+        log "Pushover response: $response"
+    fi
+
+    return 0
+}
+
 # Validate DU_POLL_INTERVAL is a positive integer
 if ! [[ "$DU_POLL_INTERVAL" =~ ^[0-9]+$ ]] || [ "$DU_POLL_INTERVAL" -eq 0 ]; then
     log "Error: DU_POLL_INTERVAL must be a positive integer. Got: '$DU_POLL_INTERVAL'"
@@ -217,12 +246,10 @@ if $DRY_RUN; then
 
     if $USE_PUSHOVER; then
         log "Sending test notification to Pushover..."
-        /usr/bin/curl -s -o /dev/null \
-            --form-string "token=$PUSHOVER_APP_TOKEN" \
-            --form-string "user=$PUSHOVER_USER_KEY" \
-            --form-string "title=$PUSHOVER_TITLE" \
-            --form-string "message=$dry_run_value_message_pushover" \
-            "https://api.pushover.net/1/messages.json"
+        if ! send_pushover "$dry_run_value_message_pushover"; then
+            log "Error: Pushover dry-run notification was not delivered."
+            exit 1
+        fi
     fi
 
     if $USE_DISCORD; then
@@ -834,6 +861,7 @@ send_notification() {
 
     # Send the notifications
     log "Sending notification..."
+    local notification_failed=false
     if $USE_TELEGRAM; then
         local json_payload
         json_payload=$(jq -n \
@@ -854,16 +882,8 @@ send_notification() {
         if $ENABLE_DEBUG; then
             log "Preparing to send to Pushover: title='$PUSHOVER_TITLE', message='$value_message_pushover'"
         fi
-        local response
-        response=$(curl -s \
-            --form-string "token=$PUSHOVER_APP_TOKEN" \
-            --form-string "user=$PUSHOVER_USER_KEY" \
-            --form-string "title=$PUSHOVER_TITLE" \
-            --form-string "message=$value_message_pushover" \
-            "https://api.pushover.net/1/messages.json" \
-            -w "\nHTTP status: %{http_code}\nCurl Error: %{errormsg}")
-        if $ENABLE_DEBUG; then
-            log "Pushover response: $response"
+        if ! send_pushover "$value_message_pushover"; then
+            notification_failed=true
         fi
     fi
 
@@ -896,6 +916,11 @@ send_notification() {
             log "Discord response: $response"
         fi
     fi
+
+    if $notification_failed; then
+        return 1
+    fi
+    return 0
 }
 
 # Initialize state directory for crash recovery
@@ -976,9 +1001,12 @@ while true; do
         fi
 
         LAST_NOTIFIED=-1
-        send_notification "$percent" "$remaining_readable"
+        if send_notification "$percent" "$remaining_readable"; then
+            log "Initial notification sent with ${percent}% completion."
+        else
+            log "Warning: Initial notification had one or more delivery failures."
+        fi
         LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
-        log "Initial notification sent with ${percent}% completion."
     fi
 
     # Monitor the progress
@@ -1013,19 +1041,26 @@ while true; do
             remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
 
             log "Total data moved: ${PROGRESS_MOVED_BYTES} bytes, Total: ${PROGRESS_TOTAL_BYTES} bytes."
-            send_notification 100 "$remaining_readable"
+            if send_notification 100 "$remaining_readable"; then
+                log "Final notification sent."
+            else
+                log "Warning: Final notification had one or more delivery failures."
+            fi
             save_last_run
             LAST_NOTIFIED=-1
-            log "Final notification sent and monitoring loop exiting."
+            log "Monitoring loop exiting."
             break
         fi
 
         # Send notifications based on increment
         if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
             log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
-            send_notification "$percent" "$remaining_readable"
+            if send_notification "$percent" "$remaining_readable"; then
+                log "Notification sent for $percent% completion."
+            else
+                log "Warning: Notification for $percent% had one or more delivery failures."
+            fi
             LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
-            log "Notification sent for $percent% completion."
         fi
 
         sleep 5  # Check every 5 seconds; progress only recalculated per DU_POLL_INTERVAL
