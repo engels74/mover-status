@@ -189,7 +189,7 @@ Multiple destinations can be configured:
 APPRISE_TARGETS=(
     "pover://USER_KEY@APP_TOKEN"
     "discord://WEBHOOK_ID/WEBHOOK_TOKEN"
-    "ntfy://ntfy.sh/my-topic"
+    "ntfys://ntfy.sh/my-topic"
 )
 ```
 

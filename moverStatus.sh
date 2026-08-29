@@ -236,16 +236,24 @@ send_apprise_target() {
                 return 1
             fi
 
-            if printf '%s' "$payload" | /usr/bin/curl -fsS \
+            local http_code
+            if http_code=$(printf '%s' "$payload" | /usr/bin/curl -fsS \
                 --connect-timeout 10 \
                 --max-time 30 \
                 -H "Content-Type: application/json" \
                 --data-binary @- \
-                "$api_endpoint" > /dev/null 2>&1; then
-                if $ENABLE_DEBUG; then
-                    log "Apprise target $((target_index + 1)) delivered successfully via API."
+                -o /dev/null \
+                -w "%{http_code}" \
+                "$api_endpoint" 2>/dev/null); then
+                if [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
+                    if $ENABLE_DEBUG; then
+                        log "Apprise target $((target_index + 1)) delivered successfully via API."
+                    fi
+                    return 0
                 fi
-                return 0
+
+                log "Error: Apprise target $((target_index + 1)) failed via API (unexpected HTTP status $http_code)."
+                return 1
             else
                 rc=$?
                 log "Error: Apprise target $((target_index + 1)) failed via API (curl exit code $rc)."
