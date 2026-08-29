@@ -498,7 +498,7 @@ STATE_DIR="/tmp/mover-status"
 STATE_FILE="${STATE_DIR}/state"
 LAST_RUN_FILE="${STATE_DIR}/last-run"
 
-# Global data source identifier: "mover_ini" or "du_polling"
+# Global data source identifier: "preparing", "mover_ini", or "du_polling"
 DATA_SOURCE=""
 
 # Progress globals (set by get_progress)
@@ -521,11 +521,50 @@ INI_REMAIN_FILES=0
 INI_CURRENT_FILE=""
 INI_ACTION=""
 
-# Detect whether mover.ini is available and usable
+# True only when mover.ini belongs to the currently running mover operation.
+# A previous Mover Tuning run can leave mover.ini behind indefinitely.
+mover_ini_is_current() {
+    [ -f "$MOVER_INI_PATH" ] || return 1
+    [ -n "$mover_start_time" ] || return 1
+
+    local mod_time total_line remain_line total remain
+    mod_time=$(stat -c %Y "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    [ "$mod_time" -ge "$mover_start_time" ] || return 1
+
+    # Require a complete, sane byte snapshot before trusting a newly written file.
+    total_line=$(grep -m1 '^TotalToSecondary=' "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    remain_line=$(grep -m1 '^RemainToSecondary=' "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    total="${total_line#*=}"
+    remain="${remain_line#*=}"
+    total="${total%\"}"
+    total="${total#\"}"
+    remain="${remain%\"}"
+    remain="${remain#\"}"
+
+    [[ "$total" =~ ^[0-9]+$ ]] || return 1
+    [[ "$remain" =~ ^[0-9]+$ ]] || return 1
+    [ "$remain" -le "$total" ]
+}
+
+# Detect whether current-run mover.ini data is available.
+# Mover Tuning may spend significant time preparing/scanning before it writes
+# progress for the current run; do not fall back to an expensive second du scan.
 detect_data_source() {
-    if [ -f "$MOVER_INI_PATH" ] && grep -q "TotalToSecondary" "$MOVER_INI_PATH" 2>/dev/null; then
+    if mover_ini_is_current; then
         DATA_SOURCE="mover_ini"
-        log "Data source: mover.ini (Mover Tuning plugin detected)"
+        log "Data source: mover.ini (current Mover Tuning run)"
+    elif pgrep -x "age_mover" > /dev/null 2>&1; then
+        DATA_SOURCE="preparing"
+
+        if [ -f "$MOVER_INI_PATH" ]; then
+            local ini_mtime
+            ini_mtime=$(stat -c %Y "$MOVER_INI_PATH" 2>/dev/null || true)
+            if [ -n "$ini_mtime" ] && [ -n "$mover_start_time" ] && [ "$ini_mtime" -lt "$mover_start_time" ]; then
+                log "Ignoring stale mover.ini from $(date -d "@$ini_mtime" '+%Y-%m-%d %H:%M:%S'); current mover started at $(date -d "@$mover_start_time" '+%Y-%m-%d %H:%M:%S')."
+            fi
+        fi
+
+        log "Mover Tuning is preparing/scanning; waiting for current-run progress data."
     else
         DATA_SOURCE="du_polling"
         log "Data source: du polling (standard mover)"
@@ -577,7 +616,16 @@ read_mover_ini() {
 
 # Unified progress reader — sets PROGRESS_* globals from either data source
 get_progress() {
-    if [ "$DATA_SOURCE" = "mover_ini" ]; then
+    if [ "$DATA_SOURCE" = "preparing" ]; then
+        PROGRESS_PERCENT=0
+        PROGRESS_REMAINING_BYTES=0
+        PROGRESS_MOVED_BYTES=0
+        PROGRESS_TOTAL_BYTES=0
+        PROGRESS_FILE_COUNT=""
+        PROGRESS_REMAIN_FILES=""
+        PROGRESS_CURRENT_FILE=""
+        return 0
+    elif [ "$DATA_SOURCE" = "mover_ini" ]; then
         read_mover_ini || return 1
 
         PROGRESS_TOTAL_BYTES="$INI_TOTAL_TO_SECONDARY"
@@ -1302,6 +1350,31 @@ send_notification() {
     return 0
 }
 
+# Send the first percentage notification once trustworthy progress exists.
+send_initial_notifications() {
+    local percent=$1
+    local remaining_readable=$2
+
+    if direct_notifications_enabled; then
+        if send_notification "$percent" "$remaining_readable"; then
+            log "Initial direct notification attempt completed at ${percent}%."
+        else
+            log "Warning: Initial direct notification had a delivery failure; Pushover will be retried."
+            pushover_retry_pending=true
+            pending_percent="$percent"
+            pending_remaining="$remaining_readable"
+        fi
+    fi
+
+    if $USE_APPRISE; then
+        if ! send_apprise_progress "$percent" "$remaining_readable"; then
+            log "Warning: One or more initial Apprise targets are pending retry."
+        fi
+    fi
+
+    LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
+}
+
 # Initialize state directory for crash recovery
 init_state_dir
 
@@ -1317,12 +1390,13 @@ while true; do
 
     log "Mover process found, starting monitoring..."
 
-    # Detect data source (mover.ini vs du polling)
-    detect_data_source
-
-    # Get mover PID for state tracking
+    # Get mover identity before choosing a progress source so stale mover.ini
+    # from a previous Mover Tuning run can be rejected.
     mover_pid=$(get_mover_pid) || mover_pid=""
     mover_start_time=$(get_mover_start_time "$mover_pid") || mover_start_time=""
+
+    # Detect data source (preparing vs current mover.ini vs du polling)
+    detect_data_source
 
     # Capture initial excluded size (used for consistent total adjustment)
     initial_excluded_size=0
@@ -1353,6 +1427,8 @@ while true; do
         if [ "$DATA_SOURCE" = "mover_ini" ]; then
             get_progress
             initial_size="$PROGRESS_TOTAL_BYTES"
+        elif [ "$DATA_SOURCE" = "preparing" ]; then
+            initial_size=0
         else
             initial_size=$(du -sb "$CACHE_PATH" | cut -f1)
             initial_size=$((initial_size - initial_excluded_size))
@@ -1361,14 +1437,23 @@ while true; do
             fi
         fi
 
-        initial_readable=$(human_readable "$initial_size")
-        log "Initial total size of data: $initial_readable"
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            initial_readable="Calculating..."
+            log "Initial total size unavailable while Mover Tuning is preparing."
+        else
+            initial_readable=$(human_readable "$initial_size")
+            log "Initial total size of data: $initial_readable"
+        fi
 
         start_time=$(date +%s)
         log "Monitoring started at: $(date -d "@$start_time" '+%Y-%m-%d %H:%M:%S')"
 
         # Check for late-join (mover already running before script started)
-        if [ "$DATA_SOURCE" = "mover_ini" ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            monitoring_start_bytes=0
+            percent=0
+            remaining_readable="Calculating..."
+        elif [ "$DATA_SOURCE" = "mover_ini" ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
             monitoring_start_bytes="$PROGRESS_MOVED_BYTES"
             log "Late join detected — mover already $(( PROGRESS_PERCENT ))% complete (using mover.ini data, baseline: $(human_readable "$monitoring_start_bytes"))"
             percent="$PROGRESS_PERCENT"
@@ -1389,31 +1474,36 @@ while true; do
 
         LAST_NOTIFIED=-1
 
-        if direct_notifications_enabled; then
-            if send_notification "$percent" "$remaining_readable"; then
-                log "Initial direct notification attempt completed at ${percent}%."
-            else
-                log "Warning: Initial direct notification had a delivery failure; Pushover will be retried."
-                pushover_retry_pending=true
-                pending_percent="$percent"
-                pending_remaining="$remaining_readable"
-            fi
+        # Do not emit a fake percentage while Mover Tuning is still preparing.
+        if [ "$DATA_SOURCE" != "preparing" ]; then
+            send_initial_notifications "$percent" "$remaining_readable"
         fi
-
-        if $USE_APPRISE; then
-            if ! send_apprise_progress "$percent" "$remaining_readable"; then
-                log "Warning: One or more initial Apprise targets are pending retry."
-            fi
-        fi
-
-        # Advance the normal notification schedule independently of transport retries.
-        LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
     fi
 
     # Monitor the progress
     last_du_time=0
     while true; do
         current_time=$(date +%s)
+
+        # Switch to mover.ini as soon as Mover Tuning writes current-run data.
+        if [ "$DATA_SOURCE" = "preparing" ] && is_mover_running && mover_ini_is_current; then
+            DATA_SOURCE="mover_ini"
+            log "Fresh mover.ini detected; switching to Mover Tuning progress tracking."
+
+            get_progress
+            initial_size="$PROGRESS_TOTAL_BYTES"
+            remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
+            percent="$PROGRESS_PERCENT"
+
+            monitoring_start_bytes="$PROGRESS_MOVED_BYTES"
+            if [ "$monitoring_start_bytes" -gt 0 ]; then
+                log "Mover already ${percent}% complete when current-run progress became available."
+            fi
+
+            send_initial_notifications "$percent" "$remaining_readable"
+            save_state
+            last_du_time=$current_time
+        fi
 
         # Only recalculate progress when DU_POLL_INTERVAL has passed
         if [ $((current_time - last_du_time)) -ge "$DU_POLL_INTERVAL" ]; then
@@ -1436,6 +1526,13 @@ while true; do
         # Check if the mover process is still running
         if ! is_mover_running; then
             log "Mover process is no longer running."
+
+            # If Mover Tuning produced current-run data just as the wrapper exited,
+            # use it for final stats without emitting a late progress notification.
+            if [ "$DATA_SOURCE" = "preparing" ] && mover_ini_is_current; then
+                DATA_SOURCE="mover_ini"
+                log "Current-run mover.ini became available at completion; using it for final stats."
+            fi
 
             # Final progress read — captures mover.ini final state before it goes stale
             get_progress
