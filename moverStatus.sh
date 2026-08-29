@@ -13,7 +13,8 @@
 # to Discord, Telegram, Pushover, and/or Apprise.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
-# Optional dependency: apprise CLI when USE_APPRISE=true
+# Optional: apprise CLI when APPRISE_MODE=cli
+#           reachable Apprise API when APPRISE_MODE=api
 # Runs as a backgroundOnly Unraid user script.
 # ---------------------------------------------------------
 
@@ -40,8 +41,9 @@ DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Displa
 PUSHOVER_APP_TOKEN="xxxx"                                               # Pushover application/API token
 PUSHOVER_USER_KEY="xxxx"                                                # Pushover user/group key
 PUSHOVER_TITLE="Mover Status"                                           # Notification title for Pushover
-APPRISE_MODE="cli"                                                       # Apprise transport mode (currently: cli)
+APPRISE_MODE="cli"                                                       # Apprise transport mode: cli | api
 APPRISE_BIN="/usr/bin/apprise"                                          # Apprise CLI executable
+APPRISE_API_URL="http://127.0.0.1:8000"                                 # Apprise API base URL when mode=api
 APPRISE_TITLE="Mover Status"                                             # Notification title for Apprise
 APPRISE_TARGETS=(
     # "pover://USER_KEY@APP_TOKEN"
@@ -139,8 +141,14 @@ if [[ $USE_APPRISE == true ]]; then
                 exit 1
             fi
             ;;
+        api)
+            if ! [[ "$APPRISE_API_URL" =~ ^https?://[^[:space:]]+$ ]]; then
+                log "Error: APPRISE_API_URL must be a valid http:// or https:// URL."
+                exit 1
+            fi
+            ;;
         *)
-            log "Error: Unsupported APPRISE_MODE '$APPRISE_MODE'. Currently supported: cli."
+            log "Error: Unsupported APPRISE_MODE '$APPRISE_MODE'. Supported modes: cli, api."
             exit 1
             ;;
     esac
@@ -195,20 +203,56 @@ send_apprise_target() {
     local notification_type=${4:-info}
     local rc
 
-    if "$APPRISE_BIN" \
-        --title "$title" \
-        --body "$message" \
-        --notification-type "$notification_type" \
-        "${APPRISE_TARGETS[$target_index]}" > /dev/null 2>&1; then
-        if $ENABLE_DEBUG; then
-            log "Apprise target $((target_index + 1)) delivered successfully."
-        fi
-        return 0
-    else
-        rc=$?
-        log "Error: Apprise target $((target_index + 1)) failed (exit code $rc)."
-        return 1
-    fi
+    case "$APPRISE_MODE" in
+        cli)
+            if "$APPRISE_BIN" \
+                --title "$title" \
+                --body "$message" \
+                --notification-type "$notification_type" \
+                --input-format text \
+                "${APPRISE_TARGETS[$target_index]}" > /dev/null 2>&1; then
+                if $ENABLE_DEBUG; then
+                    log "Apprise target $((target_index + 1)) delivered successfully via CLI."
+                fi
+                return 0
+            else
+                rc=$?
+                log "Error: Apprise target $((target_index + 1)) failed via CLI (exit code $rc)."
+                return 1
+            fi
+            ;;
+
+        api)
+            local payload
+            local api_endpoint="${APPRISE_API_URL%/}/notify"
+
+            if ! payload=$(jq -cn \
+                --arg url "${APPRISE_TARGETS[$target_index]}" \
+                --arg title "$title" \
+                --arg body "$message" \
+                --arg type "$notification_type" \
+                '{urls: [$url], title: $title, body: $body, type: $type, format: "text"}'); then
+                log "Error: Failed to build Apprise API request for target $((target_index + 1))."
+                return 1
+            fi
+
+            if printf '%s' "$payload" | /usr/bin/curl -fsS \
+                --connect-timeout 10 \
+                --max-time 30 \
+                -H "Content-Type: application/json" \
+                --data-binary @- \
+                "$api_endpoint" > /dev/null 2>&1; then
+                if $ENABLE_DEBUG; then
+                    log "Apprise target $((target_index + 1)) delivered successfully via API."
+                fi
+                return 0
+            else
+                rc=$?
+                log "Error: Apprise target $((target_index + 1)) failed via API (curl exit code $rc)."
+                return 1
+            fi
+            ;;
+    esac
 }
 
 # True when at least one built-in direct notification channel is enabled.
