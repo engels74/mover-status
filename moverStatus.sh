@@ -68,6 +68,7 @@ DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{p
 PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 APPRISE_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 UNRAID_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. Progress: {percent}% complete. Remaining data: {remaining_data}. Estimated completion time: {etc}."
+PREPARING_MESSAGE="Mover has started. Mover Tuning is preparing/scanning cache data. Progress will be available when transfer begins."
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
@@ -1198,6 +1199,7 @@ send_notification() {
     local remaining_data=$2
     local pushover_only=${3:-false}
     local skip_pushover=${4:-false}
+    local message_override=${5:-}
     local datetime
     datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc_discord
@@ -1244,6 +1246,15 @@ send_notification() {
     value_message_unraid="${value_message_unraid//\{etc\}/$etc_unraid}"
     value_message_unraid="${value_message_unraid//\{file_count\}/$file_count_str}"
     value_message_unraid="${value_message_unraid//\{current_file\}/$current_file_str}"
+
+    # A preparing/start notification uses the normal transport plumbing but
+    # deliberately does not pretend that percentage data exists yet.
+    if [ -n "$message_override" ]; then
+        value_message_discord="$message_override"
+        value_message_telegram="$message_override"
+        value_message_pushover="$message_override"
+        value_message_unraid="$message_override"
+    fi
 
     local footer_text="Version: v${CURRENT_VERSION}"
     if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
@@ -1348,6 +1359,36 @@ send_notification() {
         return 1
     fi
     return 0
+}
+
+# Send a one-time start notification while Mover Tuning is preparing.
+# This is informational and best-effort; normal progress/completion delivery
+# remains authoritative if a transport is temporarily unavailable.
+send_preparing_notifications() {
+    local notification_failed=false
+
+    if direct_notifications_enabled; then
+        if send_notification 0 "Calculating..." false false "$PREPARING_MESSAGE"; then
+            log "Mover preparing notification submitted to direct channels."
+        else
+            notification_failed=true
+            log "Warning: Mover preparing notification had a direct-channel delivery failure."
+        fi
+    fi
+
+    if $USE_APPRISE; then
+        local i
+        for i in "${!APPRISE_TARGETS[@]}"; do
+            if send_apprise_target "$i" "$APPRISE_TITLE" "$PREPARING_MESSAGE" "info"; then
+                log "Mover preparing notification sent to Apprise target $((i + 1))."
+            else
+                notification_failed=true
+                log "Warning: Mover preparing notification failed for Apprise target $((i + 1))."
+            fi
+        done
+    fi
+
+    ! $notification_failed
 }
 
 # Send the first percentage notification once trustworthy progress exists.
@@ -1474,8 +1515,11 @@ while true; do
 
         LAST_NOTIFIED=-1
 
-        # Do not emit a fake percentage while Mover Tuning is still preparing.
-        if [ "$DATA_SOURCE" != "preparing" ]; then
+        # While Mover Tuning is preparing, announce the run without inventing
+        # a percentage. Normal percentage notifications begin with fresh data.
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            send_preparing_notifications || true
+        else
             send_initial_notifications "$percent" "$remaining_readable"
         fi
     fi
