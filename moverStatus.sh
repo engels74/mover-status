@@ -2,7 +2,7 @@
 
 # Script Metadata
 #name=Mover Status Script
-#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
+#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 #backgroundOnly=true
 #arrayStarted=true
 
@@ -10,7 +10,7 @@
 # Mover Status Script
 # ---------------------------------------------------------
 # Monitors Unraid's mover process and posts progress updates
-# to Discord, Telegram, Pushover, and/or Apprise.
+# to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
 # Optional: apprise CLI when APPRISE_MODE=cli
@@ -34,6 +34,7 @@ USE_TELEGRAM=false                                                      # Enable
 USE_DISCORD=false                                                       # Enable notifications to Discord
 USE_PUSHOVER=false                                                      # Enable notifications to Pushover
 USE_APPRISE=false                                                       # Enable notifications through Apprise
+USE_UNRAID=false                                                        # Enable native Unraid notifications/toasts
 TELEGRAM_BOT_TOKEN="xxxx"                                               # Telegram bot token
 TELEGRAM_CHAT_ID="xxxx"                                                 # Telegram chat ID
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discord webhook URL
@@ -45,6 +46,9 @@ APPRISE_MODE="cli"                                                       # Appri
 APPRISE_BIN="/usr/bin/apprise"                                          # Apprise CLI executable
 APPRISE_API_URL="http://127.0.0.1:8000"                                 # Apprise API base URL when mode=api
 APPRISE_TITLE="Mover Status"                                             # Notification title for Apprise
+UNRAID_NOTIFY_BIN="/usr/local/emhttp/webGui/scripts/notify"              # Native Unraid notify executable
+UNRAID_EVENT="Mover Status"                                              # Event name shown by Unraid
+UNRAID_TITLE="Mover Status"                                              # Notification subject shown by Unraid
 APPRISE_TARGETS=(
     # "pover://USER_KEY@APP_TOKEN"
 )
@@ -63,11 +67,13 @@ TELEGRAM_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. &#10;Progress:
 DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{percent}%** complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
 PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 APPRISE_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
+UNRAID_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. Progress: {percent}% complete. Remaining data: {remaining_data}. Estimated completion time: {etc}."
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 PUSHOVER_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 APPRISE_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
+UNRAID_COMPLETION_MESSAGE=""                                            # If empty, falls back to COMPLETION_MESSAGE
 
 # ---------------------------------------
 # Exclusion Folders: Define paths to exclude
@@ -106,7 +112,7 @@ LAST_NOTIFIED=-1
 # ---------------------------------------------------------
 
 # Check if at least one notification method is enabled
-if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER && ! $USE_APPRISE; then
+if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER && ! $USE_APPRISE && ! $USE_UNRAID; then
     log "Error: All notification methods are disabled. At least one must be enabled."
     exit 1
 fi
@@ -129,6 +135,13 @@ fi
 if [[ $USE_PUSHOVER == true ]]; then
     if [ -z "$PUSHOVER_APP_TOKEN" ] || [ "$PUSHOVER_APP_TOKEN" = "xxxx" ] || [ -z "$PUSHOVER_USER_KEY" ] || [ "$PUSHOVER_USER_KEY" = "xxxx" ]; then
         log "Error: Pushover settings not configured correctly."
+        exit 1
+    fi
+fi
+
+if [[ $USE_UNRAID == true ]]; then
+    if [ ! -x "$UNRAID_NOTIFY_BIN" ]; then
+        log "Error: Unraid notify executable is not available at: $UNRAID_NOTIFY_BIN"
         exit 1
     fi
 fi
@@ -265,7 +278,7 @@ send_apprise_target() {
 
 # True when at least one built-in direct notification channel is enabled.
 direct_notifications_enabled() {
-    $USE_TELEGRAM || $USE_DISCORD || $USE_PUSHOVER
+    $USE_TELEGRAM || $USE_DISCORD || $USE_PUSHOVER || $USE_UNRAID
 }
 
 # Validate DU_POLL_INTERVAL is a positive integer
@@ -308,6 +321,7 @@ if $DRY_RUN; then
     dry_run_etc_telegram="01/01/2099, 12pm"
     dry_run_etc_pushover="01/01/2099, 12pm"
     dry_run_etc_apprise="01/01/2099, 12pm"
+    dry_run_etc_unraid="01/01/2099, 12pm"
 
     # Simulate file info if available
     dry_run_file_count=""
@@ -360,6 +374,12 @@ if $DRY_RUN; then
     dry_run_value_message_apprise="${dry_run_value_message_apprise//\{current_file\}/$dry_run_current_file}"
     dry_run_value_message_apprise+=$'\n\n'"${footer_text}"
 
+    dry_run_value_message_unraid="${UNRAID_MOVING_MESSAGE//\{percent\}/$dry_run_percent}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{remaining_data\}/$dry_run_remaining_data}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{etc\}/$dry_run_etc_unraid}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{file_count\}/$dry_run_file_count}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{current_file\}/$dry_run_current_file}"
+
     # Send test notifications
     if $USE_TELEGRAM; then
         log "Sending test notification to Telegram..."
@@ -374,6 +394,18 @@ if $DRY_RUN; then
         log "Sending test notification to Pushover..."
         if ! send_pushover "$dry_run_value_message_pushover"; then
             log "Error: Pushover dry-run notification was not delivered."
+            exit 1
+        fi
+    fi
+
+    if $USE_UNRAID; then
+        log "Sending test notification through native Unraid notifications..."
+        if ! "$UNRAID_NOTIFY_BIN" \
+            -e "$UNRAID_EVENT" \
+            -s "$UNRAID_TITLE" \
+            -d "$dry_run_value_message_unraid" \
+            -i normal; then
+            log "Error: Native Unraid dry-run notification could not be submitted."
             exit 1
         fi
     fi
@@ -826,7 +858,7 @@ format_speed() {
 
 # Build rich completion message with all available stats
 # Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, COMPLETION_SUMMARY_PUSHOVER,
-# and COMPLETION_SUMMARY_APPRISE
+# COMPLETION_SUMMARY_APPRISE, and COMPLETION_SUMMARY_UNRAID
 build_completion_summary() {
     local end_time duration avg_speed_val
     end_time=$(date +%s)
@@ -879,6 +911,14 @@ build_completion_summary() {
     apprise_msg="${apprise_msg//\{duration\}/$duration_str}"
     apprise_msg="${apprise_msg//\{avg_speed\}/$avg_speed_str}"
     COMPLETION_SUMMARY_APPRISE="$apprise_msg"
+
+    # Build native Unraid completion message
+    local unraid_msg="${UNRAID_COMPLETION_MESSAGE:-$COMPLETION_MESSAGE}"
+    unraid_msg="${unraid_msg//\{total_moved\}/$total_moved_str}"
+    unraid_msg="${unraid_msg//\{file_count\}/$file_count_str}"
+    unraid_msg="${unraid_msg//\{duration\}/$duration_str}"
+    unraid_msg="${unraid_msg//\{avg_speed\}/$avg_speed_str}"
+    COMPLETION_SUMMARY_UNRAID="$unraid_msg"
 }
 
 # Function to convert bytes to human-readable format
@@ -933,7 +973,7 @@ calculate_etc() {
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $platform == "telegram" || $platform == "pushover" || $platform == "apprise" ]]; then
+        elif [[ $platform == "telegram" || $platform == "pushover" || $platform == "apprise" || $platform == "unraid" ]]; then
             date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
@@ -1118,6 +1158,8 @@ send_notification() {
     etc_telegram=$(calculate_etc "$percent" "telegram")
     local etc_pushover
     etc_pushover=$(calculate_etc "$percent" "pushover")
+    local etc_unraid
+    etc_unraid=$(calculate_etc "$percent" "unraid")
 
     # Prepare file info placeholders
     local file_count_str=""
@@ -1149,6 +1191,12 @@ send_notification() {
     value_message_pushover="${value_message_pushover//\{file_count\}/$file_count_str}"
     value_message_pushover="${value_message_pushover//\{current_file\}/$current_file_str}"
 
+    local value_message_unraid="${UNRAID_MOVING_MESSAGE//\{percent\}/$percent}"
+    value_message_unraid="${value_message_unraid//\{remaining_data\}/$remaining_data}"
+    value_message_unraid="${value_message_unraid//\{etc\}/$etc_unraid}"
+    value_message_unraid="${value_message_unraid//\{file_count\}/$file_count_str}"
+    value_message_unraid="${value_message_unraid//\{current_file\}/$current_file_str}"
+
     local footer_text="Version: v${CURRENT_VERSION}"
     if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
@@ -1163,6 +1211,7 @@ send_notification() {
         value_message_discord="$COMPLETION_SUMMARY_DISCORD"
         value_message_telegram="$COMPLETION_SUMMARY_TELEGRAM"
         value_message_pushover="$COMPLETION_SUMMARY_PUSHOVER"
+        value_message_unraid="$COMPLETION_SUMMARY_UNRAID"
         color=65280  # Green for completion
     else
         if [ "$percent" -le 34 ]; then
@@ -1190,6 +1239,21 @@ send_notification() {
         response=$(curl -s -H "Content-Type: application/json" -X POST -d "$json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage")
         if $ENABLE_DEBUG; then
             log "Telegram response: $response"
+        fi
+    fi
+
+    if ! $pushover_only && $USE_UNRAID; then
+        if $ENABLE_DEBUG; then
+            log "Submitting native Unraid notification: event='$UNRAID_EVENT', subject='$UNRAID_TITLE', description='$value_message_unraid'"
+        fi
+        if ! "$UNRAID_NOTIFY_BIN" \
+            -e "$UNRAID_EVENT" \
+            -s "$UNRAID_TITLE" \
+            -d "$value_message_unraid" \
+            -i normal; then
+            # Native notify is a local handoff. Unraid manages browser/email/agent
+            # delivery downstream, so it is deliberately not tied to Pushover retries.
+            log "Warning: Native Unraid notification could not be submitted."
         fi
     fi
 
@@ -1437,7 +1501,7 @@ while true; do
             if direct_notifications_enabled; then
                 if [[ "$pushover_retry_pending" == true ]]; then
                     # Pushover is already pending, so send only to the healthy direct channels.
-                    if $USE_TELEGRAM || $USE_DISCORD; then
+                    if $USE_TELEGRAM || $USE_DISCORD || $USE_UNRAID; then
                         send_notification "$percent" "$remaining_readable" false true
                         log "Direct notification attempt completed for $percent% on non-Pushover channels."
                     fi
@@ -1492,7 +1556,7 @@ done
 
 # Mover Status Script
 # <https://github.com/engels74/mover-status>
-# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
+# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 # Copyright (C) 2024 - engels74
 #
 # This program is free software: you can redistribute it and/or modify

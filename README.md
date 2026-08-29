@@ -23,12 +23,13 @@
 - [🤖 Telegram Bot Setup](#-telegram-bot-setup)
 - [🖥️ Discord Webhook Setup](#-discord-webhook-setup)
 - [📲 Pushover Setup](#-pushover-setup)
+- [🟩 Native Unraid Notifications](#-native-unraid-notifications)
 - [📣 Apprise Setup](#-apprise-setup)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [⚖️ License](#-license)
 
 ### 📜 Description 
-This Bash script monitors the progress of the "Mover" process and sends updates to Discord, Telegram, Pushover, and/or Apprise. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
+This Bash script monitors the progress of the "Mover" process and sends updates to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
 ## 📸 Images (preview) 
 <img src="https://i.imgur.com/owBzb5R.png" width="60%" alt="An example of how it looks">
@@ -85,6 +86,12 @@ Edit the script to configure the necessary settings:
 - `USE_DISCORD`: Set to `true` to enable Discord notifications.
 - `USE_PUSHOVER`: Set to `true` to enable Pushover notifications.
 - `USE_APPRISE`: Set to `true` to enable Apprise notifications.
+- `USE_UNRAID`: Set to `true` to submit notifications through Unraid's native notification system.
+- `UNRAID_NOTIFY_BIN`: Path to Unraid's native `notify` executable.
+- `UNRAID_EVENT`: Event name shown in the Unraid notification list.
+- `UNRAID_TITLE`: Subject shown by Unraid notifications.
+- `UNRAID_MOVING_MESSAGE`: Native Unraid progress-notification template; supports `{percent}`, `{remaining_data}`, `{etc}`, `{file_count}`, and `{current_file}`.
+- `UNRAID_COMPLETION_MESSAGE`: Optional native Unraid completion template.
 - `APPRISE_MODE`: Select `cli` for the local Apprise CLI or `api` for an Apprise API server.
 - `APPRISE_BIN`: Path to the local Apprise executable when using CLI mode.
 - `APPRISE_API_URL`: Base URL of the Apprise API server when using API mode.
@@ -162,13 +169,41 @@ Edit the script to configure the necessary settings:
 5. Optionally change `PUSHOVER_TITLE` to customize the notification title.
 6. Set `DRY_RUN=true` to send a test notification without monitoring Mover.
 
+### 🟩 Native Unraid Notifications
+
+Mover Status can submit progress and completion updates directly to Unraid's built-in notification subsystem. This provides notifications in the Unraid web GUI, including the notification list and browser popup/toast behavior when enabled in Unraid's notification settings.
+
+Enable it with:
+
+```bash
+USE_UNRAID=true
+UNRAID_NOTIFY_BIN="/usr/local/emhttp/webGui/scripts/notify"
+UNRAID_EVENT="Mover Status"
+UNRAID_TITLE="Mover Status"
+```
+
+Native notifications use `normal` importance and follow the notification preferences configured in Unraid. No Apprise installation is required for the local Unraid notification itself.
+
+If the **Lime Technology - Apprise** Community Applications package is installed and configured as an Unraid notification agent, the same native Unraid notification can also be forwarded through Apprise to the destinations configured in Unraid.
+
+If you enable both `USE_UNRAID=true` and `USE_APPRISE=true`, and Unraid's Apprise notification agent is also configured for the same destination, that destination may receive duplicate notifications because Mover Status is intentionally using two independent notification paths.
+
+For native Unraid notifications plus Unraid-managed Apprise forwarding, use:
+
+```bash
+USE_UNRAID=true
+USE_APPRISE=false
+```
+
+Set `DRY_RUN=true` to test the native notification without monitoring Mover.
+
 ### 📣 Apprise Setup
 
 [Apprise](https://github.com/caronc/apprise) provides a common notification interface for many different services. Mover Status supports Apprise in two modes: a local CLI and the Apprise HTTP API.
 
 On Unraid, the following Community Applications packages were used while developing and testing this integration:
 
-- **Lime Technology - Apprise** — installs the `apprise-go` CLI as `/usr/bin/apprise` and can be used with `APPRISE_MODE="cli"`.
+- **Lime Technology - Apprise** — installs the `apprise-go` CLI as `/usr/bin/apprise`, can be used with `APPRISE_MODE="cli"`, and can also act as an Unraid notification agent for native Unraid notifications.
 - **linuxserver's Repository - apprise-api (Apprise-api)** — runs an Apprise API server and can be used with `APPRISE_MODE="api"`.
 
 <p align="center">
