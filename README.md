@@ -171,6 +171,10 @@ On Unraid, the following Community Applications packages were used while develop
 - **Lime Technology - Apprise** — installs the `apprise-go` CLI as `/usr/bin/apprise` and can be used with `APPRISE_MODE="cli"`.
 - **linuxserver's Repository - apprise-api (Apprise-api)** — runs an Apprise API server and can be used with `APPRISE_MODE="api"`.
 
+<p align="center">
+  <img src="images/apprise-unraid-ca.png" alt="Apprise packages available in Unraid Community Applications" width="60%">
+</p>
+
 Other compatible Apprise CLI or API installations should also work; these are simply the Unraid CA packages used for testing.
 
 #### Enable Apprise
