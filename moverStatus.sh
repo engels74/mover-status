@@ -2,7 +2,7 @@
 
 # Script Metadata
 #name=Mover Status Script
-#description=This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
+#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
 #backgroundOnly=true
 #arrayStarted=true
 
@@ -10,7 +10,7 @@
 # Mover Status Script
 # ---------------------------------------------------------
 # Monitors Unraid's mover process and posts progress updates
-# to Discord and/or Telegram webhooks.
+# to Discord, Telegram, and/or Pushover.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
 # Runs as a backgroundOnly Unraid user script.
@@ -30,10 +30,14 @@ log "Starting Mover Status Monitor..."
 # Configure basic settings and webhook details
 USE_TELEGRAM=false                                                      # Enable notifications to Telegram
 USE_DISCORD=false                                                       # Enable notifications to Discord
+USE_PUSHOVER=false                                                      # Enable notifications to Pushover
 TELEGRAM_BOT_TOKEN="xxxx"                                               # Telegram bot token
 TELEGRAM_CHAT_ID="xxxx"                                                 # Telegram chat ID
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discord webhook URL
 DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Display name for Discord notifications
+PUSHOVER_APP_TOKEN="xxxx"                                               # Pushover application/API token
+PUSHOVER_USER_KEY="xxxx"                                                # Pushover user/group key
+PUSHOVER_TITLE="Mover Status"                                           # Notification title for Pushover
 NOTIFICATION_INCREMENT=25                                               # Notification frequency in percentage increments
 DRY_RUN=false                                                           # Enable this to test the notifications without actual monitoring
 ENABLE_DEBUG=false                                                      # Set to true to enable debug logging
@@ -47,9 +51,11 @@ ENABLE_FILE_INFO=false                                                  # Show f
 # Custom messages for each notification point
 TELEGRAM_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>{percent}%</b> complete. &#10;Remaining data: {remaining_data}.&#10;Estimated completion time: {etc}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move."
 DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{percent}%** complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
+PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
+PUSHOVER_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 
 # ---------------------------------------
 # Exclusion Folders: Define paths to exclude
@@ -88,8 +94,8 @@ LAST_NOTIFIED=-1
 # ---------------------------------------------------------
 
 # Check if at least one notification method is enabled
-if ! $USE_TELEGRAM && ! $USE_DISCORD; then
-    log "Error: Both USE_TELEGRAM and USE_DISCORD are set to false. At least one must be true."
+if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER; then
+    log "Error: USE_TELEGRAM, USE_DISCORD, and USE_PUSHOVER are all set to false. At least one must be true."
     exit 1
 fi
 
@@ -107,6 +113,42 @@ if [[ $USE_DISCORD == true ]]; then
         exit 1
     fi
 fi
+
+if [[ $USE_PUSHOVER == true ]]; then
+    if [ -z "$PUSHOVER_APP_TOKEN" ] || [ "$PUSHOVER_APP_TOKEN" = "xxxx" ] || [ -z "$PUSHOVER_USER_KEY" ] || [ "$PUSHOVER_USER_KEY" = "xxxx" ]; then
+        log "Error: Pushover settings not configured correctly."
+        exit 1
+    fi
+fi
+
+# Send a Pushover notification and fail on transport/API errors
+send_pushover() {
+    local message="$1"
+    local response
+
+    if ! response=$(/usr/bin/curl -fsS \
+        --connect-timeout 10 \
+        --max-time 30 \
+        --form-string "token=$PUSHOVER_APP_TOKEN" \
+        --form-string "user=$PUSHOVER_USER_KEY" \
+        --form-string "title=$PUSHOVER_TITLE" \
+        --form-string "message=$message" \
+        "https://api.pushover.net/1/messages.json" 2>&1); then
+        log "Error: Failed to send Pushover notification: $response"
+        return 1
+    fi
+
+    if ! printf '%s' "$response" | jq -e '.status == 1' > /dev/null 2>&1; then
+        log "Error: Pushover returned an unsuccessful response: $response"
+        return 1
+    fi
+
+    if $ENABLE_DEBUG; then
+        log "Pushover response: $response"
+    fi
+
+    return 0
+}
 
 # Validate DU_POLL_INTERVAL is a positive integer
 if ! [[ "$DU_POLL_INTERVAL" =~ ^[0-9]+$ ]] || [ "$DU_POLL_INTERVAL" -eq 0 ]; then
@@ -146,6 +188,7 @@ if $DRY_RUN; then
     dry_run_datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     dry_run_etc_discord="<t:$(date +%s --date='01/01/2099 12:00'):R>"
     dry_run_etc_telegram="01/01/2099, 12pm"
+    dry_run_etc_pushover="01/01/2099, 12pm"
 
     # Simulate file info if available
     dry_run_file_count=""
@@ -184,6 +227,13 @@ if $DRY_RUN; then
     dry_run_value_message_telegram="${dry_run_value_message_telegram//\{current_file\}/$dry_run_current_file}"
     dry_run_value_message_telegram+="&#10;&#10;${footer_text}"
 
+    dry_run_value_message_pushover="${PUSHOVER_MOVING_MESSAGE//\{percent\}/$dry_run_percent}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{remaining_data\}/$dry_run_remaining_data}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{etc\}/$dry_run_etc_pushover}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{file_count\}/$dry_run_file_count}"
+    dry_run_value_message_pushover="${dry_run_value_message_pushover//\{current_file\}/$dry_run_current_file}"
+    dry_run_value_message_pushover+=$'\n\n'"${footer_text}"
+
     # Send test notifications
     if $USE_TELEGRAM; then
         log "Sending test notification to Telegram..."
@@ -192,6 +242,14 @@ if $DRY_RUN; then
                        --arg text "$dry_run_value_message_telegram" \
                        '{chat_id: $chat_id, text: $text, disable_notification: "false", parse_mode: "HTML"}')
         /usr/bin/curl -s -o /dev/null -H "Content-Type: application/json" -X POST -d "$dry_run_json_payload" "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+    fi
+
+    if $USE_PUSHOVER; then
+        log "Sending test notification to Pushover..."
+        if ! send_pushover "$dry_run_value_message_pushover"; then
+            log "Error: Pushover dry-run notification was not delivered."
+            exit 1
+        fi
     fi
 
     if $USE_DISCORD; then
@@ -627,7 +685,7 @@ format_speed() {
 }
 
 # Build rich completion message with all available stats
-# Sets COMPLETION_SUMMARY_DISCORD and COMPLETION_SUMMARY_TELEGRAM
+# Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, and COMPLETION_SUMMARY_PUSHOVER
 build_completion_summary() {
     local end_time duration avg_speed_val
     end_time=$(date +%s)
@@ -664,6 +722,14 @@ build_completion_summary() {
     telegram_msg="${telegram_msg//\{duration\}/$duration_str}"
     telegram_msg="${telegram_msg//\{avg_speed\}/$avg_speed_str}"
     COMPLETION_SUMMARY_TELEGRAM="$telegram_msg"
+
+    # Build Pushover completion message
+    local pushover_msg="${PUSHOVER_COMPLETION_MESSAGE:-$COMPLETION_MESSAGE}"
+    pushover_msg="${pushover_msg//\{total_moved\}/$total_moved_str}"
+    pushover_msg="${pushover_msg//\{file_count\}/$file_count_str}"
+    pushover_msg="${pushover_msg//\{duration\}/$duration_str}"
+    pushover_msg="${pushover_msg//\{avg_speed\}/$avg_speed_str}"
+    COMPLETION_SUMMARY_PUSHOVER="$pushover_msg"
 }
 
 # Function to convert bytes to human-readable format
@@ -718,7 +784,7 @@ calculate_etc() {
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $platform == "telegram" ]]; then
+        elif [[ $platform == "telegram" || $platform == "pushover" ]]; then
             date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
@@ -729,12 +795,16 @@ calculate_etc() {
 send_notification() {
     local percent=$1
     local remaining_data=$2
+    local pushover_only=${3:-false}
+    local skip_pushover=${4:-false}
     local datetime
     datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc_discord
     etc_discord=$(calculate_etc "$percent" "discord")
     local etc_telegram
     etc_telegram=$(calculate_etc "$percent" "telegram")
+    local etc_pushover
+    etc_pushover=$(calculate_etc "$percent" "pushover")
 
     # Prepare file info placeholders
     local file_count_str=""
@@ -760,11 +830,18 @@ send_notification() {
     value_message_telegram="${value_message_telegram//\{file_count\}/$file_count_str}"
     value_message_telegram="${value_message_telegram//\{current_file\}/$current_file_str}"
 
+    local value_message_pushover="${PUSHOVER_MOVING_MESSAGE//\{percent\}/$percent}"
+    value_message_pushover="${value_message_pushover//\{remaining_data\}/$remaining_data}"
+    value_message_pushover="${value_message_pushover//\{etc\}/$etc_pushover}"
+    value_message_pushover="${value_message_pushover//\{file_count\}/$file_count_str}"
+    value_message_pushover="${value_message_pushover//\{current_file\}/$current_file_str}"
+
     local footer_text="Version: v${CURRENT_VERSION}"
     if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
     fi
     value_message_telegram+="&#10;&#10;${footer_text}"
+    value_message_pushover+=$'\n\n'"${footer_text}"
 
     # Determine the color based on completion and percentage
     local color
@@ -772,6 +849,7 @@ send_notification() {
         build_completion_summary
         value_message_discord="$COMPLETION_SUMMARY_DISCORD"
         value_message_telegram="$COMPLETION_SUMMARY_TELEGRAM"
+        value_message_pushover="$COMPLETION_SUMMARY_PUSHOVER"
         color=65280  # Green for completion
     else
         if [ "$percent" -le 34 ]; then
@@ -785,7 +863,8 @@ send_notification() {
 
     # Send the notifications
     log "Sending notification..."
-    if $USE_TELEGRAM; then
+    local notification_failed=false
+    if ! $pushover_only && $USE_TELEGRAM; then
         local json_payload
         json_payload=$(jq -n \
                         --arg chat_id "$TELEGRAM_CHAT_ID" \
@@ -801,7 +880,16 @@ send_notification() {
         fi
     fi
 
-    if $USE_DISCORD; then
+    if ! $skip_pushover && $USE_PUSHOVER; then
+        if $ENABLE_DEBUG; then
+            log "Preparing to send to Pushover: title='$PUSHOVER_TITLE', message='$value_message_pushover'"
+        fi
+        if ! send_pushover "$value_message_pushover"; then
+            notification_failed=true
+        fi
+    fi
+
+    if ! $pushover_only && $USE_DISCORD; then
         local notification_data='{
             "username": "'"$DISCORD_NAME_OVERRIDE"'",
             "content": null,
@@ -830,6 +918,11 @@ send_notification() {
             log "Discord response: $response"
         fi
     fi
+
+    if $notification_failed; then
+        return 1
+    fi
+    return 0
 }
 
 # Initialize state directory for crash recovery
@@ -862,6 +955,12 @@ while true; do
             log "Excluding $(human_readable "$initial_excluded_size") from ${#exclude_paths[@]} path(s)"
         fi
     fi
+
+    # Notification retry state
+    pushover_retry_pending=false
+    pending_percent=""
+    pending_remaining=""
+    completion_retry_pending=false
 
     # Try to resume from saved state (crash recovery)
     if load_state; then
@@ -910,9 +1009,18 @@ while true; do
         fi
 
         LAST_NOTIFIED=-1
-        send_notification "$percent" "$remaining_readable"
+
+        if send_notification "$percent" "$remaining_readable"; then
+            log "Initial notification sent with ${percent}% completion."
+        else
+            log "Warning: Initial notification had one or more delivery failures; Pushover will be retried."
+            pushover_retry_pending=true
+            pending_percent="$percent"
+            pending_remaining="$remaining_readable"
+        fi
+
+        # Advance the normal notification schedule independently of Pushover retries.
         LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
-        log "Initial notification sent with ${percent}% completion."
     fi
 
     # Monitor the progress
@@ -947,21 +1055,74 @@ while true; do
             remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
 
             log "Total data moved: ${PROGRESS_MOVED_BYTES} bytes, Total: ${PROGRESS_TOTAL_BYTES} bytes."
-            send_notification 100 "$remaining_readable"
-            save_last_run
-            LAST_NOTIFIED=-1
-            log "Final notification sent and monitoring loop exiting."
-            break
+
+            if [[ "$completion_retry_pending" == true ]]; then
+                if send_notification 100 "$remaining_readable" true; then
+                    log "Final Pushover notification sent after retry."
+                    save_last_run
+                    LAST_NOTIFIED=-1
+                    log "Monitoring loop exiting."
+                    break
+                else
+                    log "Warning: Final Pushover notification delivery failed; retrying in 5 seconds."
+                    sleep 5
+                    continue
+                fi
+            elif send_notification 100 "$remaining_readable"; then
+                log "Final notification sent."
+                save_last_run
+                LAST_NOTIFIED=-1
+                log "Monitoring loop exiting."
+                break
+            else
+                log "Warning: Final notification had one or more delivery failures; Pushover will be retried."
+                completion_retry_pending=true
+                sleep 5
+                continue
+            fi
         fi
 
-        # Send notifications based on increment
+        # Send notifications based on increment. A pending Pushover retry must not
+        # stall healthy Telegram/Discord channels.
         if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
             log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
-            send_notification "$percent" "$remaining_readable"
+
+            if [[ "$pushover_retry_pending" == true ]]; then
+                # Pushover is already pending, so send only to the healthy channels.
+                if $USE_TELEGRAM || $USE_DISCORD; then
+                    send_notification "$percent" "$remaining_readable" false true
+                    log "Notification sent for $percent% completion to non-Pushover channels."
+                fi
+
+                # Coalesce the pending Pushover retry to the newest progress update.
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+                log "Pending Pushover retry updated to ${percent}% completion."
+            elif send_notification "$percent" "$remaining_readable"; then
+                log "Notification sent for $percent% completion."
+            else
+                log "Warning: Notification for $percent% had one or more delivery failures; Pushover will be retried."
+                pushover_retry_pending=true
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+            fi
+
+            # Healthy-channel scheduling is independent of Pushover delivery state.
             LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
-            log "Notification sent for $percent% completion."
         fi
 
+        # Retry only Pushover. This runs after the increment branch so any pending
+        # message is first coalesced to the newest progress value.
+        if [[ "$pushover_retry_pending" == true ]]; then
+            if send_notification "$pending_percent" "$pending_remaining" true; then
+                log "Pushover notification retry succeeded for ${pending_percent}% completion."
+                pushover_retry_pending=false
+                pending_percent=""
+                pending_remaining=""
+            else
+                log "Warning: Pushover notification retry failed; will retry again."
+            fi
+        fi
         sleep 5  # Check every 5 seconds; progress only recalculated per DU_POLL_INTERVAL
     done
 
@@ -972,7 +1133,7 @@ done
 
 # Mover Status Script
 # <https://github.com/engels74/mover-status>
-# This script monitors the progress of the "Mover" process and posts updates to a Discord/Telegram webhook.
+# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
 # Copyright (C) 2024 - engels74
 #
 # This program is free software: you can redistribute it and/or modify
