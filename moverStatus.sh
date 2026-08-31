@@ -2,7 +2,7 @@
 
 # Script Metadata
 #name=Mover Status Script
-#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
+#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
 #backgroundOnly=true
 #arrayStarted=true
 
@@ -10,9 +10,11 @@
 # Mover Status Script
 # ---------------------------------------------------------
 # Monitors Unraid's mover process and posts progress updates
-# to Discord, Telegram, and/or Pushover.
+# to Discord, Telegram, Pushover, and/or Apprise.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
+# Optional: apprise CLI when APPRISE_MODE=cli
+#           reachable Apprise API when APPRISE_MODE=api
 # Runs as a backgroundOnly Unraid user script.
 # ---------------------------------------------------------
 
@@ -31,6 +33,7 @@ log "Starting Mover Status Monitor..."
 USE_TELEGRAM=false                                                      # Enable notifications to Telegram
 USE_DISCORD=false                                                       # Enable notifications to Discord
 USE_PUSHOVER=false                                                      # Enable notifications to Pushover
+USE_APPRISE=false                                                       # Enable notifications through Apprise
 TELEGRAM_BOT_TOKEN="xxxx"                                               # Telegram bot token
 TELEGRAM_CHAT_ID="xxxx"                                                 # Telegram chat ID
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discord webhook URL
@@ -38,6 +41,13 @@ DISCORD_NAME_OVERRIDE="Mover Bot"                                       # Displa
 PUSHOVER_APP_TOKEN="xxxx"                                               # Pushover application/API token
 PUSHOVER_USER_KEY="xxxx"                                                # Pushover user/group key
 PUSHOVER_TITLE="Mover Status"                                           # Notification title for Pushover
+APPRISE_MODE="cli"                                                       # Apprise transport mode: cli | api
+APPRISE_BIN="/usr/bin/apprise"                                          # Apprise CLI executable
+APPRISE_API_URL="http://127.0.0.1:8000"                                 # Apprise API base URL when mode=api
+APPRISE_TITLE="Mover Status"                                             # Notification title for Apprise
+APPRISE_TARGETS=(
+    # "pover://USER_KEY@APP_TOKEN"
+)
 NOTIFICATION_INCREMENT=25                                               # Notification frequency in percentage increments
 DRY_RUN=false                                                           # Enable this to test the notifications without actual monitoring
 ENABLE_DEBUG=false                                                      # Set to true to enable debug logging
@@ -52,10 +62,12 @@ ENABLE_FILE_INFO=false                                                  # Show f
 TELEGRAM_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. &#10;Progress: <b>{percent}%</b> complete. &#10;Remaining data: {remaining_data}.&#10;Estimated completion time: {etc}.&#10;&#10;Note: Services like Plex may run slow or be unavailable during the move."
 DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{percent}%** complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
 PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
+APPRISE_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 PUSHOVER_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
+APPRISE_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 
 # ---------------------------------------
 # Exclusion Folders: Define paths to exclude
@@ -94,8 +106,8 @@ LAST_NOTIFIED=-1
 # ---------------------------------------------------------
 
 # Check if at least one notification method is enabled
-if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER; then
-    log "Error: USE_TELEGRAM, USE_DISCORD, and USE_PUSHOVER are all set to false. At least one must be true."
+if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER && ! $USE_APPRISE; then
+    log "Error: All notification methods are disabled. At least one must be enabled."
     exit 1
 fi
 
@@ -119,6 +131,39 @@ if [[ $USE_PUSHOVER == true ]]; then
         log "Error: Pushover settings not configured correctly."
         exit 1
     fi
+fi
+
+if [[ $USE_APPRISE == true ]]; then
+    case "$APPRISE_MODE" in
+        cli)
+            if [ ! -x "$APPRISE_BIN" ]; then
+                log "Error: Apprise CLI is not executable at: $APPRISE_BIN"
+                exit 1
+            fi
+            ;;
+        api)
+            if ! [[ "$APPRISE_API_URL" =~ ^https?://[^[:space:]]+$ ]]; then
+                log "Error: APPRISE_API_URL must be a valid http:// or https:// URL."
+                exit 1
+            fi
+            ;;
+        *)
+            log "Error: Unsupported APPRISE_MODE '$APPRISE_MODE'. Supported modes: cli, api."
+            exit 1
+            ;;
+    esac
+
+    if [ "${#APPRISE_TARGETS[@]}" -eq 0 ]; then
+        log "Error: USE_APPRISE is true but APPRISE_TARGETS is empty."
+        exit 1
+    fi
+
+    for apprise_target in "${APPRISE_TARGETS[@]}"; do
+        if [ -z "$apprise_target" ]; then
+            log "Error: APPRISE_TARGETS contains an empty target."
+            exit 1
+        fi
+    done
 fi
 
 # Send a Pushover notification and fail on transport/API errors
@@ -148,6 +193,79 @@ send_pushover() {
     fi
 
     return 0
+}
+
+# Send one Apprise target. Target URLs are deliberately never written to logs.
+send_apprise_target() {
+    local target_index=$1
+    local title=$2
+    local message=$3
+    local notification_type=${4:-info}
+    local rc
+
+    case "$APPRISE_MODE" in
+        cli)
+            if "$APPRISE_BIN" \
+                --title "$title" \
+                --body "$message" \
+                --notification-type "$notification_type" \
+                --input-format text \
+                "${APPRISE_TARGETS[$target_index]}" > /dev/null 2>&1; then
+                if $ENABLE_DEBUG; then
+                    log "Apprise target $((target_index + 1)) delivered successfully via CLI."
+                fi
+                return 0
+            else
+                rc=$?
+                log "Error: Apprise target $((target_index + 1)) failed via CLI (exit code $rc)."
+                return 1
+            fi
+            ;;
+
+        api)
+            local payload
+            local api_endpoint="${APPRISE_API_URL%/}/notify"
+
+            if ! payload=$(jq -cn \
+                --arg url "${APPRISE_TARGETS[$target_index]}" \
+                --arg title "$title" \
+                --arg body "$message" \
+                --arg type "$notification_type" \
+                '{urls: [$url], title: $title, body: $body, type: $type, format: "text"}'); then
+                log "Error: Failed to build Apprise API request for target $((target_index + 1))."
+                return 1
+            fi
+
+            local http_code
+            if http_code=$(printf '%s' "$payload" | /usr/bin/curl -fsS \
+                --connect-timeout 10 \
+                --max-time 30 \
+                -H "Content-Type: application/json" \
+                --data-binary @- \
+                -o /dev/null \
+                -w "%{http_code}" \
+                "$api_endpoint" 2>/dev/null); then
+                if [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
+                    if $ENABLE_DEBUG; then
+                        log "Apprise target $((target_index + 1)) delivered successfully via API."
+                    fi
+                    return 0
+                fi
+
+                log "Error: Apprise target $((target_index + 1)) failed via API (unexpected HTTP status $http_code)."
+                return 1
+            else
+                rc=$?
+                log "Error: Apprise target $((target_index + 1)) failed via API (curl exit code $rc)."
+                return 1
+            fi
+            ;;
+    esac
+}
+
+# True when at least one built-in direct notification channel is enabled.
+direct_notifications_enabled() {
+    $USE_TELEGRAM || $USE_DISCORD || $USE_PUSHOVER
 }
 
 # Validate DU_POLL_INTERVAL is a positive integer
@@ -189,6 +307,7 @@ if $DRY_RUN; then
     dry_run_etc_discord="<t:$(date +%s --date='01/01/2099 12:00'):R>"
     dry_run_etc_telegram="01/01/2099, 12pm"
     dry_run_etc_pushover="01/01/2099, 12pm"
+    dry_run_etc_apprise="01/01/2099, 12pm"
 
     # Simulate file info if available
     dry_run_file_count=""
@@ -234,6 +353,13 @@ if $DRY_RUN; then
     dry_run_value_message_pushover="${dry_run_value_message_pushover//\{current_file\}/$dry_run_current_file}"
     dry_run_value_message_pushover+=$'\n\n'"${footer_text}"
 
+    dry_run_value_message_apprise="${APPRISE_MOVING_MESSAGE//\{percent\}/$dry_run_percent}"
+    dry_run_value_message_apprise="${dry_run_value_message_apprise//\{remaining_data\}/$dry_run_remaining_data}"
+    dry_run_value_message_apprise="${dry_run_value_message_apprise//\{etc\}/$dry_run_etc_apprise}"
+    dry_run_value_message_apprise="${dry_run_value_message_apprise//\{file_count\}/$dry_run_file_count}"
+    dry_run_value_message_apprise="${dry_run_value_message_apprise//\{current_file\}/$dry_run_current_file}"
+    dry_run_value_message_apprise+=$'\n\n'"${footer_text}"
+
     # Send test notifications
     if $USE_TELEGRAM; then
         log "Sending test notification to Telegram..."
@@ -248,6 +374,20 @@ if $DRY_RUN; then
         log "Sending test notification to Pushover..."
         if ! send_pushover "$dry_run_value_message_pushover"; then
             log "Error: Pushover dry-run notification was not delivered."
+            exit 1
+        fi
+    fi
+
+    if $USE_APPRISE; then
+        log "Sending test notification through Apprise to ${#APPRISE_TARGETS[@]} target(s)..."
+        apprise_dry_run_failed=false
+        for apprise_target_index in "${!APPRISE_TARGETS[@]}"; do
+            if ! send_apprise_target "$apprise_target_index" "$APPRISE_TITLE" "$dry_run_value_message_apprise" "info"; then
+                apprise_dry_run_failed=true
+            fi
+        done
+        if $apprise_dry_run_failed; then
+            log "Error: One or more Apprise dry-run notifications were not delivered."
             exit 1
         fi
     fi
@@ -685,7 +825,8 @@ format_speed() {
 }
 
 # Build rich completion message with all available stats
-# Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, and COMPLETION_SUMMARY_PUSHOVER
+# Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, COMPLETION_SUMMARY_PUSHOVER,
+# and COMPLETION_SUMMARY_APPRISE
 build_completion_summary() {
     local end_time duration avg_speed_val
     end_time=$(date +%s)
@@ -730,6 +871,14 @@ build_completion_summary() {
     pushover_msg="${pushover_msg//\{duration\}/$duration_str}"
     pushover_msg="${pushover_msg//\{avg_speed\}/$avg_speed_str}"
     COMPLETION_SUMMARY_PUSHOVER="$pushover_msg"
+
+    # Build Apprise completion message
+    local apprise_msg="${APPRISE_COMPLETION_MESSAGE:-$COMPLETION_MESSAGE}"
+    apprise_msg="${apprise_msg//\{total_moved\}/$total_moved_str}"
+    apprise_msg="${apprise_msg//\{file_count\}/$file_count_str}"
+    apprise_msg="${apprise_msg//\{duration\}/$duration_str}"
+    apprise_msg="${apprise_msg//\{avg_speed\}/$avg_speed_str}"
+    COMPLETION_SUMMARY_APPRISE="$apprise_msg"
 }
 
 # Function to convert bytes to human-readable format
@@ -784,12 +933,176 @@ calculate_etc() {
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $platform == "telegram" || $platform == "pushover" ]]; then
+        elif [[ $platform == "telegram" || $platform == "pushover" || $platform == "apprise" ]]; then
             date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
         echo "Calculating..."
     fi
+}
+
+build_apprise_progress_message() {
+    local percent=$1
+    local remaining_data=$2
+    local etc_apprise
+    etc_apprise=$(calculate_etc "$percent" "apprise")
+
+    local file_count_str=""
+    local current_file_str=""
+    if $ENABLE_FILE_INFO && [ -n "$PROGRESS_FILE_COUNT" ] && [ "$PROGRESS_FILE_COUNT" != "0" ]; then
+        local files_moved=$((PROGRESS_FILE_COUNT - ${PROGRESS_REMAIN_FILES:-0}))
+        file_count_str="${files_moved}/${PROGRESS_FILE_COUNT} files"
+        if [ -n "$PROGRESS_CURRENT_FILE" ]; then
+            current_file_str="$PROGRESS_CURRENT_FILE"
+        fi
+    fi
+
+    APPRISE_CURRENT_MESSAGE="${APPRISE_MOVING_MESSAGE//\{percent\}/$percent}"
+    APPRISE_CURRENT_MESSAGE="${APPRISE_CURRENT_MESSAGE//\{remaining_data\}/$remaining_data}"
+    APPRISE_CURRENT_MESSAGE="${APPRISE_CURRENT_MESSAGE//\{etc\}/$etc_apprise}"
+    APPRISE_CURRENT_MESSAGE="${APPRISE_CURRENT_MESSAGE//\{file_count\}/$file_count_str}"
+    APPRISE_CURRENT_MESSAGE="${APPRISE_CURRENT_MESSAGE//\{current_file\}/$current_file_str}"
+
+    local footer_text="Version: v${CURRENT_VERSION}"
+    if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
+        footer_text+=" (update available)"
+    fi
+    APPRISE_CURRENT_MESSAGE+=$'\n\n'"${footer_text}"
+}
+
+init_apprise_retry_state() {
+    apprise_progress_pending=()
+    apprise_completion_pending=()
+    apprise_pending_percent=""
+    apprise_pending_remaining=""
+    apprise_completion_started=false
+    apprise_completion_message=""
+
+    local i
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        apprise_progress_pending[$i]=false
+        apprise_completion_pending[$i]=false
+    done
+}
+
+apprise_progress_has_pending() {
+    local i
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if [[ "${apprise_progress_pending[$i]:-false}" == true ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+apprise_completion_has_pending() {
+    local i
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if [[ "${apprise_completion_pending[$i]:-false}" == true ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+send_apprise_progress() {
+    local percent=$1
+    local remaining_data=$2
+    local i
+
+    build_apprise_progress_message "$percent" "$remaining_data"
+
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if [[ "${apprise_progress_pending[$i]:-false}" == true ]]; then
+            continue
+        fi
+
+        if send_apprise_target "$i" "$APPRISE_TITLE" "$APPRISE_CURRENT_MESSAGE" "info"; then
+            log "Apprise target $((i + 1)) notification sent for ${percent}% completion."
+        else
+            apprise_progress_pending[$i]=true
+            log "Warning: Apprise target $((i + 1)) will be retried."
+        fi
+    done
+
+    if apprise_progress_has_pending; then
+        apprise_pending_percent="$percent"
+        apprise_pending_remaining="$remaining_data"
+        return 1
+    fi
+
+    apprise_pending_percent=""
+    apprise_pending_remaining=""
+    return 0
+}
+
+retry_apprise_progress() {
+    local i
+
+    if ! apprise_progress_has_pending; then
+        return 0
+    fi
+
+    build_apprise_progress_message "$apprise_pending_percent" "$apprise_pending_remaining"
+
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if [[ "${apprise_progress_pending[$i]:-false}" != true ]]; then
+            continue
+        fi
+
+        if send_apprise_target "$i" "$APPRISE_TITLE" "$APPRISE_CURRENT_MESSAGE" "info"; then
+            apprise_progress_pending[$i]=false
+            log "Apprise target $((i + 1)) retry succeeded for ${apprise_pending_percent}% completion."
+        else
+            log "Warning: Apprise target $((i + 1)) retry failed; will retry again."
+        fi
+    done
+
+    if apprise_progress_has_pending; then
+        return 1
+    fi
+
+    apprise_pending_percent=""
+    apprise_pending_remaining=""
+    return 0
+}
+
+start_apprise_completion() {
+    local i
+
+    build_completion_summary
+    apprise_completion_message="$COMPLETION_SUMMARY_APPRISE"
+
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if send_apprise_target "$i" "$APPRISE_TITLE" "$apprise_completion_message" "success"; then
+            apprise_completion_pending[$i]=false
+            log "Final Apprise notification sent to target $((i + 1))."
+        else
+            apprise_completion_pending[$i]=true
+            log "Warning: Final Apprise notification to target $((i + 1)) will be retried."
+        fi
+    done
+
+    ! apprise_completion_has_pending
+}
+
+retry_apprise_completion() {
+    local i
+
+    for i in "${!APPRISE_TARGETS[@]}"; do
+        if [[ "${apprise_completion_pending[$i]:-false}" != true ]]; then
+            continue
+        fi
+
+        if send_apprise_target "$i" "$APPRISE_TITLE" "$apprise_completion_message" "success"; then
+            apprise_completion_pending[$i]=false
+            log "Final Apprise notification retry succeeded for target $((i + 1))."
+        else
+            log "Warning: Final Apprise notification retry failed for target $((i + 1)); will retry again."
+        fi
+    done
+
+    ! apprise_completion_has_pending
 }
 
 send_notification() {
@@ -961,6 +1274,8 @@ while true; do
     pending_percent=""
     pending_remaining=""
     completion_retry_pending=false
+    standard_completion_done=false
+    init_apprise_retry_state
 
     # Try to resume from saved state (crash recovery)
     if load_state; then
@@ -1010,16 +1325,24 @@ while true; do
 
         LAST_NOTIFIED=-1
 
-        if send_notification "$percent" "$remaining_readable"; then
-            log "Initial notification sent with ${percent}% completion."
-        else
-            log "Warning: Initial notification had one or more delivery failures; Pushover will be retried."
-            pushover_retry_pending=true
-            pending_percent="$percent"
-            pending_remaining="$remaining_readable"
+        if direct_notifications_enabled; then
+            if send_notification "$percent" "$remaining_readable"; then
+                log "Initial direct notification attempt completed at ${percent}%."
+            else
+                log "Warning: Initial direct notification had a delivery failure; Pushover will be retried."
+                pushover_retry_pending=true
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+            fi
         fi
 
-        # Advance the normal notification schedule independently of Pushover retries.
+        if $USE_APPRISE; then
+            if ! send_apprise_progress "$percent" "$remaining_readable"; then
+                log "Warning: One or more initial Apprise targets are pending retry."
+            fi
+        fi
+
+        # Advance the normal notification schedule independently of transport retries.
         LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
     fi
 
@@ -1056,30 +1379,54 @@ while true; do
 
             log "Total data moved: ${PROGRESS_MOVED_BYTES} bytes, Total: ${PROGRESS_TOTAL_BYTES} bytes."
 
-            if [[ "$completion_retry_pending" == true ]]; then
-                if send_notification 100 "$remaining_readable" true; then
-                    log "Final Pushover notification sent after retry."
-                    save_last_run
-                    LAST_NOTIFIED=-1
-                    log "Monitoring loop exiting."
-                    break
+            if [[ "$standard_completion_done" != true ]]; then
+                if ! direct_notifications_enabled; then
+                    standard_completion_done=true
+                elif [[ "$completion_retry_pending" == true ]]; then
+                    if send_notification 100 "$remaining_readable" true; then
+                        log "Final Pushover notification sent after retry."
+                        completion_retry_pending=false
+                        standard_completion_done=true
+                    else
+                        log "Warning: Final Pushover notification delivery failed; retry remains pending."
+                    fi
+                elif send_notification 100 "$remaining_readable"; then
+                    log "Final direct notification attempt completed."
+                    standard_completion_done=true
                 else
-                    log "Warning: Final Pushover notification delivery failed; retrying in 5 seconds."
-                    sleep 5
-                    continue
+                    log "Warning: Final direct notification had a delivery failure; Pushover will be retried."
+                    completion_retry_pending=true
                 fi
-            elif send_notification 100 "$remaining_readable"; then
-                log "Final notification sent."
+            fi
+
+            if $USE_APPRISE; then
+                if [[ "$apprise_completion_started" != true ]]; then
+                    apprise_completion_started=true
+                    if ! start_apprise_completion; then
+                        log "Warning: One or more final Apprise targets are pending retry."
+                    fi
+                elif apprise_completion_has_pending; then
+                    if ! retry_apprise_completion; then
+                        log "Warning: One or more final Apprise targets remain pending."
+                    fi
+                fi
+            fi
+
+            apprise_completion_done=true
+            if $USE_APPRISE && apprise_completion_has_pending; then
+                apprise_completion_done=false
+            fi
+
+            if [[ "$standard_completion_done" == true && "$apprise_completion_done" == true ]]; then
                 save_last_run
                 LAST_NOTIFIED=-1
-                log "Monitoring loop exiting."
+                log "Final notification processing complete; monitoring loop exiting."
                 break
-            else
-                log "Warning: Final notification had one or more delivery failures; Pushover will be retried."
-                completion_retry_pending=true
-                sleep 5
-                continue
             fi
+
+            log "Completion notification delivery still pending; retrying in 5 seconds."
+            sleep 5
+            continue
         fi
 
         # Send notifications based on increment. A pending Pushover retry must not
@@ -1087,27 +1434,35 @@ while true; do
         if [ "$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))" -ge $((LAST_NOTIFIED + NOTIFICATION_INCREMENT)) ]; then
             log "Condition met for sending update: Current percent $percent (rounded down to nearest increment: $((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))) >= Last notified $LAST_NOTIFIED + Increment $NOTIFICATION_INCREMENT"
 
-            if [[ "$pushover_retry_pending" == true ]]; then
-                # Pushover is already pending, so send only to the healthy channels.
-                if $USE_TELEGRAM || $USE_DISCORD; then
-                    send_notification "$percent" "$remaining_readable" false true
-                    log "Notification sent for $percent% completion to non-Pushover channels."
-                fi
+            if direct_notifications_enabled; then
+                if [[ "$pushover_retry_pending" == true ]]; then
+                    # Pushover is already pending, so send only to the healthy direct channels.
+                    if $USE_TELEGRAM || $USE_DISCORD; then
+                        send_notification "$percent" "$remaining_readable" false true
+                        log "Direct notification attempt completed for $percent% on non-Pushover channels."
+                    fi
 
-                # Coalesce the pending Pushover retry to the newest progress update.
-                pending_percent="$percent"
-                pending_remaining="$remaining_readable"
-                log "Pending Pushover retry updated to ${percent}% completion."
-            elif send_notification "$percent" "$remaining_readable"; then
-                log "Notification sent for $percent% completion."
-            else
-                log "Warning: Notification for $percent% had one or more delivery failures; Pushover will be retried."
-                pushover_retry_pending=true
-                pending_percent="$percent"
-                pending_remaining="$remaining_readable"
+                    # Coalesce the pending Pushover retry to the newest progress update.
+                    pending_percent="$percent"
+                    pending_remaining="$remaining_readable"
+                    log "Pending Pushover retry updated to ${percent}% completion."
+                elif send_notification "$percent" "$remaining_readable"; then
+                    log "Direct notification attempt completed for $percent% completion."
+                else
+                    log "Warning: Direct notification for $percent% had a delivery failure; Pushover will be retried."
+                    pushover_retry_pending=true
+                    pending_percent="$percent"
+                    pending_remaining="$remaining_readable"
+                fi
             fi
 
-            # Healthy-channel scheduling is independent of Pushover delivery state.
+            if $USE_APPRISE; then
+                if ! send_apprise_progress "$percent" "$remaining_readable"; then
+                    log "Warning: One or more Apprise targets are pending retry for ${percent}% completion."
+                fi
+            fi
+
+            # Healthy-channel scheduling is independent of transport delivery state.
             LAST_NOTIFIED="$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))"
         fi
 
@@ -1123,6 +1478,10 @@ while true; do
                 log "Warning: Pushover notification retry failed; will retry again."
             fi
         fi
+
+        if $USE_APPRISE && apprise_progress_has_pending; then
+            retry_apprise_progress || true
+        fi
         sleep 5  # Check every 5 seconds; progress only recalculated per DU_POLL_INTERVAL
     done
 
@@ -1133,7 +1492,7 @@ done
 
 # Mover Status Script
 # <https://github.com/engels74/mover-status>
-# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, and/or Pushover.
+# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
 # Copyright (C) 2024 - engels74
 #
 # This program is free software: you can redistribute it and/or modify

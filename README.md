@@ -23,11 +23,12 @@
 - [🤖 Telegram Bot Setup](#-telegram-bot-setup)
 - [🖥️ Discord Webhook Setup](#-discord-webhook-setup)
 - [📲 Pushover Setup](#-pushover-setup)
+- [📣 Apprise Setup](#-apprise-setup)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [⚖️ License](#-license)
 
 ### 📜 Description 
-This Bash script monitors the progress of the "Mover" process and sends updates to Discord, Telegram, and/or Pushover. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
+This Bash script monitors the progress of the "Mover" process and sends updates to Discord, Telegram, Pushover, and/or Apprise. It provides real-time notifications on the status of the data moving process from SSD Cache to HDD Array.
 
 ## 📸 Images (preview) 
 <img src="https://i.imgur.com/owBzb5R.png" width="60%" alt="An example of how it looks">
@@ -83,6 +84,14 @@ Edit the script to configure the necessary settings:
 - `USE_TELEGRAM`: Set to `true` to enable Telegram notifications.
 - `USE_DISCORD`: Set to `true` to enable Discord notifications.
 - `USE_PUSHOVER`: Set to `true` to enable Pushover notifications.
+- `USE_APPRISE`: Set to `true` to enable Apprise notifications.
+- `APPRISE_MODE`: Select `cli` for the local Apprise CLI or `api` for an Apprise API server.
+- `APPRISE_BIN`: Path to the local Apprise executable when using CLI mode.
+- `APPRISE_API_URL`: Base URL of the Apprise API server when using API mode.
+- `APPRISE_TITLE`: Notification title used for Apprise messages.
+- `APPRISE_TARGETS`: One or more Apprise notification URLs. Each target is delivered and retried independently.
+- `APPRISE_MOVING_MESSAGE`: Optional custom Apprise progress-message template.
+- `APPRISE_COMPLETION_MESSAGE`: Optional custom Apprise completion-message template.
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token.
 - `TELEGRAM_CHAT_ID`: Your Telegram group or channel chat ID.
 - `DISCORD_WEBHOOK_URL`: Your Discord webhook URL.
@@ -152,6 +161,112 @@ Edit the script to configure the necessary settings:
 4. Set `USE_PUSHOVER=true`.
 5. Optionally change `PUSHOVER_TITLE` to customize the notification title.
 6. Set `DRY_RUN=true` to send a test notification without monitoring Mover.
+
+### 📣 Apprise Setup
+
+[Apprise](https://github.com/caronc/apprise) provides a common notification interface for many different services. Mover Status supports Apprise in two modes: a local CLI and the Apprise HTTP API.
+
+On Unraid, the following Community Applications packages were used while developing and testing this integration:
+
+- **Lime Technology - Apprise** — installs the `apprise-go` CLI as `/usr/bin/apprise` and can be used with `APPRISE_MODE="cli"`.
+- **linuxserver's Repository - apprise-api (Apprise-api)** — runs an Apprise API server and can be used with `APPRISE_MODE="api"`.
+
+<p align="center">
+  <img src="images/apprise-unraid-ca.png" alt="Apprise packages available in Unraid Community Applications" width="45%">
+</p>
+
+Other compatible Apprise CLI or API installations should also work; these are simply the Unraid CA packages used for testing.
+
+#### Enable Apprise
+
+```bash
+USE_APPRISE=true
+APPRISE_MODE="cli"                    # cli | api
+
+APPRISE_BIN="/usr/bin/apprise"
+APPRISE_API_URL="http://127.0.0.1:8000"
+APPRISE_TITLE="Mover Status"
+
+APPRISE_TARGETS=(
+    "pover://USER_KEY@APP_TOKEN"
+)
+```
+
+`pover://` is only a Pushover example. `APPRISE_TARGETS` accepts normal Apprise notification URLs for services supported by Apprise.
+
+Multiple destinations can be configured:
+
+```bash
+APPRISE_TARGETS=(
+    "pover://USER_KEY@APP_TOKEN"
+    "discord://WEBHOOK_ID/WEBHOOK_TOKEN"
+    "ntfys://ntfy.sh/my-topic"
+)
+```
+
+Mover Status sends each target independently. If one target fails, successful targets are not blocked or resent during retries of the failed target.
+
+#### CLI mode
+
+Set:
+
+```bash
+APPRISE_MODE="cli"
+APPRISE_BIN="/usr/bin/apprise"
+```
+
+CLI mode requires a working Apprise executable on the Unraid host. The default path is `/usr/bin/apprise`.
+
+You can verify the CLI manually with:
+
+```bash
+apprise --version
+```
+
+#### API mode
+
+Set:
+
+```bash
+APPRISE_MODE="api"
+APPRISE_API_URL="http://127.0.0.1:8000"
+```
+
+API mode sends stateless notification requests to the Apprise API `/notify` endpoint. The API server may run locally or on another reachable host.
+
+A minimal local-only Apprise API Docker deployment looks like:
+
+```bash
+docker run -d \
+  --name apprise \
+  -p 127.0.0.1:8000:8000 \
+  -e APPRISE_WORKER_COUNT=1 \
+  caronc/apprise:latest
+```
+
+You can verify that the API is reachable with:
+
+```bash
+curl -fsS http://127.0.0.1:8000/status
+```
+
+#### Testing
+
+Set:
+
+```bash
+DRY_RUN=true
+```
+
+and run Mover Status. A successful Apprise delivery exits normally. If an Apprise target cannot be delivered, dry-run exits with a non-zero status.
+
+#### Security notes
+
+Apprise notification URLs may contain credentials.
+
+In CLI mode, the target URL is passed to the Apprise executable as a command-line argument and may therefore be briefly visible to other sufficiently privileged processes on the host.
+
+In API mode, Mover Status sends the target URL inside the JSON request body rather than as a `curl` command-line argument. The Apprise API endpoint itself is still visible in the process command line. The Docker example above binds the API to loopback only. If you use a remote Apprise API, protect the connection appropriately because notification URLs may contain credentials.
 
 ### 🐛 Reporting Issues
 
