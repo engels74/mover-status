@@ -522,29 +522,65 @@ INI_REMAIN_FILES=0
 INI_CURRENT_FILE=""
 INI_ACTION=""
 
-# True only when mover.ini belongs to the currently running mover operation.
-# A previous Mover Tuning run can leave mover.ini behind indefinitely.
-mover_ini_is_current() {
+# Load one stable, complete mover.ini snapshot into INI_* globals.
+# Mover Tuning rewrites this file in place, so progress must never be
+# calculated from a file that changed while it was being read.
+load_mover_ini_snapshot() {
     [ -f "$MOVER_INI_PATH" ] || return 1
     [ -n "$mover_start_time" ] || return 1
 
-    local mod_time total_line remain_line total remain
+    local before after mod_time snapshot
+    before=$(stat -c '%i:%y:%s' "$MOVER_INI_PATH" 2>/dev/null) || return 1
     mod_time=$(stat -c %Y "$MOVER_INI_PATH" 2>/dev/null) || return 1
     [ "$mod_time" -ge "$mover_start_time" ] || return 1
 
-    # Require a complete, sane byte snapshot before trusting a newly written file.
-    total_line=$(grep -m1 '^TotalToSecondary=' "$MOVER_INI_PATH" 2>/dev/null) || return 1
-    remain_line=$(grep -m1 '^RemainToSecondary=' "$MOVER_INI_PATH" 2>/dev/null) || return 1
-    total="${total_line#*=}"
-    remain="${remain_line#*=}"
-    total="${total%\"}"
-    total="${total#\"}"
-    remain="${remain%\"}"
-    remain="${remain#\"}"
+    # Capture the whole small file using Bash itself, then verify that the
+    # inode/mtime/size did not change while it was being read.
+    snapshot=$(<"$MOVER_INI_PATH")
+    after=$(stat -c '%i:%y:%s' "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    [ "$before" = "$after" ] || return 1
 
+    local total="" remain="" total_files="" remain_files=""
+    local current_file="" action="" key value
+    while IFS='=' read -r key value; do
+        value="${value%\"}"
+        value="${value#\"}"
+        case "$key" in
+            TotalToSecondary)       total="$value" ;;
+            RemainToSecondary)      remain="$value" ;;
+            TotalFilesToSecondary)  total_files="$value" ;;
+            RemainFilesToSecondary) remain_files="$value" ;;
+            File)                    current_file="$value" ;;
+            Action)                  action="$value" ;;
+        esac
+    done <<< "$snapshot"
+
+    # Byte counters are mandatory for trustworthy progress.
     [[ "$total" =~ ^[0-9]+$ ]] || return 1
     [[ "$remain" =~ ^[0-9]+$ ]] || return 1
-    [ "$remain" -le "$total" ]
+    [ "$remain" -le "$total" ] || return 1
+
+    # File counters are optional, but if either appears require a complete,
+    # sane pair from the same stable snapshot.
+    if [ -n "$total_files" ] || [ -n "$remain_files" ]; then
+        [[ "$total_files" =~ ^[0-9]+$ ]] || return 1
+        [[ "$remain_files" =~ ^[0-9]+$ ]] || return 1
+        [ "$remain_files" -le "$total_files" ] || return 1
+    fi
+
+    # Publish only after the snapshot has passed every validation check.
+    INI_TOTAL_TO_SECONDARY="$total"
+    INI_REMAIN_TO_SECONDARY="$remain"
+    INI_TOTAL_FILES="$total_files"
+    INI_REMAIN_FILES="$remain_files"
+    INI_CURRENT_FILE="$current_file"
+    INI_ACTION="$action"
+}
+
+# True only when mover.ini belongs to the currently running mover operation
+# and contains one stable, complete snapshot.
+mover_ini_is_current() {
+    load_mover_ini_snapshot
 }
 
 # Detect whether current-run mover.ini data is available.
@@ -572,28 +608,12 @@ detect_data_source() {
     fi
 }
 
-# Parse mover.ini into INI_* globals
+# Parse one validated mover.ini snapshot into INI_* globals.
 read_mover_ini() {
-    if [ ! -f "$MOVER_INI_PATH" ]; then
-        log "Warning: mover.ini not found at $MOVER_INI_PATH"
+    if ! load_mover_ini_snapshot; then
+        log "Warning: mover.ini is stale, incomplete, or changed while being read; keeping the last valid progress snapshot."
         return 1
     fi
-
-    local key value
-    # shellcheck disable=SC2034
-    while IFS='=' read -r key value; do
-        # Remove surrounding quotes from value
-        value="${value%\"}"
-        value="${value#\"}"
-        case "$key" in
-            TotalToSecondary)  INI_TOTAL_TO_SECONDARY="$value" ;;
-            RemainToSecondary) INI_REMAIN_TO_SECONDARY="$value" ;;
-            TotalFilesToSecondary)  INI_TOTAL_FILES="$value" ;;
-            RemainFilesToSecondary) INI_REMAIN_FILES="$value" ;;
-            File)   INI_CURRENT_FILE="$value" ;;
-            Action) INI_ACTION="$value" ;;
-        esac
-    done < "$MOVER_INI_PATH"
 
     # Staleness check: warn if file hasn't been modified in >3x DU_POLL_INTERVAL
     local mod_time current_time age stale_threshold
@@ -1285,6 +1305,7 @@ send_notification() {
     # Send the notifications
     log "Sending notification..."
     local notification_failed=false
+    PUSHOVER_DELIVERY_FAILED=false
     if ! $pushover_only && $USE_TELEGRAM; then
         local json_payload
         json_payload=$(jq -n \
@@ -1310,9 +1331,10 @@ send_notification() {
             -s "$UNRAID_TITLE" \
             -d "$value_message_unraid" \
             -i normal; then
-            # Native notify is a local handoff. Unraid manages browser/email/agent
-            # delivery downstream, so it is deliberately not tied to Pushover retries.
+            # Native notify is a local handoff. Surface a failed handoff to the
+            # caller, but do not incorrectly route it through Pushover retries.
             log "Warning: Native Unraid notification could not be submitted."
+            notification_failed=true
         fi
     fi
 
@@ -1322,29 +1344,42 @@ send_notification() {
         fi
         if ! send_pushover "$value_message_pushover"; then
             notification_failed=true
+            PUSHOVER_DELIVERY_FAILED=true
         fi
     fi
 
     if ! $pushover_only && $USE_DISCORD; then
-        local notification_data='{
-            "username": "'"$DISCORD_NAME_OVERRIDE"'",
-            "content": null,
-            "embeds": [
-                {
-                    "title": "Mover: Moving Data",
-                    "color": '"$color"',
-                    "fields": [
-                        {
-                            "name": "'"$datetime"'",
-                            "value": "'"${value_message_discord}"'"
-                        }
-                    ],
-                    "footer": {
-                        "text": "'"$footer_text"'"
+        # Existing Discord templates use literal \n sequences because the old
+        # payload was hand-built JSON. Convert only that legacy newline marker;
+        # jq handles all JSON escaping. An override is already plain text.
+        local discord_field_value="$value_message_discord"
+        if [ -z "$message_override" ]; then
+            discord_field_value=${discord_field_value//\\n/$'\n'}
+        fi
+
+        local notification_data
+        notification_data=$(jq -cn \
+            --arg username "$DISCORD_NAME_OVERRIDE" \
+            --arg field_name "$datetime" \
+            --arg field_value "$discord_field_value" \
+            --arg footer "$footer_text" \
+            --argjson color "$color" \
+            '{
+                username: $username,
+                content: null,
+                embeds: [{
+                    title: "Mover: Moving Data",
+                    color: $color,
+                    fields: [{
+                        name: $field_name,
+                        value: $field_value
+                    }],
+                    footer: {
+                        text: $footer
                     }
-                }
-            ]
-        }'
+                }]
+            }')
+
         if $ENABLE_DEBUG; then
             log "Preparing to send to Discord: $notification_data"
         fi
@@ -1400,10 +1435,13 @@ send_initial_notifications() {
         if send_notification "$percent" "$remaining_readable"; then
             log "Initial direct notification attempt completed at ${percent}%."
         else
-            log "Warning: Initial direct notification had a delivery failure; Pushover will be retried."
-            pushover_retry_pending=true
-            pending_percent="$percent"
-            pending_remaining="$remaining_readable"
+            log "Warning: Initial direct notification had a delivery failure."
+            if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                log "Pushover will be retried."
+                pushover_retry_pending=true
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+            fi
         fi
     fi
 
@@ -1544,7 +1582,12 @@ while true; do
                 log "Mover already ${percent}% complete when current-run progress became available."
             fi
 
-            send_initial_notifications "$percent" "$remaining_readable"
+            if [ "$percent" -gt 0 ]; then
+                send_initial_notifications "$percent" "$remaining_readable"
+            else
+                log "Fresh mover.ini reports 0%; preparing notification already announced this run, suppressing duplicate 0% notification."
+                LAST_NOTIFIED=0
+            fi
             save_state
             last_du_time=$current_time
         fi
@@ -1599,8 +1642,16 @@ while true; do
                     log "Final direct notification attempt completed."
                     standard_completion_done=true
                 else
-                    log "Warning: Final direct notification had a delivery failure; Pushover will be retried."
-                    completion_retry_pending=true
+                    log "Warning: Final direct notification had a delivery failure."
+                    if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                        log "Final Pushover notification will be retried."
+                        completion_retry_pending=true
+                    else
+                        # Native Unraid submission is a one-shot local handoff.
+                        # The failure has been surfaced; avoid duplicating healthy
+                        # direct channels by resending the whole completion message.
+                        standard_completion_done=true
+                    fi
                 fi
             fi
 
@@ -1643,8 +1694,11 @@ while true; do
                 if [[ "$pushover_retry_pending" == true ]]; then
                     # Pushover is already pending, so send only to the healthy direct channels.
                     if $USE_TELEGRAM || $USE_DISCORD || $USE_UNRAID; then
-                        send_notification "$percent" "$remaining_readable" false true
-                        log "Direct notification attempt completed for $percent% on non-Pushover channels."
+                        if send_notification "$percent" "$remaining_readable" false true; then
+                            log "Direct notification attempt completed for $percent% on non-Pushover channels."
+                        else
+                            log "Warning: A non-Pushover direct notification failed for $percent% completion."
+                        fi
                     fi
 
                     # Coalesce the pending Pushover retry to the newest progress update.
@@ -1654,10 +1708,13 @@ while true; do
                 elif send_notification "$percent" "$remaining_readable"; then
                     log "Direct notification attempt completed for $percent% completion."
                 else
-                    log "Warning: Direct notification for $percent% had a delivery failure; Pushover will be retried."
-                    pushover_retry_pending=true
-                    pending_percent="$percent"
-                    pending_remaining="$remaining_readable"
+                    log "Warning: Direct notification for $percent% had a delivery failure."
+                    if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                        log "Pushover will be retried."
+                        pushover_retry_pending=true
+                        pending_percent="$percent"
+                        pending_remaining="$remaining_readable"
+                    fi
                 fi
             fi
 
