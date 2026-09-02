@@ -1086,8 +1086,8 @@ init_apprise_retry_state() {
 
     local i
     for i in "${!APPRISE_TARGETS[@]}"; do
-        apprise_progress_pending[$i]=false
-        apprise_completion_pending[$i]=false
+        apprise_progress_pending[i]=false
+        apprise_completion_pending[i]=false
     done
 }
 
@@ -1126,7 +1126,7 @@ send_apprise_progress() {
         if send_apprise_target "$i" "$APPRISE_TITLE" "$APPRISE_CURRENT_MESSAGE" "info"; then
             log "Apprise target $((i + 1)) notification sent for ${percent}% completion."
         else
-            apprise_progress_pending[$i]=true
+            apprise_progress_pending[i]=true
             log "Warning: Apprise target $((i + 1)) will be retried."
         fi
     done
@@ -1157,7 +1157,7 @@ retry_apprise_progress() {
         fi
 
         if send_apprise_target "$i" "$APPRISE_TITLE" "$APPRISE_CURRENT_MESSAGE" "info"; then
-            apprise_progress_pending[$i]=false
+            apprise_progress_pending[i]=false
             log "Apprise target $((i + 1)) retry succeeded for ${apprise_pending_percent}% completion."
         else
             log "Warning: Apprise target $((i + 1)) retry failed; will retry again."
@@ -1181,10 +1181,10 @@ start_apprise_completion() {
 
     for i in "${!APPRISE_TARGETS[@]}"; do
         if send_apprise_target "$i" "$APPRISE_TITLE" "$apprise_completion_message" "success"; then
-            apprise_completion_pending[$i]=false
+            apprise_completion_pending[i]=false
             log "Final Apprise notification sent to target $((i + 1))."
         else
-            apprise_completion_pending[$i]=true
+            apprise_completion_pending[i]=true
             log "Warning: Final Apprise notification to target $((i + 1)) will be retried."
         fi
     done
@@ -1201,7 +1201,7 @@ retry_apprise_completion() {
         fi
 
         if send_apprise_target "$i" "$APPRISE_TITLE" "$apprise_completion_message" "success"; then
-            apprise_completion_pending[$i]=false
+            apprise_completion_pending[i]=false
             log "Final Apprise notification retry succeeded for target $((i + 1))."
         else
             log "Warning: Final Apprise notification retry failed for target $((i + 1)); will retry again."
