@@ -2,7 +2,7 @@
 
 # Script Metadata
 #name=Mover Status Script
-#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
+#description=This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 #backgroundOnly=true
 #arrayStarted=true
 
@@ -10,7 +10,7 @@
 # Mover Status Script
 # ---------------------------------------------------------
 # Monitors Unraid's mover process and posts progress updates
-# to Discord, Telegram, Pushover, and/or Apprise.
+# to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 #
 # Dependencies: bash, curl, jq, du, pgrep, date
 # Optional: apprise CLI when APPRISE_MODE=cli
@@ -34,6 +34,7 @@ USE_TELEGRAM=false                                                      # Enable
 USE_DISCORD=false                                                       # Enable notifications to Discord
 USE_PUSHOVER=false                                                      # Enable notifications to Pushover
 USE_APPRISE=false                                                       # Enable notifications through Apprise
+USE_UNRAID=false                                                        # Enable native Unraid notifications/toasts
 TELEGRAM_BOT_TOKEN="xxxx"                                               # Telegram bot token
 TELEGRAM_CHAT_ID="xxxx"                                                 # Telegram chat ID
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/xxxx/xxxx"        # Discord webhook URL
@@ -45,6 +46,9 @@ APPRISE_MODE="cli"                                                       # Appri
 APPRISE_BIN="/usr/bin/apprise"                                          # Apprise CLI executable
 APPRISE_API_URL="http://127.0.0.1:8000"                                 # Apprise API base URL when mode=api
 APPRISE_TITLE="Mover Status"                                             # Notification title for Apprise
+UNRAID_NOTIFY_BIN="/usr/local/emhttp/webGui/scripts/notify"              # Native Unraid notify executable
+UNRAID_EVENT="Mover Status"                                              # Event name shown by Unraid
+UNRAID_TITLE="Mover Status"                                              # Notification subject shown by Unraid
 APPRISE_TARGETS=(
     # "pover://USER_KEY@APP_TOKEN"
 )
@@ -63,11 +67,14 @@ TELEGRAM_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. &#10;Progress:
 DISCORD_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array.\nProgress: **{percent}%** complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move."
 PUSHOVER_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
 APPRISE_MOVING_MESSAGE=$'Moving data from SSD Cache to HDD Array.\nProgress: {percent}% complete.\nRemaining data: {remaining_data}.\nEstimated completion time: {etc}.\n\nNote: Services like Plex may run slow or be unavailable during the move.'
+UNRAID_MOVING_MESSAGE="Moving data from SSD Cache to HDD Array. Progress: {percent}% complete. Remaining data: {remaining_data}. Estimated completion time: {etc}."
+PREPARING_MESSAGE="Mover has started. Mover Tuning is preparing/scanning cache data. Progress will be available when transfer begins."
 COMPLETION_MESSAGE="Moving has been completed!"
 DISCORD_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
 TELEGRAM_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 PUSHOVER_COMPLETION_MESSAGE=""                                          # If empty, falls back to COMPLETION_MESSAGE
 APPRISE_COMPLETION_MESSAGE=""                                           # If empty, falls back to COMPLETION_MESSAGE
+UNRAID_COMPLETION_MESSAGE=""                                            # If empty, falls back to COMPLETION_MESSAGE
 
 # ---------------------------------------
 # Exclusion Folders: Define paths to exclude
@@ -106,7 +113,7 @@ LAST_NOTIFIED=-1
 # ---------------------------------------------------------
 
 # Check if at least one notification method is enabled
-if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER && ! $USE_APPRISE; then
+if ! $USE_TELEGRAM && ! $USE_DISCORD && ! $USE_PUSHOVER && ! $USE_APPRISE && ! $USE_UNRAID; then
     log "Error: All notification methods are disabled. At least one must be enabled."
     exit 1
 fi
@@ -129,6 +136,13 @@ fi
 if [[ $USE_PUSHOVER == true ]]; then
     if [ -z "$PUSHOVER_APP_TOKEN" ] || [ "$PUSHOVER_APP_TOKEN" = "xxxx" ] || [ -z "$PUSHOVER_USER_KEY" ] || [ "$PUSHOVER_USER_KEY" = "xxxx" ]; then
         log "Error: Pushover settings not configured correctly."
+        exit 1
+    fi
+fi
+
+if [[ $USE_UNRAID == true ]]; then
+    if [ ! -x "$UNRAID_NOTIFY_BIN" ]; then
+        log "Error: Unraid notify executable is not available at: $UNRAID_NOTIFY_BIN"
         exit 1
     fi
 fi
@@ -265,7 +279,7 @@ send_apprise_target() {
 
 # True when at least one built-in direct notification channel is enabled.
 direct_notifications_enabled() {
-    $USE_TELEGRAM || $USE_DISCORD || $USE_PUSHOVER
+    $USE_TELEGRAM || $USE_DISCORD || $USE_PUSHOVER || $USE_UNRAID
 }
 
 # Validate DU_POLL_INTERVAL is a positive integer
@@ -308,6 +322,7 @@ if $DRY_RUN; then
     dry_run_etc_telegram="01/01/2099, 12pm"
     dry_run_etc_pushover="01/01/2099, 12pm"
     dry_run_etc_apprise="01/01/2099, 12pm"
+    dry_run_etc_unraid="01/01/2099, 12pm"
 
     # Simulate file info if available
     dry_run_file_count=""
@@ -360,6 +375,12 @@ if $DRY_RUN; then
     dry_run_value_message_apprise="${dry_run_value_message_apprise//\{current_file\}/$dry_run_current_file}"
     dry_run_value_message_apprise+=$'\n\n'"${footer_text}"
 
+    dry_run_value_message_unraid="${UNRAID_MOVING_MESSAGE//\{percent\}/$dry_run_percent}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{remaining_data\}/$dry_run_remaining_data}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{etc\}/$dry_run_etc_unraid}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{file_count\}/$dry_run_file_count}"
+    dry_run_value_message_unraid="${dry_run_value_message_unraid//\{current_file\}/$dry_run_current_file}"
+
     # Send test notifications
     if $USE_TELEGRAM; then
         log "Sending test notification to Telegram..."
@@ -374,6 +395,18 @@ if $DRY_RUN; then
         log "Sending test notification to Pushover..."
         if ! send_pushover "$dry_run_value_message_pushover"; then
             log "Error: Pushover dry-run notification was not delivered."
+            exit 1
+        fi
+    fi
+
+    if $USE_UNRAID; then
+        log "Sending test notification through native Unraid notifications..."
+        if ! "$UNRAID_NOTIFY_BIN" \
+            -e "$UNRAID_EVENT" \
+            -s "$UNRAID_TITLE" \
+            -d "$dry_run_value_message_unraid" \
+            -i normal; then
+            log "Error: Native Unraid dry-run notification could not be submitted."
             exit 1
         fi
     fi
@@ -466,7 +499,7 @@ STATE_DIR="/tmp/mover-status"
 STATE_FILE="${STATE_DIR}/state"
 LAST_RUN_FILE="${STATE_DIR}/last-run"
 
-# Global data source identifier: "mover_ini" or "du_polling"
+# Global data source identifier: "preparing", "mover_ini", or "du_polling"
 DATA_SOURCE=""
 
 # Progress globals (set by get_progress)
@@ -489,39 +522,98 @@ INI_REMAIN_FILES=0
 INI_CURRENT_FILE=""
 INI_ACTION=""
 
-# Detect whether mover.ini is available and usable
+# Load one stable, complete mover.ini snapshot into INI_* globals.
+# Mover Tuning rewrites this file in place, so progress must never be
+# calculated from a file that changed while it was being read.
+load_mover_ini_snapshot() {
+    [ -f "$MOVER_INI_PATH" ] || return 1
+    [ -n "$mover_start_time" ] || return 1
+
+    local before after mod_time snapshot
+    before=$(stat -c '%i:%y:%s' "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    mod_time=$(stat -c %Y "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    [ "$mod_time" -ge "$mover_start_time" ] || return 1
+
+    # Capture the whole small file using Bash itself, then verify that the
+    # inode/mtime/size did not change while it was being read.
+    snapshot=$(<"$MOVER_INI_PATH")
+    after=$(stat -c '%i:%y:%s' "$MOVER_INI_PATH" 2>/dev/null) || return 1
+    [ "$before" = "$after" ] || return 1
+
+    local total="" remain="" total_files="" remain_files=""
+    local current_file="" action="" key value
+    while IFS='=' read -r key value; do
+        value="${value%\"}"
+        value="${value#\"}"
+        case "$key" in
+            TotalToSecondary)       total="$value" ;;
+            RemainToSecondary)      remain="$value" ;;
+            TotalFilesToSecondary)  total_files="$value" ;;
+            RemainFilesToSecondary) remain_files="$value" ;;
+            File)                    current_file="$value" ;;
+            Action)                  action="$value" ;;
+        esac
+    done <<< "$snapshot"
+
+    # Byte counters are mandatory for trustworthy progress.
+    [[ "$total" =~ ^[0-9]+$ ]] || return 1
+    [[ "$remain" =~ ^[0-9]+$ ]] || return 1
+    [ "$remain" -le "$total" ] || return 1
+
+    # File counters are optional, but if either appears require a complete,
+    # sane pair from the same stable snapshot.
+    if [ -n "$total_files" ] || [ -n "$remain_files" ]; then
+        [[ "$total_files" =~ ^[0-9]+$ ]] || return 1
+        [[ "$remain_files" =~ ^[0-9]+$ ]] || return 1
+        [ "$remain_files" -le "$total_files" ] || return 1
+    fi
+
+    # Publish only after the snapshot has passed every validation check.
+    INI_TOTAL_TO_SECONDARY="$total"
+    INI_REMAIN_TO_SECONDARY="$remain"
+    INI_TOTAL_FILES="$total_files"
+    INI_REMAIN_FILES="$remain_files"
+    INI_CURRENT_FILE="$current_file"
+    INI_ACTION="$action"
+}
+
+# True only when mover.ini belongs to the currently running mover operation
+# and contains one stable, complete snapshot.
+mover_ini_is_current() {
+    load_mover_ini_snapshot
+}
+
+# Detect whether current-run mover.ini data is available.
+# Mover Tuning may spend significant time preparing/scanning before it writes
+# progress for the current run; do not fall back to an expensive second du scan.
 detect_data_source() {
-    if [ -f "$MOVER_INI_PATH" ] && grep -q "TotalToSecondary" "$MOVER_INI_PATH" 2>/dev/null; then
+    if mover_ini_is_current; then
         DATA_SOURCE="mover_ini"
-        log "Data source: mover.ini (Mover Tuning plugin detected)"
+        log "Data source: mover.ini (current Mover Tuning run)"
+    elif pgrep -x "age_mover" > /dev/null 2>&1; then
+        DATA_SOURCE="preparing"
+
+        if [ -f "$MOVER_INI_PATH" ]; then
+            local ini_mtime
+            ini_mtime=$(stat -c %Y "$MOVER_INI_PATH" 2>/dev/null || true)
+            if [ -n "$ini_mtime" ] && [ -n "$mover_start_time" ] && [ "$ini_mtime" -lt "$mover_start_time" ]; then
+                log "Ignoring stale mover.ini from $(date -d "@$ini_mtime" '+%Y-%m-%d %H:%M:%S'); current mover started at $(date -d "@$mover_start_time" '+%Y-%m-%d %H:%M:%S')."
+            fi
+        fi
+
+        log "Mover Tuning is preparing/scanning; waiting for current-run progress data."
     else
         DATA_SOURCE="du_polling"
         log "Data source: du polling (standard mover)"
     fi
 }
 
-# Parse mover.ini into INI_* globals
+# Parse one validated mover.ini snapshot into INI_* globals.
 read_mover_ini() {
-    if [ ! -f "$MOVER_INI_PATH" ]; then
-        log "Warning: mover.ini not found at $MOVER_INI_PATH"
+    if ! load_mover_ini_snapshot; then
+        log "Warning: mover.ini is stale, incomplete, or changed while being read; keeping the last valid progress snapshot."
         return 1
     fi
-
-    local key value
-    # shellcheck disable=SC2034
-    while IFS='=' read -r key value; do
-        # Remove surrounding quotes from value
-        value="${value%\"}"
-        value="${value#\"}"
-        case "$key" in
-            TotalToSecondary)  INI_TOTAL_TO_SECONDARY="$value" ;;
-            RemainToSecondary) INI_REMAIN_TO_SECONDARY="$value" ;;
-            TotalFilesToSecondary)  INI_TOTAL_FILES="$value" ;;
-            RemainFilesToSecondary) INI_REMAIN_FILES="$value" ;;
-            File)   INI_CURRENT_FILE="$value" ;;
-            Action) INI_ACTION="$value" ;;
-        esac
-    done < "$MOVER_INI_PATH"
 
     # Staleness check: warn if file hasn't been modified in >3x DU_POLL_INTERVAL
     local mod_time current_time age stale_threshold
@@ -545,7 +637,16 @@ read_mover_ini() {
 
 # Unified progress reader — sets PROGRESS_* globals from either data source
 get_progress() {
-    if [ "$DATA_SOURCE" = "mover_ini" ]; then
+    if [ "$DATA_SOURCE" = "preparing" ]; then
+        PROGRESS_PERCENT=0
+        PROGRESS_REMAINING_BYTES=0
+        PROGRESS_MOVED_BYTES=0
+        PROGRESS_TOTAL_BYTES=0
+        PROGRESS_FILE_COUNT=""
+        PROGRESS_REMAIN_FILES=""
+        PROGRESS_CURRENT_FILE=""
+        return 0
+    elif [ "$DATA_SOURCE" = "mover_ini" ]; then
         read_mover_ini || return 1
 
         PROGRESS_TOTAL_BYTES="$INI_TOTAL_TO_SECONDARY"
@@ -826,7 +927,7 @@ format_speed() {
 
 # Build rich completion message with all available stats
 # Sets COMPLETION_SUMMARY_DISCORD, COMPLETION_SUMMARY_TELEGRAM, COMPLETION_SUMMARY_PUSHOVER,
-# and COMPLETION_SUMMARY_APPRISE
+# COMPLETION_SUMMARY_APPRISE, and COMPLETION_SUMMARY_UNRAID
 build_completion_summary() {
     local end_time duration avg_speed_val
     end_time=$(date +%s)
@@ -879,6 +980,14 @@ build_completion_summary() {
     apprise_msg="${apprise_msg//\{duration\}/$duration_str}"
     apprise_msg="${apprise_msg//\{avg_speed\}/$avg_speed_str}"
     COMPLETION_SUMMARY_APPRISE="$apprise_msg"
+
+    # Build native Unraid completion message
+    local unraid_msg="${UNRAID_COMPLETION_MESSAGE:-$COMPLETION_MESSAGE}"
+    unraid_msg="${unraid_msg//\{total_moved\}/$total_moved_str}"
+    unraid_msg="${unraid_msg//\{file_count\}/$file_count_str}"
+    unraid_msg="${unraid_msg//\{duration\}/$duration_str}"
+    unraid_msg="${unraid_msg//\{avg_speed\}/$avg_speed_str}"
+    COMPLETION_SUMMARY_UNRAID="$unraid_msg"
 }
 
 # Function to convert bytes to human-readable format
@@ -933,7 +1042,7 @@ calculate_etc() {
 
         if [[ $platform == "discord" ]]; then
             echo "<t:${completion_time_estimate}:R>"
-        elif [[ $platform == "telegram" || $platform == "pushover" || $platform == "apprise" ]]; then
+        elif [[ $platform == "telegram" || $platform == "pushover" || $platform == "apprise" || $platform == "unraid" ]]; then
             date -d "@${completion_time_estimate}" +"%H:%M on %b %d (%Z)"
         fi
     else
@@ -1110,6 +1219,7 @@ send_notification() {
     local remaining_data=$2
     local pushover_only=${3:-false}
     local skip_pushover=${4:-false}
+    local message_override=${5:-}
     local datetime
     datetime=$(date +"%B %d (%Y) - %H:%M:%S")
     local etc_discord
@@ -1118,6 +1228,8 @@ send_notification() {
     etc_telegram=$(calculate_etc "$percent" "telegram")
     local etc_pushover
     etc_pushover=$(calculate_etc "$percent" "pushover")
+    local etc_unraid
+    etc_unraid=$(calculate_etc "$percent" "unraid")
 
     # Prepare file info placeholders
     local file_count_str=""
@@ -1149,6 +1261,21 @@ send_notification() {
     value_message_pushover="${value_message_pushover//\{file_count\}/$file_count_str}"
     value_message_pushover="${value_message_pushover//\{current_file\}/$current_file_str}"
 
+    local value_message_unraid="${UNRAID_MOVING_MESSAGE//\{percent\}/$percent}"
+    value_message_unraid="${value_message_unraid//\{remaining_data\}/$remaining_data}"
+    value_message_unraid="${value_message_unraid//\{etc\}/$etc_unraid}"
+    value_message_unraid="${value_message_unraid//\{file_count\}/$file_count_str}"
+    value_message_unraid="${value_message_unraid//\{current_file\}/$current_file_str}"
+
+    # A preparing/start notification uses the normal transport plumbing but
+    # deliberately does not pretend that percentage data exists yet.
+    if [ -n "$message_override" ]; then
+        value_message_discord="$message_override"
+        value_message_telegram="$message_override"
+        value_message_pushover="$message_override"
+        value_message_unraid="$message_override"
+    fi
+
     local footer_text="Version: v${CURRENT_VERSION}"
     if [[ -n "${LATEST_VERSION}" && "${LATEST_VERSION}" != "${CURRENT_VERSION}" ]]; then
         footer_text+=" (update available)"
@@ -1163,6 +1290,7 @@ send_notification() {
         value_message_discord="$COMPLETION_SUMMARY_DISCORD"
         value_message_telegram="$COMPLETION_SUMMARY_TELEGRAM"
         value_message_pushover="$COMPLETION_SUMMARY_PUSHOVER"
+        value_message_unraid="$COMPLETION_SUMMARY_UNRAID"
         color=65280  # Green for completion
     else
         if [ "$percent" -le 34 ]; then
@@ -1177,6 +1305,7 @@ send_notification() {
     # Send the notifications
     log "Sending notification..."
     local notification_failed=false
+    PUSHOVER_DELIVERY_FAILED=false
     if ! $pushover_only && $USE_TELEGRAM; then
         local json_payload
         json_payload=$(jq -n \
@@ -1193,35 +1322,64 @@ send_notification() {
         fi
     fi
 
+    if ! $pushover_only && $USE_UNRAID; then
+        if $ENABLE_DEBUG; then
+            log "Submitting native Unraid notification: event='$UNRAID_EVENT', subject='$UNRAID_TITLE', description='$value_message_unraid'"
+        fi
+        if ! "$UNRAID_NOTIFY_BIN" \
+            -e "$UNRAID_EVENT" \
+            -s "$UNRAID_TITLE" \
+            -d "$value_message_unraid" \
+            -i normal; then
+            # Native notify is a local handoff. Surface a failed handoff to the
+            # caller, but do not incorrectly route it through Pushover retries.
+            log "Warning: Native Unraid notification could not be submitted."
+            notification_failed=true
+        fi
+    fi
+
     if ! $skip_pushover && $USE_PUSHOVER; then
         if $ENABLE_DEBUG; then
             log "Preparing to send to Pushover: title='$PUSHOVER_TITLE', message='$value_message_pushover'"
         fi
         if ! send_pushover "$value_message_pushover"; then
             notification_failed=true
+            PUSHOVER_DELIVERY_FAILED=true
         fi
     fi
 
     if ! $pushover_only && $USE_DISCORD; then
-        local notification_data='{
-            "username": "'"$DISCORD_NAME_OVERRIDE"'",
-            "content": null,
-            "embeds": [
-                {
-                    "title": "Mover: Moving Data",
-                    "color": '"$color"',
-                    "fields": [
-                        {
-                            "name": "'"$datetime"'",
-                            "value": "'"${value_message_discord}"'"
-                        }
-                    ],
-                    "footer": {
-                        "text": "'"$footer_text"'"
+        # Existing Discord templates use literal \n sequences because the old
+        # payload was hand-built JSON. Convert only that legacy newline marker;
+        # jq handles all JSON escaping. An override is already plain text.
+        local discord_field_value="$value_message_discord"
+        if [ -z "$message_override" ]; then
+            discord_field_value=${discord_field_value//\\n/$'\n'}
+        fi
+
+        local notification_data
+        notification_data=$(jq -cn \
+            --arg username "$DISCORD_NAME_OVERRIDE" \
+            --arg field_name "$datetime" \
+            --arg field_value "$discord_field_value" \
+            --arg footer "$footer_text" \
+            --argjson color "$color" \
+            '{
+                username: $username,
+                content: null,
+                embeds: [{
+                    title: "Mover: Moving Data",
+                    color: $color,
+                    fields: [{
+                        name: $field_name,
+                        value: $field_value
+                    }],
+                    footer: {
+                        text: $footer
                     }
-                }
-            ]
-        }'
+                }]
+            }')
+
         if $ENABLE_DEBUG; then
             log "Preparing to send to Discord: $notification_data"
         fi
@@ -1236,6 +1394,64 @@ send_notification() {
         return 1
     fi
     return 0
+}
+
+# Send a one-time start notification while Mover Tuning is preparing.
+# This is informational and best-effort; normal progress/completion delivery
+# remains authoritative if a transport is temporarily unavailable.
+send_preparing_notifications() {
+    local notification_failed=false
+
+    if direct_notifications_enabled; then
+        if send_notification 0 "Calculating..." false false "$PREPARING_MESSAGE"; then
+            log "Mover preparing notification submitted to direct channels."
+        else
+            notification_failed=true
+            log "Warning: Mover preparing notification had a direct-channel delivery failure."
+        fi
+    fi
+
+    if $USE_APPRISE; then
+        local i
+        for i in "${!APPRISE_TARGETS[@]}"; do
+            if send_apprise_target "$i" "$APPRISE_TITLE" "$PREPARING_MESSAGE" "info"; then
+                log "Mover preparing notification sent to Apprise target $((i + 1))."
+            else
+                notification_failed=true
+                log "Warning: Mover preparing notification failed for Apprise target $((i + 1))."
+            fi
+        done
+    fi
+
+    ! $notification_failed
+}
+
+# Send the first percentage notification once trustworthy progress exists.
+send_initial_notifications() {
+    local percent=$1
+    local remaining_readable=$2
+
+    if direct_notifications_enabled; then
+        if send_notification "$percent" "$remaining_readable"; then
+            log "Initial direct notification attempt completed at ${percent}%."
+        else
+            log "Warning: Initial direct notification had a delivery failure."
+            if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                log "Pushover will be retried."
+                pushover_retry_pending=true
+                pending_percent="$percent"
+                pending_remaining="$remaining_readable"
+            fi
+        fi
+    fi
+
+    if $USE_APPRISE; then
+        if ! send_apprise_progress "$percent" "$remaining_readable"; then
+            log "Warning: One or more initial Apprise targets are pending retry."
+        fi
+    fi
+
+    LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
 }
 
 # Initialize state directory for crash recovery
@@ -1253,12 +1469,13 @@ while true; do
 
     log "Mover process found, starting monitoring..."
 
-    # Detect data source (mover.ini vs du polling)
-    detect_data_source
-
-    # Get mover PID for state tracking
+    # Get mover identity before choosing a progress source so stale mover.ini
+    # from a previous Mover Tuning run can be rejected.
     mover_pid=$(get_mover_pid) || mover_pid=""
     mover_start_time=$(get_mover_start_time "$mover_pid") || mover_start_time=""
+
+    # Detect data source (preparing vs current mover.ini vs du polling)
+    detect_data_source
 
     # Capture initial excluded size (used for consistent total adjustment)
     initial_excluded_size=0
@@ -1289,6 +1506,8 @@ while true; do
         if [ "$DATA_SOURCE" = "mover_ini" ]; then
             get_progress
             initial_size="$PROGRESS_TOTAL_BYTES"
+        elif [ "$DATA_SOURCE" = "preparing" ]; then
+            initial_size=0
         else
             initial_size=$(du -sb "$CACHE_PATH" | cut -f1)
             initial_size=$((initial_size - initial_excluded_size))
@@ -1297,14 +1516,23 @@ while true; do
             fi
         fi
 
-        initial_readable=$(human_readable "$initial_size")
-        log "Initial total size of data: $initial_readable"
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            initial_readable="Calculating..."
+            log "Initial total size unavailable while Mover Tuning is preparing."
+        else
+            initial_readable=$(human_readable "$initial_size")
+            log "Initial total size of data: $initial_readable"
+        fi
 
         start_time=$(date +%s)
         log "Monitoring started at: $(date -d "@$start_time" '+%Y-%m-%d %H:%M:%S')"
 
         # Check for late-join (mover already running before script started)
-        if [ "$DATA_SOURCE" = "mover_ini" ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            monitoring_start_bytes=0
+            percent=0
+            remaining_readable="Calculating..."
+        elif [ "$DATA_SOURCE" = "mover_ini" ] && [ "$PROGRESS_MOVED_BYTES" -gt 0 ]; then
             monitoring_start_bytes="$PROGRESS_MOVED_BYTES"
             log "Late join detected — mover already $(( PROGRESS_PERCENT ))% complete (using mover.ini data, baseline: $(human_readable "$monitoring_start_bytes"))"
             percent="$PROGRESS_PERCENT"
@@ -1325,31 +1553,44 @@ while true; do
 
         LAST_NOTIFIED=-1
 
-        if direct_notifications_enabled; then
-            if send_notification "$percent" "$remaining_readable"; then
-                log "Initial direct notification attempt completed at ${percent}%."
-            else
-                log "Warning: Initial direct notification had a delivery failure; Pushover will be retried."
-                pushover_retry_pending=true
-                pending_percent="$percent"
-                pending_remaining="$remaining_readable"
-            fi
+        # While Mover Tuning is preparing, announce the run without inventing
+        # a percentage. Normal percentage notifications begin with fresh data.
+        if [ "$DATA_SOURCE" = "preparing" ]; then
+            send_preparing_notifications || true
+        else
+            send_initial_notifications "$percent" "$remaining_readable"
         fi
-
-        if $USE_APPRISE; then
-            if ! send_apprise_progress "$percent" "$remaining_readable"; then
-                log "Warning: One or more initial Apprise targets are pending retry."
-            fi
-        fi
-
-        # Advance the normal notification schedule independently of transport retries.
-        LAST_NOTIFIED=$((percent / NOTIFICATION_INCREMENT * NOTIFICATION_INCREMENT))
     fi
 
     # Monitor the progress
     last_du_time=0
     while true; do
         current_time=$(date +%s)
+
+        # Switch to mover.ini as soon as Mover Tuning writes current-run data.
+        if [ "$DATA_SOURCE" = "preparing" ] && is_mover_running && mover_ini_is_current; then
+            DATA_SOURCE="mover_ini"
+            log "Fresh mover.ini detected; switching to Mover Tuning progress tracking."
+
+            get_progress
+            initial_size="$PROGRESS_TOTAL_BYTES"
+            remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
+            percent="$PROGRESS_PERCENT"
+
+            monitoring_start_bytes="$PROGRESS_MOVED_BYTES"
+            if [ "$monitoring_start_bytes" -gt 0 ]; then
+                log "Mover already ${percent}% complete when current-run progress became available."
+            fi
+
+            if [ "$percent" -gt 0 ]; then
+                send_initial_notifications "$percent" "$remaining_readable"
+            else
+                log "Fresh mover.ini reports 0%; preparing notification already announced this run, suppressing duplicate 0% notification."
+                LAST_NOTIFIED=0
+            fi
+            save_state
+            last_du_time=$current_time
+        fi
 
         # Only recalculate progress when DU_POLL_INTERVAL has passed
         if [ $((current_time - last_du_time)) -ge "$DU_POLL_INTERVAL" ]; then
@@ -1373,6 +1614,13 @@ while true; do
         if ! is_mover_running; then
             log "Mover process is no longer running."
 
+            # If Mover Tuning produced current-run data just as the wrapper exited,
+            # use it for final stats without emitting a late progress notification.
+            if [ "$DATA_SOURCE" = "preparing" ] && mover_ini_is_current; then
+                DATA_SOURCE="mover_ini"
+                log "Current-run mover.ini became available at completion; using it for final stats."
+            fi
+
             # Final progress read — captures mover.ini final state before it goes stale
             get_progress
             remaining_readable=$(human_readable "$PROGRESS_REMAINING_BYTES")
@@ -1394,8 +1642,16 @@ while true; do
                     log "Final direct notification attempt completed."
                     standard_completion_done=true
                 else
-                    log "Warning: Final direct notification had a delivery failure; Pushover will be retried."
-                    completion_retry_pending=true
+                    log "Warning: Final direct notification had a delivery failure."
+                    if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                        log "Final Pushover notification will be retried."
+                        completion_retry_pending=true
+                    else
+                        # Native Unraid submission is a one-shot local handoff.
+                        # The failure has been surfaced; avoid duplicating healthy
+                        # direct channels by resending the whole completion message.
+                        standard_completion_done=true
+                    fi
                 fi
             fi
 
@@ -1437,9 +1693,12 @@ while true; do
             if direct_notifications_enabled; then
                 if [[ "$pushover_retry_pending" == true ]]; then
                     # Pushover is already pending, so send only to the healthy direct channels.
-                    if $USE_TELEGRAM || $USE_DISCORD; then
-                        send_notification "$percent" "$remaining_readable" false true
-                        log "Direct notification attempt completed for $percent% on non-Pushover channels."
+                    if $USE_TELEGRAM || $USE_DISCORD || $USE_UNRAID; then
+                        if send_notification "$percent" "$remaining_readable" false true; then
+                            log "Direct notification attempt completed for $percent% on non-Pushover channels."
+                        else
+                            log "Warning: A non-Pushover direct notification failed for $percent% completion."
+                        fi
                     fi
 
                     # Coalesce the pending Pushover retry to the newest progress update.
@@ -1449,10 +1708,13 @@ while true; do
                 elif send_notification "$percent" "$remaining_readable"; then
                     log "Direct notification attempt completed for $percent% completion."
                 else
-                    log "Warning: Direct notification for $percent% had a delivery failure; Pushover will be retried."
-                    pushover_retry_pending=true
-                    pending_percent="$percent"
-                    pending_remaining="$remaining_readable"
+                    log "Warning: Direct notification for $percent% had a delivery failure."
+                    if [[ "$PUSHOVER_DELIVERY_FAILED" == true ]]; then
+                        log "Pushover will be retried."
+                        pushover_retry_pending=true
+                        pending_percent="$percent"
+                        pending_remaining="$remaining_readable"
+                    fi
                 fi
             fi
 
@@ -1492,7 +1754,7 @@ done
 
 # Mover Status Script
 # <https://github.com/engels74/mover-status>
-# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, and/or Apprise.
+# This script monitors the progress of the "Mover" process and posts updates to Discord, Telegram, Pushover, Apprise, and/or native Unraid notifications.
 # Copyright (C) 2024 - engels74
 #
 # This program is free software: you can redistribute it and/or modify
