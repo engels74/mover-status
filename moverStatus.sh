@@ -520,7 +520,6 @@ INI_REMAIN_TO_SECONDARY=0
 INI_TOTAL_FILES=0
 INI_REMAIN_FILES=0
 INI_CURRENT_FILE=""
-INI_ACTION=""
 
 # Load one stable, complete mover.ini snapshot into INI_* globals.
 # Mover Tuning rewrites this file in place, so progress must never be
@@ -541,7 +540,7 @@ load_mover_ini_snapshot() {
     [ "$before" = "$after" ] || return 1
 
     local total="" remain="" total_files="" remain_files=""
-    local current_file="" action="" key value
+    local current_file="" key value
     while IFS='=' read -r key value; do
         value="${value%\"}"
         value="${value#\"}"
@@ -551,7 +550,6 @@ load_mover_ini_snapshot() {
             TotalFilesToSecondary)  total_files="$value" ;;
             RemainFilesToSecondary) remain_files="$value" ;;
             File)                    current_file="$value" ;;
-            Action)                  action="$value" ;;
         esac
     done <<< "$snapshot"
 
@@ -574,7 +572,6 @@ load_mover_ini_snapshot() {
     INI_TOTAL_FILES="$total_files"
     INI_REMAIN_FILES="$remain_files"
     INI_CURRENT_FILE="$current_file"
-    INI_ACTION="$action"
 }
 
 # True only when mover.ini belongs to the currently running mover operation
